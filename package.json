@@ -1,0 +1,21 @@
+{
+  "name": "stream-deck-ical",
+  "version": "1.0.0",
+  "description": "An iCal plugin for Stream Deck",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pedrofuentes/stream-deck-ical.git"
+  },
+  "keywords": [
+    "ical"
+  ],
+  "author": "Pedro Pablo Fuentes Schuster",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/pedrofuentes/stream-deck-ical/issues"
+  },
+  "homepage": "https://github.com/pedrofuentes/stream-deck-ical#readme"
+}
