@@ -2,8 +2,13 @@
   "name": "stream-deck-ical",
   "version": "1.0.0",
   "description": "An iCal plugin for Stream Deck",
+  "private": true,
   "scripts": {
-    "test": "jest"
+    "test": "jest",
+    "dev": "cross-env NODE_ENV=development webpack --progress --config=webpack.config.js",
+    "watch": "cross-env NODE_ENV=development webpack --watch --progress --config=webpack.config.js",
+    "hot": "cross-env NODE_ENV=development webpack-dev-server --inline --hot --config=webpack.config.js",
+    "production": "cross-env NODE_ENV=production webpack --progress --config=webpack.config.js"
   },
   "repository": {
     "type": "git",
@@ -12,6 +17,11 @@
   "keywords": [
     "ical"
   ],
+  "standard": {
+    "env": [
+      "jest"
+    ]
+  },
   "author": "Pedro Pablo Fuentes Schuster",
   "license": "MIT",
   "bugs": {
@@ -21,7 +31,12 @@
   "devDependencies": {
     "@babel/preset-env": "^7.12.13",
     "babel-jest": "^26.6.3",
+    "copy-webpack-plugin": "^7.0.0",
+    "cross-env": "^7.0.3",
     "jest": "^26.6.3",
-    "standard": "^16.0.3"
+    "jest-fetch-mock": "^3.0.3",
+    "standard": "^16.0.3",
+    "webpack": "^5.20.2",
+    "webpack-cli": "^4.5.0"
   }
 }

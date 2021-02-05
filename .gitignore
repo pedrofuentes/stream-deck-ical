@@ -105,3 +105,6 @@ dist
 
 # Visual Studio
 .vscode
+
+# Distribution Folder
+dist
