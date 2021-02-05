@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "An iCal plugin for Stream Deck",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest"
   },
   "repository": {
     "type": "git",
@@ -17,5 +17,11 @@
   "bugs": {
     "url": "https://github.com/pedrofuentes/stream-deck-ical/issues"
   },
-  "homepage": "https://github.com/pedrofuentes/stream-deck-ical#readme"
+  "homepage": "https://github.com/pedrofuentes/stream-deck-ical#readme",
+  "devDependencies": {
+    "@babel/preset-env": "^7.12.13",
+    "babel-jest": "^26.6.3",
+    "jest": "^26.6.3",
+    "standard": "^16.0.3"
+  }
 }
