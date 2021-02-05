@@ -10,8 +10,8 @@ function isTimeWithinHours (date, hours) {
   const now = today.getTime()
   const spread = (hours * 60 * 60 * 1000) / 2
   const event = date.getTime()
-  const bottomRange = now - spread;
-  const topRange = now + spread;
+  const bottomRange = now - spread
+  const topRange = now + spread
   return (event >= bottomRange) && (event <= topRange)
 }
 
