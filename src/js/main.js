@@ -7,5 +7,4 @@ const url = ''
 // ical update frequency in minutes
 const updateFrequency = 5
 
-fetchIcalAndUpdateCache(url)
-setInterval(fetchIcalAndUpdateCache, 1000 * 60 * updateFrequency)
+fetchIcalAndUpdateCache(url, updateFrequency)

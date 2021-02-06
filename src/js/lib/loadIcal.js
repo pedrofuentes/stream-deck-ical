@@ -66,17 +66,20 @@ export function setHoursSpread (newSpread) {
   totalHoursSpread = newSpread
 }
 
-export function updateEventsCache (data) {
+export async function updateEventsCache (data) {
   const events = ical.parseICS(data)
   const filteredAndSortedEvents = filterEvents(events, isNotAllDayEvent, isEventWithinHours).sort(compareEventsStartDates)
   window.cachedEvents = filteredAndSortedEvents
   return filteredAndSortedEvents
 }
 
-export default function fetchIcalAndUpdateCache (url) {
+export default async function fetchIcalAndUpdateCache (url, updateFrequency) {
   return fetch(url)
     .then((response) => response.text())
     .then((data) => updateEventsCache(data))
+    .then(() => {
+      setTimeout(fetchIcalAndUpdateCache, 1000 * 60 * updateFrequency, url, updateFrequency)
+    })
     .catch((error) => {
       console.error('There has been a problem with your fetch operation:', error)
     })

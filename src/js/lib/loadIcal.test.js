@@ -11,11 +11,11 @@ afterEach(() => {
 })
 
 describe('Loads iCal and Stores it in Cache', () => {
-  it('Updates Events Cache with 4 events in a 2 hour spread', () => {
+  it('Updates Events Cache with 4 events in a 2 hour spread', async () => {
     jest.setSystemTime(new Date('2021-01-22T10:05:00.000-08:00'))
 
     setHoursSpread(2)
-    expect(updateEventsCache(icalFile)).toEqual([
+    expect(await updateEventsCache(icalFile)).toEqual([
       {
         uid: '040000002739A30012D2G1938J12E0080000000070AF5CBF28EBD601000000000000000010000000009D8CF03B326B46ADE2A3D7C7F38E52',
         summary: '180 Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
@@ -43,11 +43,11 @@ describe('Loads iCal and Stores it in Cache', () => {
     ])
   })
 
-  it('Updates Events Cache with 1 events in a 1 hour spread', () => {
+  it('Updates Events Cache with 1 events in a 1 hour spread', async () => {
     jest.setSystemTime(new Date('2021-01-22T10:00:00.000-08:00'))
 
     setHoursSpread(1)
-    expect(updateEventsCache(icalFile)).toEqual([
+    expect(await updateEventsCache(icalFile)).toEqual([
       {
         uid: '040000002739A30012D2G1938J12E00800000000501B90E024EFD6010000000000000000100000001C4CAA0A5917274ABEECEE657275FF87',
         summary: '182 Lorem ipsum dolor sit amet, consectetur adipiscing elit.',
@@ -57,10 +57,10 @@ describe('Loads iCal and Stores it in Cache', () => {
     ])
   })
 
-  it('Updates Events Cache with 0 events in a 1 hour spread', () => {
+  it('Updates Events Cache with 0 events in a 1 hour spread', async () => {
     jest.setSystemTime(new Date('2021-01-22T05:00:00.000-08:00'))
 
     setHoursSpread(1)
-    expect(updateEventsCache(icalFile)).toEqual([])
+    expect(await updateEventsCache(icalFile)).toEqual([])
   })
 })
