@@ -15,7 +15,11 @@ var ical = (function (name, definition) {
    * ************* */
 
   if (typeof module !== 'undefined') {
-    module.exports = definition();
+    if(typeof module.exports !== 'undefined') {
+      module.exports = definition();
+    } else {
+      return definition();
+    }
   } else if (typeof define === 'function' && typeof define.amd === 'object') {
     define(definition);
   } else {
