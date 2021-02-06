@@ -1,6 +1,8 @@
 /* global fetch */
 import ical from './ical.js'
 
+let totalHoursSpread = 36
+
 function isAllDayEvent (object) {
   return object['MICROSOFT-CDO-ALLDAYEVENT'] === 'TRUE'
 }
@@ -12,6 +14,7 @@ function isTimeWithinHours (date, hours) {
   const event = date.getTime()
   const bottomRange = now - spread
   const topRange = now + spread
+
   return (event >= bottomRange) && (event <= topRange)
 }
 
@@ -20,7 +23,7 @@ function isNotAllDayEvent (object) {
 }
 
 function isEventWithinHours (event) {
-  return isTimeWithinHours(event.start, 36)
+  return isTimeWithinHours(event.start, totalHoursSpread)
 }
 
 function compareEventsStartDates (firstEl, secondEl) {
@@ -57,6 +60,10 @@ function filterEvents (events, ...args) {
   }
 
   return selectedEvents
+}
+
+export function setHoursSpread (newSpread) {
+  totalHoursSpread = newSpread
 }
 
 export function updateEventsCache (data) {
