@@ -1,3 +1,8 @@
+/**
+ * {@link https://github.com/moment/luxon}
+ * @copyright 2019 JS Foundation and other contributors
+ * @license MIT
+ */
 var luxon = (function (exports) {
   'use strict';
 

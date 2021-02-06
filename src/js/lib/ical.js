@@ -1,6 +1,8 @@
 /**
- * @description Fixes timezones issues on original ical library https://github.com/peterbraden/ical.js/blob/d6385fb9798a9492b555795121e5b7a7235f9d48/ical.js
+ * @description Fixed timezones issues on original ical library
+ * {@link https://github.com/peterbraden/ical.js/blob/d6385fb9798a9492b555795121e5b7a7235f9d48/ical.js Original iCal Library}
  * @author Pedro Pablo Fuentes Schuster <git@pedrofuent.es>
+ * @author Peter Braden <hifromgithub@peterbraden.co.uk>
  * @license MIT
  */
 import timezones from './timezones.js'

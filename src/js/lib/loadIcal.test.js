@@ -1,3 +1,9 @@
+/**
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright 2021 Pedro Pablo Fuentes Schuster
+ * @license MIT
+ */
+
 import { updateEventsCache, setHoursSpread } from './loadIcal.js'
 import icalFile from '../../../__mocks__/mock.js'
 

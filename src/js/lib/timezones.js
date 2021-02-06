@@ -1,4 +1,7 @@
-// From https://github.com/dmfilipenko/timezones.json
+/**
+ * @author Dmytro Filipenko
+ * {@link https://github.com/dmfilipenko/timezones.json}
+ */
 const timezones = [
   {
     value: 'Dateline Standard Time',

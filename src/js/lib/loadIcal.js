@@ -1,3 +1,8 @@
+/**
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright 2021 Pedro Pablo Fuentes Schuster
+ * @license MIT
+ */
 /* global fetch */
 import ical from './ical.js'
 
