@@ -41,7 +41,7 @@ export default class TimeLeft extends Action {
   onKeyUp (context, settings, coordinates, desiredState, state) {
     if (settings === undefined) settings = this._settings
 
-    if(this.activeMeetings > 1) this.setTitle(context, 'Loading\nNext\nMeeting')
+    if (this.activeMeetings > 1) this.setTitle(context, 'Loading\nNext\nMeeting')
 
     if (this.interval) {
       clearInterval(this.interval)
