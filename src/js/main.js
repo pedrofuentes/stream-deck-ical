@@ -8,8 +8,6 @@ import StreamDeck from './lib/streamDeck.js'
 import NextMeeting from './actions/nextmeeting.js'
 import TimeLeft from './actions/timeleft.js'
 
-window.cachedEvents = []
-
 // TODO: Load from Config
 const url = ''
 // ical update frequency in minutes

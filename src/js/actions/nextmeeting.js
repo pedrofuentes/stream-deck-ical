@@ -23,8 +23,8 @@ export default class NextMeeting extends Action {
 
   onWillAppear (context, settings) {
     if (settings === undefined) settings = this._settings
-    // TODO: move cachedEvents outside window
-    if (window.cachedEvents.length === 0) {
+
+    if (window.eventsCache.events.length === 0) {
       this.setTitle(context, 'Loading\nUpcoming\nMeeting')
     }
 
@@ -93,7 +93,6 @@ export default class NextMeeting extends Action {
       }
       this.setTitle(context, 'No\nUpcoming\nMeeting')
       // Check again in 10 seconds if new events available
-      // TODO: instead of checking an event could trigger
       this.timeOut = setTimeout(() => { this.startTimer(context) }, 10000, context)
     }
   }

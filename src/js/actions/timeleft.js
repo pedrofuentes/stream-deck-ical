@@ -41,7 +41,7 @@ export default class TimeLeft extends Action {
   onKeyUp (context, settings, coordinates, desiredState, state) {
     if (settings === undefined) settings = this._settings
 
-    this.setTitle(context, 'Loading\nActive\nMeeting(s)')
+    if(this.activeMeetings > 1) this.setTitle(context, 'Loading\nNext\nMeeting')
 
     if (this.interval) {
       clearInterval(this.interval)
@@ -53,7 +53,6 @@ export default class TimeLeft extends Action {
       this.setImage(context, imageCache.timeLeft)
     }
 
-    // FIXME: bug on multiple meetings, not switching, also some times flickering
     if (this.activeMeetings > 1 && (this.currentMeeting + 1) < this.activeMeetings) {
       this.currentMeeting++
     } else if (this.activeMeetings > 1 && (this.currentMeeting + 1) === this.activeMeetings) {
@@ -69,7 +68,6 @@ export default class TimeLeft extends Action {
 
     if (this.activeMeetings > 0) {
       this.interval = setInterval(() => {
-        // TODO: we could use luxon for this
         const difference = eventsSecondsAndNowDifference(events[this.currentMeeting].end)
         if (difference >= this.stopTimeAt) {
           if (this.currentImage !== 'timeLeftOrange' && difference <= this.orangeZoneTime && difference > this.redZoneTime) {
@@ -102,7 +100,6 @@ export default class TimeLeft extends Action {
       }
       this.setTitle(context, 'No\nActive\nMeeting')
       // Check again in 10 seconds if new events available
-      // TODO: instead of checking an event could trigger
       this.timeOut = setTimeout(() => { this.startTimer(context) }, 10000, context)
     }
   }

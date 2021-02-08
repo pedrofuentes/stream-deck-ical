@@ -21,11 +21,11 @@ export function eventsSecondsAndNowDifference (date) {
 }
 
 export function findActiveEvents () {
-  return window.cachedEvents.filter(isActiveEvent)
+  return window.eventsCache.events.filter(isActiveEvent)
 }
 
 export function findNextEvent () {
-  return window.cachedEvents.filter(isUpcoming)[0]
+  return window.eventsCache.events.filter(isUpcoming)[0]
 }
 
 export function sec2time (timeInSeconds) {
@@ -48,9 +48,8 @@ export function sec2time (timeInSeconds) {
 }
 
 export function executeIfCacheAvailable (action, context, callback) {
-  if (window.cachedEvents.length === 0) {
-    // TODO no meetings found vs no active meetings
-    action.setTitle(context, 'No\nMeetings\nFound')
+  if (window.eventsCache.events.length === 0) {
+    action.setTitle(context, (window.eventsCache.status !== 'loading') ? 'No\nMeetings\nFound' : 'Loading\niCal')
     setTimeout(executeIfCacheAvailable, 5000, action, context, callback)
   } else {
     callback(context)
