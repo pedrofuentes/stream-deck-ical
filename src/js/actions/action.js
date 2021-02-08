@@ -11,6 +11,7 @@ export default class Action {
     this._settings = settings
     this.destinationEnum = Object.freeze({ HARDWARE_AND_SOFTWARE: 0, HARDWARE_ONLY: 1, SOFTWARE_ONLY: 2 })
     this._uuid = uuid
+    this.lastKey = {}
   }
 
   get context () {
@@ -44,6 +45,15 @@ export default class Action {
   onKeyUp (context, settings, coordinates, desiredState, state) {}
 
   onKeyDown (context, settings, coordinates, desiredState, state) {}
+
+  onDoublePress (type = 'keyUp', callback) {
+    const delay = 500
+    const now = Date.now()
+    const previousKey = (Object.prototype.hasOwnProperty.call(this.lastKey, type)) ? this.lastKey[type] : (now - delay * 2)
+    this.lastKey[type] = now
+
+    if (Object.prototype.hasOwnProperty.call(this.lastKey, type) && ((this.lastKey[type] - previousKey) < delay)) callback()
+  }
 
   setState (context, state) {
     if (this.websocket) {
