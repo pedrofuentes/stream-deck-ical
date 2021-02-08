@@ -84,10 +84,10 @@ export default class StreamDeck {
         this.activeActions[context].setSettings(settings)
       }
     } else if (event === 'propertyInspectorDidAppear') {
-      // Send cache to PI
+      // TODO: Implement to send to PI
       // this.sendToPropertyInspector(action, context, cache.data);
     } else if (event === 'sendToPlugin') {
-      // TODO: Something missing here
+      // TODO: Implement to send info to plugin
       // const piEvent = payload['piEvent']
     }
   }
