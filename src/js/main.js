@@ -8,8 +8,6 @@ import StreamDeck from './lib/streamDeck.js'
 import NextMeeting from './actions/nextmeeting.js'
 import TimeLeft from './actions/timeleft.js'
 
-// TODO: Load from Config, if no url set show setup ical on icon and don't load, if url changed or added tridder load
-// const url = ***REMOVED***
 // ical update frequency in minutes
 const updateFrequency = 5
 window.eventsCache.status = 'init'

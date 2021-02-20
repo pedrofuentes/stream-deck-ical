@@ -55,6 +55,11 @@ export default class NextMeeting extends Action {
     }
 
     executeIfCacheAvailable(this, context, () => { this.startTimer(context) })
+
+    this.onDoublePress(() => {
+      // Increase cacheVersion to force cache update
+      this.streamDeck.updateGlobalSettings('cacheVersion', this.streamDeck.globalSettings.cacheVersion + 1)
+    })
   }
 
   startTimer (context) {

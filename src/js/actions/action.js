@@ -46,7 +46,7 @@ export default class Action {
 
   onKeyDown (context, settings, coordinates, desiredState, state) {}
 
-  onDoublePress (type = 'keyUp', callback) {
+  onDoublePress (callback, type = 'keyUp') {
     const delay = 500
     const now = Date.now()
     const previousKey = (Object.prototype.hasOwnProperty.call(this.lastKey, type)) ? this.lastKey[type] : (now - delay * 2)
