@@ -18,6 +18,8 @@ export default class StreamDeck {
     this._piCallback = () => {}
     this._globalSettingsCallback = () => {}
     this._initialLoadCallback = null
+    this._sendToPluginCallback = () => {}
+    this._propertyInspectorDidAppearCallback = () => {}
 
     window.connectElgatoStreamDeckSocket = (port, uuid, register, info) => {
       this.port = port
@@ -96,13 +98,12 @@ export default class StreamDeck {
         this.activeActions[context].setSettings(settings)
       }
     } else if (event === 'propertyInspectorDidAppear') {
-      // TODO: Implement to send to PI
       this.sendToPropertyInspector(action, context, '')
+      this._propertyInspectorDidAppearCallback()
     } else if (event === 'sendToPropertyInspector') {
       this._piCallback()
     } else if (event === 'sendToPlugin') {
-      // TODO: Implement to send info to plugin
-      // const piEvent = payload['piEvent']
+      this._sendToPluginCallback()
     }
   }
 
@@ -116,6 +117,14 @@ export default class StreamDeck {
 
   onInitialLoad (callback) {
     if (typeof callback === 'function') this._initialLoadCallback = callback
+  }
+
+  onSendToPlugin (callback) {
+    if (typeof callback === 'function') this._sendToPluginCallback = callback
+  }
+
+  onPropertyInspectorDidAppear (callback) {
+    if (typeof callback === 'function') this._propertyInspectorDidAppearCallback = callback
   }
 
   registerPluginOrPI (event) {
