@@ -8,13 +8,28 @@ import StreamDeck from './lib/streamDeck.js'
 import NextMeeting from './actions/nextmeeting.js'
 import TimeLeft from './actions/timeleft.js'
 
-// TODO: Load from Config
-const url = ''
+// TODO: Load from Config, if no url set show setup ical on icon and don't load, if url changed or added tridder load
+// const url = ***REMOVED***
 // ical update frequency in minutes
 const updateFrequency = 5
-
-fetchIcalAndUpdateCache(url, updateFrequency)
+window.eventsCache.status = 'init'
+window.loadVersion = 0
 
 const streamDeck = new StreamDeck()
+streamDeck.onInitialLoad(() => {
+  // streamDeck.resetGlobalSettings()
+  streamDeck.updateGlobalSettings('cacheVersion', 0)
+  if (!Object.prototype.hasOwnProperty.call(streamDeck.globalSettings, 'url')) {
+    streamDeck.updateGlobalSettings('url', '')
+  }
+  fetchIcalAndUpdateCache(streamDeck, updateFrequency)
+})
+
+streamDeck.onGlobalSettingsReceived(() => {
+  if (window.loadVersion !== streamDeck.globalSettings.cacheVersion) {
+    window.loadVersion = streamDeck.globalSettings.cacheVersion
+    fetchIcalAndUpdateCache(streamDeck, updateFrequency, streamDeck.globalSettings.cacheVersion)
+  }
+})
 streamDeck.registerAction(NextMeeting, 'com.pedrofuentes.ical.nextmeeting')
 streamDeck.registerAction(TimeLeft, 'com.pedrofuentes.ical.timeleft')

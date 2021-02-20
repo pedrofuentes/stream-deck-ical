@@ -49,9 +49,37 @@ export function sec2time (timeInSeconds) {
 
 export function executeIfCacheAvailable (action, context, callback) {
   if (window.eventsCache.events.length === 0) {
-    action.setTitle(context, (window.eventsCache.status !== 'loading') ? 'No\nMeetings\nFound' : 'Loading\niCal')
+    let statusText = 'No\nMeetings\nFound'
+    switch (window.eventsCache.status) {
+      case 'init':
+        statusText = 'Loading\niCal'
+        break
+      case 'loading':
+        statusText = 'Loading\niCal'
+        break
+      case 'invalid':
+        statusText = 'Please\nSetup'
+        break
+    }
+    action.setTitle(context, statusText)
     setTimeout(executeIfCacheAvailable, 5000, action, context, callback)
   } else {
     callback(context)
   }
+}
+
+export function isValidURL (url) {
+  let isValid = true
+  try {
+    /* eslint no-new: off */
+    new URL(url)
+  } catch (e) {
+    isValid = false
+  }
+
+  return isValid
+}
+
+export function sleep (ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }

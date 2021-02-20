@@ -37,7 +37,8 @@
   "Icon": "assets/icalIcon", 
   "Category": "iCal",
   "CategoryIcon": "assets/icalIcon",
-  "URL": "https://github.com/pedrofuentes/stream-deck-ical#readme", 
+  "URL": "https://github.com/pedrofuentes/stream-deck-ical#readme",
+  "PropertyInspectorPath": "pi.html",
   "Version": "1.0",
   "OS": [
     {

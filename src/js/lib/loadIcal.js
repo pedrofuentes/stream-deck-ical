@@ -5,6 +5,7 @@
  */
 /* global fetch */
 import ical from './ical.js'
+import { isValidURL, sleep } from './utils.js'
 
 window.eventsCache = {
   status: null,
@@ -75,24 +76,37 @@ export function setHoursSpread (newSpread) {
   totalHoursSpread = newSpread
 }
 
-export async function updateEventsCache (data) {
-  const events = ical.parseICS(data)
-  const filteredAndSortedEvents = filterEvents(events, isNotAllDayEvent, isEventWithinHours).sort(compareEventsStartDates)
-  window.eventsCache.events = filteredAndSortedEvents
-  return filteredAndSortedEvents
+export async function updateEventsCache (data, version) {
+  // if versions differ it means that a new load has been triggered with a new url so we don't store this data
+  if (version === window.loadVersion) {
+    const events = ical.parseICS(data)
+    const filteredAndSortedEvents = filterEvents(events, isNotAllDayEvent, isEventWithinHours).sort(compareEventsStartDates)
+    window.eventsCache.events = filteredAndSortedEvents
+    return filteredAndSortedEvents
+  }
 }
 
-export default async function fetchIcalAndUpdateCache (url, updateFrequency) {
-  window.eventsCache.status = 'loading'
-  return fetch(url)
-    .then((response) => response.text())
-    .then((data) => updateEventsCache(data))
-    .then(() => {
-      window.eventsCache.status = 'loaded'
-      setTimeout(fetchIcalAndUpdateCache, 1000 * 60 * updateFrequency, url, updateFrequency)
-    })
-    .catch((error) => {
-      window.eventsCache.status = 'error'
-      console.error('There has been a problem with your fetch operation:', error)
-    })
+export default async function fetchIcalAndUpdateCache (streamDeck, updateFrequency, version = 0) {
+  const url = streamDeck.globalSettings.url
+  if (isValidURL(url)) {
+    // if versions differ it means that a new load has been triggered with a new url
+    if (version === window.loadVersion) {
+      window.eventsCache.status = 'loading'
+      return fetch(url)
+        .then((response) => response.text())
+        .then((data) => updateEventsCache(data, version))
+        .then(() => {
+          window.eventsCache.status = 'loaded'
+          setTimeout(fetchIcalAndUpdateCache, 1000 * 60 * updateFrequency, streamDeck, updateFrequency, version)
+        })
+        .catch((error) => {
+          window.eventsCache.status = 'error'
+          console.error('There has been a problem with your fetch operation:', error)
+        })
+    }
+  } else {
+    window.eventsCache.status = 'invalid'
+    await sleep(1000)
+    await fetchIcalAndUpdateCache(streamDeck, updateFrequency, version)
+  }
 }

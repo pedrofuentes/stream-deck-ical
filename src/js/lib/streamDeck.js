@@ -14,7 +14,10 @@ export default class StreamDeck {
     this.info = null
     this.activeActions = {}
     this.availableActions = {}
-    this.globalSettings = {}
+    this._globalSettings = {}
+    this._piCallback = () => {}
+    this._globalSettingsCallback = () => {}
+    this._initialLoadCallback = null
 
     window.connectElgatoStreamDeckSocket = (port, uuid, register, info) => {
       this.port = port
@@ -40,6 +43,10 @@ export default class StreamDeck {
     this._websocket = value
   }
 
+  get globalSettings () {
+    return this._globalSettings
+  }
+
   onOpen () {
     this.registerPluginOrPI(this.register, this.uuid)
     this.requestGlobalSettings(this.uuid)
@@ -57,6 +64,7 @@ export default class StreamDeck {
     let settings
 
     // Key up event
+    console.log(event)
     if (event === 'keyUp') {
       if (context in this.activeActions) {
         this.activeActions[context].onKeyUp(context, payload.settings, payload.coordinates, payload.userDesiredState, payload.state)
@@ -76,7 +84,12 @@ export default class StreamDeck {
         delete this.activeActions[context]
       }
     } else if (event === 'didReceiveGlobalSettings') {
-      this.globalSettings = payload.settings
+      this._globalSettings = payload.settings
+      if (typeof this._initialLoadCallback === 'function') {
+        this._initialLoadCallback()
+        this._initialLoadCallback = null
+      }
+      this._globalSettingsCallback()
     } else if (event === 'didReceiveSettings') {
       settings = payload.settings
 
@@ -85,53 +98,73 @@ export default class StreamDeck {
       }
     } else if (event === 'propertyInspectorDidAppear') {
       // TODO: Implement to send to PI
-      // this.sendToPropertyInspector(action, context, cache.data);
+      this.sendToPropertyInspector(action, context, '')
+    } else if (event === 'sendToPropertyInspector') {
+      this._piCallback()
     } else if (event === 'sendToPlugin') {
       // TODO: Implement to send info to plugin
       // const piEvent = payload['piEvent']
     }
   }
 
-  registerPluginOrPI (event, uuid) {
+  onPiLoaded (callback) {
+    if (typeof callback === 'function') this._piCallback = callback
+  }
+
+  onGlobalSettingsReceived (callback) {
+    if (typeof callback === 'function') this._globalSettingsCallback = callback
+  }
+
+  onInitialLoad (callback) {
+    if (typeof callback === 'function') this._initialLoadCallback = callback
+  }
+
+  registerPluginOrPI (event) {
     if (this._websocket) {
       const json = {
         event: event,
-        uuid: uuid
+        uuid: this.uuid
       }
 
       this._websocket.send(JSON.stringify(json))
     }
   }
 
-  requestGlobalSettings (uuid) {
+  requestGlobalSettings () {
     if (this._websocket) {
       const json = {
         event: 'getGlobalSettings',
-        context: uuid
+        context: this.uuid
       }
 
       this._websocket.send(JSON.stringify(json))
     }
   }
 
-  saveGlobalSettings (uuid) {
+  updateGlobalSettings (key, value) {
+    this._globalSettings[key] = value
+
+    this.saveGlobalSettings()
+  }
+
+  saveGlobalSettings () {
     if (this._websocket) {
       const json = {
         event: 'setGlobalSettings',
-        context: uuid,
-        payload: this.globalSettings
+        context: this.uuid,
+        payload: this._globalSettings
       }
 
       this._websocket.send(JSON.stringify(json))
     }
   }
 
-  saveSettings (action, uuid, settings) {
+  saveSettings (action, actionUUID, settings) {
     if (this._websocket) {
       const json = {
         action: action,
         event: 'setSettings',
-        context: uuid,
+        context: actionUUID,
         payload: settings
       }
 
@@ -139,8 +172,8 @@ export default class StreamDeck {
     }
   }
 
-  registerAction (implementation, uuid) {
-    this.availableActions[uuid] = implementation
+  registerAction (implementation, actionUUID) {
+    this.availableActions[actionUUID] = implementation
   }
 
   addAction (action, context, settings) {
