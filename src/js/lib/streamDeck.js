@@ -64,7 +64,6 @@ export default class StreamDeck {
     let settings
 
     // Key up event
-    console.log(event)
     if (event === 'keyUp') {
       if (context in this.activeActions) {
         this.activeActions[context].onKeyUp(context, payload.settings, payload.coordinates, payload.userDesiredState, payload.state)
