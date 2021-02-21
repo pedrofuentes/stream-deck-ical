@@ -34,7 +34,7 @@
   "CodePath": "app.html", 
   "Description": "Display information from your calendar using an iCal URL. Visual cues and a countdown will help you end meetings on time and be ready for the next one.", 
   "Name": "iCal", 
-  "Icon": "assets/icalIcon@2x", 
+  "Icon": "assets/icalIcon", 
   "Category": "iCal",
   "CategoryIcon": "assets/icalIcon",
   "URL": "https://github.com/pedrofuentes/stream-deck-ical#readme",

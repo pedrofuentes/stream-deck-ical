@@ -1,11 +1,15 @@
 const path = require('path')
 const CopyPlugin = require('copy-webpack-plugin')
 
+let destFolder = 'dist'
+
+if (process.env.NODE_ENV === 'production') destFolder = 'release/com.pedrofuentes.ical.sdPlugin'
+
 const mainConfig = {
   entry: './src/js/main.js',
   output: {
     filename: 'js/main.js',
-    path: path.resolve(__dirname, 'dist')
+    path: path.resolve(__dirname, destFolder)
   },
   plugins: [
     new CopyPlugin({
@@ -22,7 +26,7 @@ const piConfig = {
   entry: './src/js/pi.js',
   output: {
     filename: 'js/pi.js',
-    path: path.resolve(__dirname, 'dist')
+    path: path.resolve(__dirname, destFolder)
   },
   plugins: [
     new CopyPlugin({
@@ -38,7 +42,7 @@ const setupConfig = {
   entry: './src/js/setup.js',
   output: {
     filename: 'js/setup.js',
-    path: path.resolve(__dirname, 'dist')
+    path: path.resolve(__dirname, destFolder)
   },
   plugins: [
     new CopyPlugin({
