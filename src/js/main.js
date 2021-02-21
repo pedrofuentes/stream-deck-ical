@@ -15,7 +15,6 @@ window.loadVersion = 0
 
 const streamDeck = new StreamDeck()
 streamDeck.onInitialLoad(() => {
-  // streamDeck.resetGlobalSettings()
   streamDeck.updateGlobalSettings('cacheVersion', 0)
   if (!Object.prototype.hasOwnProperty.call(streamDeck.globalSettings, 'url')) {
     streamDeck.updateGlobalSettings('url', '')
