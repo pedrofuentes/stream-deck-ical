@@ -3,8 +3,6 @@
  * @copyright 2021 Pedro Pablo Fuentes Schuster
  * @license MIT
  */
-
-import fetchIcalAndUpdateCache from './lib/loadIcal.js'
 import StreamDeck from './lib/streamDeck.js'
 
 window.streamDeck = new StreamDeck()
