@@ -1601,3 +1601,29 @@ button.settings:hover{
 input.next-to-settings:read-only {
   color: #595959;
 }
+
+div.content {
+  margin-left: 4px;
+  margin-right: 14px;
+  padding: 8px 18px 8px 12px;
+}
+
+.full-row {
+  margin-right: 14px;
+  max-width: 484px;
+}
+
+div#alerts {
+  margin: 20px 18px 10px 18px;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #3a3a3a;
+}
+
+div#alerts .error {
+  color: #bd4545;
+}
+
+div#alerts .notice {
+  color: #118811;
+}

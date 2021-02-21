@@ -11,15 +11,50 @@
     </head>
     <body>
         <div class="sdpi-wrapper">
+          <div id="alerts" class="content"></div>
+          <div class="sdpi-heading">iCal Settings</div>
 
-            <div class="sdpi-item">
-              <div class="sdpi-item-label">iCal</div>
-              <input id="url" class="next-to-settings sdpi-item-value" type="text" value="" />
-              <button class="settings" id="settings" value="Settings" data-localize="Settings"><span>Settings</span></button>
-            </div>
+          <div class="sdpi-item full-row">
+            <div class="sdpi-item-label">iCal URL</div>
+            <input id="url" class="next-to-settings sdpi-item-value" type="text" value="" />
+            <button class="sdpi-item-value" id="save" value="save">Save</button>
+            <button class="sdpi-item-value" id="refresh" value="refresh">Force &#128472;</button>
+          </div>
+
+          <div class="sdpi-heading">Features</div>
+          <div class="content">
+            <ul>
+              <li>Checks for updates every 10 minutes</li>
+              <li>When a new URL is saved a new update is triggered</li>
+              <li>"Force &#128472;" can be used if you want to force an update</li>
+              <li>Stores events up to 18 hours in the future</li>
+            </ul>
+
+            <h4>Time Left</h4>
+            <ul>
+              <li>Shows time left until the meeting ends</li>
+              <li>Changes icon color to orange when 5 minutes are left on the meeting</li>
+              <li>Changes icon color to red when 30 seconds are left on the meeting and goes up to 5 minutes after the meeting</li>
+              <li>When past meeting time if the user pushes the button will search for the next meeting if one is available</li>
+              <li>Supports multiple concurrent meetings, to switch between meeting just push the button</li>
+            </ul>
+
+            <h4>Next Meeting</h4>
+            <ul>
+              <li>Shows time left until next meeting starts</li>
+              <li>Changes icon color to orange when there are 5 minutes left for the next meeting to start</li>
+              <li>Changes icon color to red when there are 30 seconds left for the next meeting to start</li>
+            </ul>
+          </div>
+
+          <div class="sdpi-heading">Other Information</div>
+          <div class="content">
+            <p>
+              You can check the sourcecode, report bugs, request features or contribute on GitHub: https://github.com/pedrofuentes/stream-deck-ical
+            </p>
+          </div>
 
         </div>
-
         <div class="sdpi-info-label hidden" style="top: -1000;" value=""></div>
     </body>
     </html>

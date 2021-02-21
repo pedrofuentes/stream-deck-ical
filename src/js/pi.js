@@ -12,6 +12,6 @@ streamDeck.onPiLoaded(() => {
   document.getElementById('url').value = streamDeck.globalSettings.url
 
   document.getElementById('settings').addEventListener('click', () => {
-    window.open('setup.html')
+    window.open('setup.html', 'iCal Settings')
   })
 })
