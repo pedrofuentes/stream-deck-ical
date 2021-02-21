@@ -19,8 +19,17 @@ export default class TimeLeft extends Action {
     this.activeMeetings = 0
     this.currentMeeting = 0
     this.interval = null
+    this._cacheVersion = 0
 
     streamDeck.saveSettings(uuid, context, settings)
+  }
+
+  get cacheVersion () {
+    return this._cacheVersion
+  }
+
+  set cacheVersion (value) {
+    this._cacheVersion = value
   }
 
   onWillAppear (context, settings) {
@@ -62,14 +71,15 @@ export default class TimeLeft extends Action {
     executeIfCacheAvailable(this, context, () => { this.startTimer(context) })
 
     this.onDoublePress(() => {
-      // Increase cacheVersion to force cache update
-      this.streamDeck.updateGlobalSettings('cacheVersion', this.streamDeck.globalSettings.cacheVersion + 1)
+      // Increase urlVersion to force cache update
+      this.streamDeck.updateGlobalSettings('urlVersion', this.streamDeck.globalSettings.urlVersion + 1)
     })
   }
 
   startTimer (context) {
     const events = findActiveEvents()
     this.activeMeetings = events.length
+    this._cacheVersion = window.eventsCache.version
 
     if (this.activeMeetings > 0) {
       if (this.interval) clearInterval(this.interval)

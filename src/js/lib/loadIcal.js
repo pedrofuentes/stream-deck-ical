@@ -6,8 +6,10 @@
 /* global fetch */
 import ical from './ical.js'
 import { isValidURL, sleep } from './utils.js'
+import { deepEqual } from 'fast-equals'
 
 window.eventsCache = {
+  version: 0,
   status: null,
   events: []
 }
@@ -78,9 +80,11 @@ export function setHoursSpread (newSpread) {
 
 export async function updateEventsCache (data, version) {
   // if versions differ it means that a new load has been triggered with a new url so we don't store this data
-  if (version === window.loadVersion) {
+  if (version === window.loadedUrlVersion) {
     const events = ical.parseICS(data)
     const filteredAndSortedEvents = filterEvents(events, isNotAllDayEvent, isEventWithinHours).sort(compareEventsStartDates)
+    // TODO: if no change maybe no need to update and return even?
+    if (!deepEqual(window.eventsCache.events, filteredAndSortedEvents)) window.eventsCache.version++
     window.eventsCache.events = filteredAndSortedEvents
     return filteredAndSortedEvents
   }
@@ -90,7 +94,7 @@ export default async function fetchIcalAndUpdateCache (streamDeck, updateFrequen
   const url = streamDeck.globalSettings.url
   if (isValidURL(url)) {
     // if versions differ it means that a new load has been triggered with a new url
-    if (version === window.loadVersion) {
+    if (version === window.loadedUrlVersion) {
       window.eventsCache.status = 'loading'
       return fetch(url)
         .then((response) => response.text())

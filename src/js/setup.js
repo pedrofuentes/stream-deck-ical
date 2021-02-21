@@ -22,7 +22,7 @@ function saveUrl () {
   if (isValidURL(url)) {
     streamDeck.updateGlobalSettings('url', url)
     opener.document.getElementById('url').value = url
-    streamDeck.updateGlobalSettings('cacheVersion', streamDeck.globalSettings.cacheVersion + 1)
+    streamDeck.updateGlobalSettings('urlVersion', streamDeck.globalSettings.urlVersion + 1)
     showAlert('New iCal URL was saved, loading new information', 'notice')
   } else {
     showAlert('Please enter a valid iCal URL')
@@ -33,7 +33,7 @@ function saveUrl () {
 function refreshIcal () {
   const url = document.getElementById('url').value
   if (isValidURL(url)) {
-    streamDeck.updateGlobalSettings('cacheVersion', streamDeck.globalSettings.cacheVersion + 1)
+    streamDeck.updateGlobalSettings('urlVersion', streamDeck.globalSettings.urlVersion + 1)
     showAlert('Forced Refresh starting', 'notice')
   } else {
     showAlert('Current iCal URL is not valid, please set a new one before doing a Forced Refresh')

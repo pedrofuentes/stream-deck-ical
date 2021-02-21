@@ -17,8 +17,17 @@ export default class NextMeeting extends Action {
     this.orangeZoneTime = 300
     this.stopTimeAt = 0
     this.interval = null
+    this._cacheVersion = 0
 
     streamDeck.saveSettings(uuid, context, settings)
+  }
+
+  get cacheVersion () {
+    return this._cacheVersion
+  }
+
+  set cacheVersion (value) {
+    this._cacheVersion = value
   }
 
   onWillAppear (context, settings) {
@@ -57,13 +66,14 @@ export default class NextMeeting extends Action {
     executeIfCacheAvailable(this, context, () => { this.startTimer(context) })
 
     this.onDoublePress(() => {
-      // Increase cacheVersion to force cache update
-      this.streamDeck.updateGlobalSettings('cacheVersion', this.streamDeck.globalSettings.cacheVersion + 1)
+      // Increase urlVersion to force cache update
+      this.streamDeck.updateGlobalSettings('urlVersion', this.streamDeck.globalSettings.urlVersion + 1)
     })
   }
 
   startTimer (context) {
     const event = findNextEvent()
+    this._cacheVersion = window.eventsCache.version
 
     if (event && Object.prototype.hasOwnProperty.call(event, 'start')) {
       if (this.interval) clearInterval(this.interval)
