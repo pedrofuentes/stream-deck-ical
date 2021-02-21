@@ -72,6 +72,7 @@ export default class TimeLeft extends Action {
     this.activeMeetings = events.length
 
     if (this.activeMeetings > 0) {
+      if (this.interval) clearInterval(this.interval)
       this.interval = setInterval(() => {
         const difference = eventsSecondsAndNowDifference(events[this.currentMeeting].end)
         if (difference >= this.stopTimeAt) {

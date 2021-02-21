@@ -86,7 +86,7 @@ export async function updateEventsCache (data, version) {
   }
 }
 
-export default async function fetchIcalAndUpdateCache (streamDeck, updateFrequency, version = 0) {
+export default async function fetchIcalAndUpdateCache (streamDeck, updateFrequency, version, callback = null) {
   const url = streamDeck.globalSettings.url
   if (isValidURL(url)) {
     // if versions differ it means that a new load has been triggered with a new url
@@ -97,7 +97,8 @@ export default async function fetchIcalAndUpdateCache (streamDeck, updateFrequen
         .then((data) => updateEventsCache(data, version))
         .then(() => {
           window.eventsCache.status = 'loaded'
-          setTimeout(fetchIcalAndUpdateCache, 1000 * 60 * updateFrequency, streamDeck, updateFrequency, version)
+          if (typeof callback === 'function') callback()
+          setTimeout(fetchIcalAndUpdateCache, 1000 * 60 * updateFrequency, streamDeck, updateFrequency, version, callback)
         })
         .catch((error) => {
           window.eventsCache.status = 'error'
@@ -107,6 +108,6 @@ export default async function fetchIcalAndUpdateCache (streamDeck, updateFrequen
   } else {
     window.eventsCache.status = 'invalid'
     await sleep(1000)
-    await fetchIcalAndUpdateCache(streamDeck, updateFrequency, version)
+    await fetchIcalAndUpdateCache(streamDeck, updateFrequency, version, callback)
   }
 }

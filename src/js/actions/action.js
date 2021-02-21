@@ -12,8 +12,6 @@ export default class Action {
     this.destinationEnum = Object.freeze({ HARDWARE_AND_SOFTWARE: 0, HARDWARE_ONLY: 1, SOFTWARE_ONLY: 2 })
     this._uuid = uuid
     this.lastKey = {}
-
-    streamDeck.registerActionInstance(uuid, context)
   }
 
   get context () {
