@@ -32,14 +32,14 @@
   "SDKVersion": 2,
   "Author": "Pedro Fuentes", 
   "CodePath": "app.html", 
-  "Description": "Multiple actions based on an iCal url.", 
+  "Description": "Display information from your calendar using an iCal URL. Visual cues and a countdown will help you end meetings on time and be ready for the next one.", 
   "Name": "iCal", 
-  "Icon": "assets/icalIcon", 
+  "Icon": "assets/icalIcon@2x", 
   "Category": "iCal",
   "CategoryIcon": "assets/icalIcon",
   "URL": "https://github.com/pedrofuentes/stream-deck-ical#readme",
   "PropertyInspectorPath": "pi.html",
-  "Version": "1.0",
+  "Version": "1.0.0",
   "OS": [
     {
         "Platform": "mac", 
