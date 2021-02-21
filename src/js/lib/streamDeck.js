@@ -14,6 +14,7 @@ export default class StreamDeck {
     this.info = null
     this.activeActions = {}
     this.availableActions = {}
+    this.availableActionsInstances = {}
     this._globalSettings = {}
     this._piCallback = () => {}
     this._globalSettingsCallback = () => {}
@@ -82,6 +83,7 @@ export default class StreamDeck {
     } else if (event === 'willDisappear') {
       if (context in this.activeActions) {
         this.activeActions[context].onWillDisappear(context, settings, payload.coordinates)
+        this.availableActionsInstances[action][context] = false
         delete this.activeActions[context]
       }
     } else if (event === 'didReceiveGlobalSettings') {
@@ -182,6 +184,11 @@ export default class StreamDeck {
 
   registerAction (implementation, actionUUID) {
     this.availableActions[actionUUID] = implementation
+    this.availableActionsInstances[actionUUID] = {}
+  }
+
+  registerActionInstance (action, context) {
+    this.availableActionsInstances[action][context] = true
   }
 
   addAction (action, context, settings) {
