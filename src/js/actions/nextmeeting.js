@@ -5,7 +5,7 @@
  */
 import Action from './action'
 import imageCache from '../lib/images.js'
-import { executeIfCacheAvailable, findNextEvent, eventsSecondsAndNowDifference, sec2time } from '../lib/utils.js'
+import { executeIfCacheAvailable, findNextEvent, eventsSecondsAndNowDifference, sec2time, marquee } from '../lib/utils.js'
 
 export default class NextMeeting extends Action {
   constructor (uuid, streamDeck, context, settings) {
@@ -18,6 +18,11 @@ export default class NextMeeting extends Action {
     this.stopTimeAt = 0
     this.interval = null
     this._cacheVersion = 0
+    this.currentEvent = {}
+    this.marquee = {
+      active: false,
+      interval: null
+    }
 
     streamDeck.saveSettings(uuid, context, settings)
   }
@@ -51,34 +56,38 @@ export default class NextMeeting extends Action {
   onKeyUp (context, settings, coordinates, desiredState, state) {
     if (settings === undefined) settings = this._settings
 
-    this.setTitle(context, 'Loading\nUpcoming\nMeeting')
-
-    if (this.interval) {
-      clearInterval(this.interval)
-      this.interval = null
+    if (this.marquee.active) {
+      clearInterval(this.marquee.interval)
+      this.marquee.active = false
+    } else {
+      this.marquee.interval = marquee(this, context, this.currentEvent.summary, 9)
     }
-
-    if (this.currentImage !== 'nextMeeting') {
-      this.currentImage = 'nextMeeting'
-      this.setImage(context, imageCache.nextMeeting)
-    }
-
-    executeIfCacheAvailable(this, context, () => { this.startTimer(context) })
 
     this.onDoublePress(() => {
-      // Increase urlVersion to force cache update
-      this.streamDeck.updateGlobalSettings('urlVersion', this.streamDeck.globalSettings.urlVersion + 1)
+      this.setTitle(context, 'Loading\nUpcoming\nMeeting')
+
+      if (this.interval) {
+        clearInterval(this.interval)
+        this.interval = null
+      }
+
+      if (this.currentImage !== 'nextMeeting') {
+        this.currentImage = 'nextMeeting'
+        this.setImage(context, imageCache.nextMeeting)
+      }
+
+      executeIfCacheAvailable(this, context, () => { this.startTimer(context) })
     })
   }
 
   startTimer (context) {
-    const event = findNextEvent()
+    this.currentEvent = findNextEvent()
     this._cacheVersion = window.eventsCache.version
 
-    if (event && Object.prototype.hasOwnProperty.call(event, 'start')) {
+    if (this.currentEvent && Object.prototype.hasOwnProperty.call(this.currentEvent, 'start')) {
       if (this.interval) clearInterval(this.interval)
       this.interval = setInterval(() => {
-        const difference = eventsSecondsAndNowDifference(event.start)
+        const difference = eventsSecondsAndNowDifference(this.currentEvent.start)
         if (difference >= this.stopTimeAt) {
           if (this.currentImage !== 'nextMeetingOrange' && difference <= this.orangeZoneTime && difference > this.redZoneTime) {
             this.currentImage = 'nextMeetingOrange'
@@ -87,7 +96,9 @@ export default class NextMeeting extends Action {
             this.currentImage = 'nextMeetingRed'
             this.setImage(context, imageCache.nextMeetingRed)
           }
-          this.setTitle(context, `${sec2time(difference)}`)
+          if (!this.marquee.active) {
+            this.setTitle(context, `${sec2time(difference)}`)
+          }
         } else {
           if (this.currentImage !== 'nextMeeting') {
             this.currentImage = 'nextMeeting'
@@ -100,6 +111,8 @@ export default class NextMeeting extends Action {
       }, 1000)
     } else {
       clearTimeout(this.timeOut)
+      clearInterval(this.marquee.interval)
+      this.marquee.active = false
       if (this.interval) clearInterval(this.interval)
       this.interval = null
       if (this.currentImage !== 'nextMeeting') {

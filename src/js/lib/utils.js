@@ -83,3 +83,35 @@ export function isValidURL (url) {
 export function sleep (ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
+
+export function trimForMarquee (text, width, start = 0, lines = 1) {
+  let segment = text.slice(start, (start + width))
+
+  if (lines > 1) {
+    let lineStart = start + width
+    for (let i = 1; i < lines; i++) {
+      segment = segment.concat('\n', text.slice(lineStart, (lineStart + width)))
+      lineStart = lineStart + width
+    }
+  }
+
+  return {
+    text: segment,
+    nextStart: start + 1
+  }
+}
+
+export function marquee (action, context, text, width, lines = 1) {
+  clearInterval(action.marquee.interval)
+  action.marquee.active = true
+  let start = 0
+  return setInterval(() => {
+    const marquee = trimForMarquee(action.currentEvent.summary, width, start, lines)
+    start = marquee.nextStart
+    action.setTitle(context, marquee.text)
+    if (marquee.text.length === 0) {
+      action.marquee.active = false
+      clearInterval(action.marquee.interval)
+    }
+  }, 100)
+}
