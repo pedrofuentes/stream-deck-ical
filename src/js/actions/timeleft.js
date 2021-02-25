@@ -69,11 +69,6 @@ export default class TimeLeft extends Action {
     }
 
     executeIfCacheAvailable(this, context, () => { this.startTimer(context) })
-
-    this.onDoublePress(() => {
-      // Increase urlVersion to force cache update
-      this.streamDeck.updateGlobalSettings('urlVersion', this.streamDeck.globalSettings.urlVersion + 1)
-    })
   }
 
   startTimer (context) {
