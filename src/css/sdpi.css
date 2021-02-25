@@ -1627,3 +1627,13 @@ div#alerts .error {
 div#alerts .notice {
   color: #118811;
 }
+
+.content ul {
+  max-height: 115px;
+  overflow-y: auto;
+  padding-left: 15px;
+}
+
+.content ul li {
+  padding: 3px 4px 3px 4px;
+}
