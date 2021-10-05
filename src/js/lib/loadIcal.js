@@ -4,7 +4,7 @@
  * @license MIT
  */
 /* global fetch */
-import ical from './ical.js'
+import ICAL from 'ical.js'
 import { isValidURL, sleep } from './utils.js'
 import { deepEqual } from 'fast-equals'
 
@@ -44,30 +44,42 @@ function compareEventsStartDates (firstEl, secondEl) {
 
 function filterEvents (events, ...args) {
   let selectedEvents = []
+    
+  var startTime = new Date();
+  var endDate = new Date();
+  // add 18 hours to start
+  endDate.setTime(startTime.getTime() + (totalHoursSpread*60*60*1000))
 
-  for (const key in events) {
-    if (Object.prototype.hasOwnProperty.call(events, key)) {
-      const event = events[key]
-      if (event.type === 'VEVENT') {
-        let valid = true
-        if (Object.prototype.hasOwnProperty.call(event, 'recurrences')) {
-          selectedEvents = selectedEvents.concat(filterEvents(event.recurrences, args))
-        } else {
-          if (args[0][0]) args = args[0]
-          args.forEach((check) => {
-            if (!check(event)) valid = false
+  for (var i = 0; i < events.length; i++) {
+    var event = new ICAL.Event(events[i]); 
+    var eventStart = event.startDate.toJSDate()
+    var eventEnd = event.endDate.toJSDate()
+    var duration = eventEnd - eventStart;
+    if (event.isRecurring()) {
+      //var recur = event.component.getFirstPropertyValue('rrule');
+      var dtstart = event.component.getFirstPropertyValue('dtstart');
+      var iter = event.iterator(dtstart);
+      for (var next = iter.next(); next; next = iter.next()) {
+        eventStart = next.toJSDate();
+        eventEnd = next.adjust(0, 0, (duration / 1000 / 60), 0).toJSDate();
+        if ((eventStart < endDate) && (eventEnd > startTime)) {
+          selectedEvents.push({
+            uid: event.uid,
+            summary: event.summary,
+            start: eventStart,
+            end: eventEnd
           })
-
-          if (valid) {
-            selectedEvents.push({
-              uid: event.uid,
-              summary: event.summary,
-              start: event.start,
-              end: event.end
-            })
-          }
         }
       }
+      //console.log(event.summary);
+    
+    }  else if ((eventStart < endDate) && (eventEnd > startTime)) {
+      selectedEvents.push({
+        uid: event.uid,
+        summary: event.summary,
+        start: eventStart,
+        end: eventEnd
+      })
     }
   }
 
@@ -81,8 +93,20 @@ export function setHoursSpread (newSpread) {
 export async function updateEventsCache (data, version) {
   // if versions differ it means that a new load has been triggered with a new url so we don't store this data
   if (version === window.loadedUrlVersion) {
-    const events = ical.parseICS(data)
+    /*const events = ical.parseICS(data)
     const filteredAndSortedEvents = filterEvents(events, isNotAllDayEvent, isEventWithinHours).sort(compareEventsStartDates)
+    // TODO: if no change maybe no need to update and return even?
+    if (!deepEqual(window.eventsCache.events, filteredAndSortedEvents)) window.eventsCache.version++
+    window.eventsCache.events = filteredAndSortedEvents
+    return filteredAndSortedEvents
+*/
+
+  
+    const jcalData = ICAL.parse(data);
+    const vcalendar = new ICAL.Component(jcalData);
+    const icalEvents = vcalendar.getAllSubcomponents('vevent');
+
+    const filteredAndSortedEvents = filterEvents(icalEvents).sort(compareEventsStartDates)
     // TODO: if no change maybe no need to update and return even?
     if (!deepEqual(window.eventsCache.events, filteredAndSortedEvents)) window.eventsCache.version++
     window.eventsCache.events = filteredAndSortedEvents
