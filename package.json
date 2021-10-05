@@ -42,6 +42,9 @@
     "webpack-cli": "^4.5.0"
   },
   "dependencies": {
-    "fast-equals": "^2.0.0"
+    "fast-equals": "^2.0.0",
+    "fetch": "^1.1.0",
+    "ical.js": "^1.4.0",
+    "node-fetch": "^3.0.0"
   }
 }

@@ -5,7 +5,13 @@
  */
 
 import { updateEventsCache, setHoursSpread } from './loadIcal.js'
+
 import icalFile from '../../../__mocks__/mock.js'
+
+import ICAL from 'ical.js'
+
+
+//import fetch from 'node-fetch'
 
 beforeEach(() => {
   jest.useFakeTimers('modern')
@@ -16,7 +22,43 @@ afterEach(() => {
   jest.useRealTimers()
 })
 
+
+
+
+
+
 describe('Loads iCal and Stores it in Cache', () => {
+  it('Fetches an iCal and Parses it', async (d) => {
+    jest.setSystemTime(new Date('2021-01-22T10:05:00.000-08:00'))
+    var url = "https://outlook.office365.com/owa/calendar/356451449e8740c3ad7180fab8674930@mscrmsolutions.com/8fef9fcd7fd645c48d9663eda5607d2e4251526848318334437/calendar.ics"
+    
+    const https = require('https')
+//const url = "https://jsonmock.hackerrank.com/api/movies";
+https.get(url, res => {
+  let data = '';
+  res.on('data', chunk => {
+    data += chunk;
+  });
+  res.on('end', () => {
+    //data = JSON.parse(data);
+    //console.log(data);
+    //ICAL.parse(data);
+    var jcalData = ICAL.parse(data);
+    const vcalendar = new ICAL.Component(jcalData);
+    const icalEvents = vcalendar.getAllSubcomponents('vevent');
+    console.log(icalEvents.length)
+    expect(1==1)
+    d();
+    
+  })
+}).on('error', err => {
+  console.log(err.message);
+})
+    
+   //setHoursSpread(2)
+  
+  })
+  
   it('Updates Events Cache with 4 events in a 2 hour spread', async () => {
     jest.setSystemTime(new Date('2021-01-22T10:05:00.000-08:00'))
 
@@ -48,6 +90,7 @@ describe('Loads iCal and Stores it in Cache', () => {
       }
     ])
   })
+
 
   it('Updates Events Cache with 1 events in a 1 hour spread', async () => {
     jest.setSystemTime(new Date('2021-01-22T10:00:00.000-08:00'))
