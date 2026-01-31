@@ -16,9 +16,11 @@ import { logger } from '../utils/logger.js';
  */
 export abstract class BaseAction extends SingletonAction {
   protected interval?: NodeJS.Timeout;
+  protected waitingForCacheInterval?: NodeJS.Timeout;
   protected cacheVersion: number = 0;
   protected currentImage: string = '';
   protected lastKeyPress: number = 0;
+  protected actionRef?: any; // Keep reference to action for async operations
   
   // Color zones (in seconds)
   protected readonly RED_ZONE = 30;
@@ -30,19 +32,53 @@ export abstract class BaseAction extends SingletonAction {
   async onWillAppear(ev: WillAppearEvent<any>): Promise<void> {
     logger.debug(`${this.constructor.name} will appear`);
     
-    // Check cache status
-    if (calendarCache.events.length === 0) {
-      const statusText = getStatusText(calendarCache.status);
-      await ev.action.setTitle(statusText);
-    }
+    // Keep reference to action
+    this.actionRef = ev.action;
     
     // Set initial image
     await this.setInitialImage(ev.action);
     
-    // Start timer if cache is available
-    if (calendarCache.status === 'LOADED') {
-      this.startTimer(ev.action);
+    // Check cache status and start timer when ready
+    this.waitForCacheAndStart(ev.action);
+  }
+  
+  /**
+   * Wait for cache to be available, then start timer
+   */
+  private waitForCacheAndStart(action: any): void {
+    // Clear any existing waiting interval
+    if (this.waitingForCacheInterval) {
+      clearInterval(this.waitingForCacheInterval);
+      this.waitingForCacheInterval = undefined;
     }
+    
+    // If cache is loaded, start immediately
+    if (calendarCache.status === 'LOADED' || calendarCache.status === 'NO_EVENTS') {
+      this.startTimer(action);
+      return;
+    }
+    
+    // Show loading status
+    const statusText = getStatusText(calendarCache.status);
+    action.setTitle(statusText);
+    
+    // Check every 2 seconds for cache to become available
+    this.waitingForCacheInterval = setInterval(() => {
+      if (calendarCache.status === 'LOADED' || calendarCache.status === 'NO_EVENTS') {
+        // Cache is ready, start timer
+        if (this.waitingForCacheInterval) {
+          clearInterval(this.waitingForCacheInterval);
+          this.waitingForCacheInterval = undefined;
+        }
+        this.startTimer(action);
+      } else {
+        // Update status text while waiting
+        const statusText = getStatusText(calendarCache.status);
+        action.setTitle(statusText);
+      }
+    }, 2000);
+    
+    logger.debug('Waiting for cache to become available...');
   }
   
   /**
@@ -51,6 +87,14 @@ export abstract class BaseAction extends SingletonAction {
   async onWillDisappear(ev: WillDisappearEvent<any>): Promise<void> {
     logger.debug(`${this.constructor.name} will disappear`);
     this.stopTimer();
+    
+    // Clear waiting interval
+    if (this.waitingForCacheInterval) {
+      clearInterval(this.waitingForCacheInterval);
+      this.waitingForCacheInterval = undefined;
+    }
+    
+    this.actionRef = undefined;
   }
   
   /**
@@ -116,6 +160,14 @@ export abstract class BaseAction extends SingletonAction {
     
     // Set up interval for updates (every second)
     this.interval = setInterval(() => {
+      // Check if cache is still loaded
+      if (calendarCache.status !== 'LOADED' && calendarCache.status !== 'NO_EVENTS') {
+        // Cache is reloading, stop timer and wait again
+        this.stopTimer();
+        this.waitForCacheAndStart(action);
+        return;
+      }
+      
       // Check if cache was updated
       if (this.cacheVersion !== calendarCache.version) {
         this.cacheVersion = calendarCache.version;

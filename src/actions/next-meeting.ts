@@ -10,9 +10,8 @@ import { action, SingletonAction, KeyUpEvent, WillAppearEvent } from '@elgato/st
 import { BaseAction } from './base-action.js';
 import { calendarCache, getStatusText } from '../services/calendar-service.js';
 import { findNextEvent } from '../utils/event-utils.js';
-import { secondsUntil } from '../utils/time-utils.js';
-import { sec2time } from '../utils/time-utils.js';
-import { logger, isDebugMode } from '../utils/logger.js';
+import { secondsUntil, sec2time } from '../utils/time-utils.js';
+import { logger } from '../utils/logger.js';
 
 /**
  * NextMeeting action class
@@ -119,11 +118,9 @@ export class NextMeetingAction extends BaseAction {
     }
     
     // Check cache status
-    if (calendarCache.status !== 'LOADED') {
+    if (calendarCache.status !== 'LOADED' && calendarCache.status !== 'NO_EVENTS') {
       const statusText = getStatusText(calendarCache.status);
-      if (isDebugMode()) {
-        logger.debug(`[NextMeeting] Cache not loaded: ${calendarCache.status}`);
-      }
+      logger.debug(`[NextMeeting] Cache status: ${calendarCache.status}, showing: ${statusText}`);
       await action.setTitle(statusText);
       await this.setImage(action, 'nextMeeting');
       return;
@@ -132,10 +129,10 @@ export class NextMeetingAction extends BaseAction {
     // Find next event
     const nextEvent = findNextEvent(calendarCache.events);
     
+    logger.debug(`[NextMeeting] Cache has ${calendarCache.events.length} total events, next=${nextEvent ? nextEvent.summary : 'none'}`);
+    
     if (!nextEvent) {
-      if (isDebugMode()) {
-        logger.debug(`[NextMeeting] No upcoming events found`);
-      }
+      logger.debug(`[NextMeeting] No upcoming events in cache`);
       await action.setTitle('No\nUpcoming\nMeeting');
       await this.setImage(action, 'nextMeeting');
       return;
@@ -144,21 +141,22 @@ export class NextMeetingAction extends BaseAction {
     // Calculate time until meeting
     const secondsRemaining = secondsUntil(nextEvent.start);
     
-    if (isDebugMode()) {
-      logger.debug(`[NextMeeting] Next: "${nextEvent.summary}" in ${secondsRemaining}s`);
-    }
+    logger.debug(`[NextMeeting] Event: "${nextEvent.summary}", starts: ${nextEvent.start.toISOString()}, in ${secondsRemaining}s`);
     
     if (secondsRemaining < 0) {
       // Event has started, find the next one
-      logger.debug('Event has started, finding next event');
+      logger.debug(`[NextMeeting] Event already started (${secondsRemaining}s ago), will refresh on next tick`);
       // Don't update this tick, let next tick handle it
       return;
     }
     
     // Update image based on time remaining
+    let imageState = 'normal';
     if (secondsRemaining <= this.RED_ZONE) {
+      imageState = 'red';
       await this.setImage(action, 'nextMeetingRed');
     } else if (secondsRemaining <= this.ORANGE_ZONE) {
+      imageState = 'orange';
       await this.setImage(action, 'nextMeetingOrange');
     } else {
       await this.setImage(action, 'nextMeeting');
@@ -166,6 +164,7 @@ export class NextMeetingAction extends BaseAction {
     
     // Update title with countdown
     const timeText = sec2time(secondsRemaining);
+    logger.debug(`[NextMeeting] Display: ${timeText}, image=${imageState}`);
     await action.setTitle(timeText);
   }
   
