@@ -1,5 +1,9 @@
 /**
  * Logger utility for debugging
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
 const DEBUG = process.env.DEBUG === 'true' || process.env.NODE_ENV === 'development';

@@ -1,3 +1,11 @@
+/**
+ * Vitest configuration
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
+ */
+
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({

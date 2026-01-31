@@ -1,5 +1,9 @@
 /**
  * TimeLeft action - shows time remaining in current meeting
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
 import { action } from '@elgato/streamdeck';

@@ -1,5 +1,9 @@
 /**
  * NextMeeting action - shows countdown to next upcoming meeting
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
 import { action, SingletonAction, KeyUpEvent, WillAppearEvent } from '@elgato/streamdeck';

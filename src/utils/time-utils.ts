@@ -1,5 +1,9 @@
 /**
  * Time utilities for formatting and calculations
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
 /**

@@ -1,5 +1,9 @@
 /**
  * Calendar service for fetching and caching iCal feeds
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
 import { parseICalFeed } from './ical-parser.js';

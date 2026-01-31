@@ -1,5 +1,9 @@
 /**
  * Timezone service for handling Windows and IANA timezone conversions
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
 import * as windowsiana from 'windows-iana';

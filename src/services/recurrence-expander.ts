@@ -1,6 +1,10 @@
 /**
  * Recurrence expander using RRule library
  * Handles RRULE expansion and EXDATE exclusions
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
 import { RRule, RRuleSet, rrulestr } from 'rrule';

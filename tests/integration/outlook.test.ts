@@ -1,5 +1,9 @@
 /**
  * Integration tests for Outlook/Office 365 feeds
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
 import { describe, it, expect } from 'vitest';

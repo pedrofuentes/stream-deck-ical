@@ -1,5 +1,9 @@
 /**
  * Tests for timezone service
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
 import { describe, it, expect } from 'vitest';

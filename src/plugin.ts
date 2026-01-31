@@ -1,6 +1,10 @@
 /**
  * Main plugin entry point for Stream Deck iCal Plugin
  * Node.js SDK v2 implementation
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
 import streamDeck, { LogLevel } from '@elgato/streamdeck';

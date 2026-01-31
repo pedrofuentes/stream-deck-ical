@@ -1,5 +1,9 @@
 /**
  * Type definitions for Stream Deck iCal Plugin
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
 /**
