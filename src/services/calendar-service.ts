@@ -198,6 +198,33 @@ export function stopPeriodicUpdates(intervalId: NodeJS.Timeout): void {
   logger.info('Stopped periodic updates');
 }
 
+// Store current URL and time window for force refresh
+let currentFeedUrl: string = '';
+let currentTimeWindow: number = 3;
+
+/**
+ * Set current feed configuration (called by plugin when settings change)
+ */
+export function setFeedConfig(url: string, timeWindowDays: number): void {
+  currentFeedUrl = url;
+  currentTimeWindow = timeWindowDays;
+}
+
+/**
+ * Force refresh the calendar cache (triggered by double-press)
+ * @returns Promise that resolves when refresh is complete
+ */
+export async function forceRefreshCache(): Promise<void> {
+  logger.info('🔄 Force refresh triggered by user');
+  
+  if (!currentFeedUrl) {
+    logger.warn('Cannot force refresh: No URL configured');
+    return;
+  }
+  
+  await updateCalendarCache(currentFeedUrl, currentTimeWindow);
+}
+
 /**
  * Get debug information for Property Inspector
  * @returns Debug info object
