@@ -1,4 +1,5 @@
 {
+  "UUID": "com.pedrofuentes.ical",
   "Actions": [
     {
       "Icon": "assets/activeMeetingIcon", 
@@ -7,7 +8,7 @@
         {
           "Image": "assets/activeMeeting",
           "TitleAlignment": "middle", 
-          "FontSize": "10"
+          "FontSize": 10
         }
       ], 
       "SupportedInMultiActions": false,
@@ -21,7 +22,7 @@
         {
           "Image": "assets/nextMeeting",
           "TitleAlignment": "middle", 
-          "FontSize": "10"
+          "FontSize": 10
         }
       ], 
       "SupportedInMultiActions": false,
@@ -39,7 +40,7 @@
   "CategoryIcon": "assets/icalIcon",
   "URL": "https://github.com/pedrofuentes/stream-deck-ical#readme",
   "PropertyInspectorPath": "pi.html",
-  "Version": "2.0.0",
+  "Version": "2.0.0.0",
   "Nodejs": {
     "Version": "20",
     "Debug": "enabled"
@@ -56,6 +57,6 @@
   ],
   "Software": 
     {
-        "MinimumVersion" : "6.0"
+        "MinimumVersion" : "6.4"
     }
 }
