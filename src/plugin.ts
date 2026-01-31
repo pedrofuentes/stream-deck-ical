@@ -10,6 +10,7 @@
 import streamDeck, { LogLevel } from '@elgato/streamdeck';
 import { NextMeetingAction } from './actions/next-meeting.js';
 import { TimeLeftAction } from './actions/time-left.js';
+import { CombinedAction } from './actions/combined-action.js';
 import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo, setFeedConfig, setActionSettings } from './services/calendar-service.js';
 import { logger, isDebugMode } from './utils/logger.js';
 
@@ -34,6 +35,7 @@ streamDeck.logger.setLevel(isDebugMode() ? LogLevel.TRACE : LogLevel.INFO);
  */
 streamDeck.actions.registerAction(new NextMeetingAction());
 streamDeck.actions.registerAction(new TimeLeftAction());
+streamDeck.actions.registerAction(new CombinedAction());
 
 logger.info('Stream Deck iCal Plugin starting...');
 if (isDebugMode()) {
