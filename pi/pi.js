@@ -125,3 +125,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 });
+
+// Export for rollup IIFE bundle
+export { connectElgatoStreamDeckSocket };

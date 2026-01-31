@@ -44,7 +44,9 @@ const piConfig = {
   output: {
     file: `${outputDir}/pi/pi.js`,
     format: 'iife',
-    sourcemap: !isProduction
+    name: 'PI',
+    sourcemap: !isProduction,
+    footer: 'window.connectElgatoStreamDeckSocket = PI.connectElgatoStreamDeckSocket;'
   },
   plugins: [
     resolve({
