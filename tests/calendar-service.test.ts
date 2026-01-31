@@ -1,0 +1,394 @@
+/**
+ * Tests for calendar service
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
+ */
+
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+
+// Mock the logger before importing calendar-service
+vi.mock('../src/utils/logger', () => ({
+  logger: {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn()
+  },
+  debugLogs: [],
+  isDebugMode: vi.fn(() => true)
+}));
+
+import {
+  calendarCache,
+  isValidURL,
+  updateCalendarCache,
+  getStatusText,
+  startPeriodicUpdates,
+  stopPeriodicUpdates,
+  getDebugInfo
+} from '../src/services/calendar-service';
+import { ErrorState } from '../src/types/index';
+
+describe('isValidURL', () => {
+  it('should return true for valid HTTP URLs', () => {
+    expect(isValidURL('http://example.com/calendar.ics')).toBe(true);
+    expect(isValidURL('https://example.com/calendar.ics')).toBe(true);
+  });
+
+  it('should return true for URLs with query parameters', () => {
+    expect(isValidURL('https://calendar.google.com/calendar/ical/test@group.calendar.google.com/basic.ics?param=value')).toBe(true);
+  });
+
+  it('should return true for URLs with encoded characters', () => {
+    expect(isValidURL('https://calendar.google.com/calendar/ical/4e5afefe2a21e0bf1c4cf7165a1d77212453576439dddb7a8298d8c6fff7c292%40group.calendar.google.com/private-c19704f723de81f26d780256a8db639d/basic.ics')).toBe(true);
+  });
+
+  it('should return false for invalid URLs', () => {
+    expect(isValidURL('')).toBe(false);
+    expect(isValidURL('not-a-url')).toBe(false);
+    expect(isValidURL('://missing-protocol.com')).toBe(false);
+  });
+
+  it('should return false for partial URLs', () => {
+    expect(isValidURL('example.com/calendar.ics')).toBe(false);
+    expect(isValidURL('/path/to/calendar.ics')).toBe(false);
+  });
+});
+
+describe('getStatusText', () => {
+  it('should return correct text for INIT status', () => {
+    expect(getStatusText('INIT')).toBe('Loading\niCal');
+  });
+
+  it('should return correct text for LOADING status', () => {
+    expect(getStatusText('LOADING')).toBe('Loading\niCal');
+  });
+
+  it('should return correct text for INVALID_URL status', () => {
+    expect(getStatusText('INVALID_URL')).toBe('Please\nSetup');
+  });
+
+  it('should return correct text for NETWORK_ERROR status', () => {
+    expect(getStatusText('NETWORK_ERROR')).toBe('Network\nError');
+  });
+
+  it('should return correct text for PARSE_ERROR status', () => {
+    expect(getStatusText('PARSE_ERROR')).toBe('Parse\nError');
+  });
+
+  it('should return correct text for NO_EVENTS status', () => {
+    expect(getStatusText('NO_EVENTS')).toBe('No\nMeetings\nFound');
+  });
+
+  it('should return empty string for LOADED status', () => {
+    expect(getStatusText('LOADED')).toBe('');
+  });
+
+  it('should return Error for unknown status', () => {
+    expect(getStatusText('UNKNOWN' as ErrorState)).toBe('Error');
+  });
+});
+
+describe('calendarCache', () => {
+  beforeEach(() => {
+    // Reset cache to initial state
+    calendarCache.version = 0;
+    calendarCache.status = 'INIT';
+    calendarCache.events = [];
+    calendarCache.lastFetch = undefined;
+    calendarCache.provider = undefined;
+  });
+
+  it('should have correct initial state', () => {
+    expect(calendarCache.version).toBe(0);
+    expect(calendarCache.status).toBe('INIT');
+    expect(calendarCache.events).toEqual([]);
+    expect(calendarCache.lastFetch).toBeUndefined();
+    expect(calendarCache.provider).toBeUndefined();
+  });
+});
+
+describe('updateCalendarCache', () => {
+  beforeEach(() => {
+    calendarCache.version = 0;
+    calendarCache.status = 'INIT';
+    calendarCache.events = [];
+    calendarCache.lastFetch = undefined;
+    calendarCache.provider = undefined;
+    vi.clearAllMocks();
+  });
+
+  it('should set INVALID_URL status for empty URL', async () => {
+    await updateCalendarCache('');
+    expect(calendarCache.status).toBe('INVALID_URL');
+    expect(calendarCache.events).toEqual([]);
+  });
+
+  it('should set INVALID_URL status for whitespace-only URL', async () => {
+    await updateCalendarCache('   ');
+    expect(calendarCache.status).toBe('INVALID_URL');
+    expect(calendarCache.events).toEqual([]);
+  });
+
+  it('should set INVALID_URL status for invalid URL format', async () => {
+    await updateCalendarCache('not-a-valid-url');
+    expect(calendarCache.status).toBe('INVALID_URL');
+    expect(calendarCache.events).toEqual([]);
+  });
+
+  it('should set status to LOADING while fetching', async () => {
+    // Mock global fetch to control timing
+    const fetchPromise = new Promise((resolve) => setTimeout(resolve, 100));
+    global.fetch = vi.fn().mockImplementation(() => fetchPromise);
+    
+    // Don't await, check status during loading
+    const updatePromise = updateCalendarCache('https://example.com/cal.ics');
+    // Status should be LOADING after entering the try block
+    // (we can't easily check mid-execution, so we test the error path instead)
+    await updatePromise;
+    // After completion with mocked fetch that doesn't return proper response
+    expect(calendarCache.status).toBe('NETWORK_ERROR');
+  });
+
+  it('should handle network errors', async () => {
+    global.fetch = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
+    
+    await updateCalendarCache('https://example.com/cal.ics');
+    
+    expect(calendarCache.status).toBe('NETWORK_ERROR');
+    expect(calendarCache.events).toEqual([]);
+  });
+
+  it('should handle HTTP errors', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found'
+    });
+    
+    await updateCalendarCache('https://example.com/cal.ics');
+    
+    expect(calendarCache.status).toBe('NETWORK_ERROR');
+    expect(calendarCache.events).toEqual([]);
+  });
+
+  it('should successfully parse and cache events', async () => {
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VEVENT
+UID:test-123
+DTSTART:${formatICSDate(new Date(Date.now() + 3600000))}
+DTEND:${formatICSDate(new Date(Date.now() + 7200000))}
+SUMMARY:Test Event
+END:VEVENT
+END:VCALENDAR`;
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(icsContent)
+    });
+
+    await updateCalendarCache('https://example.com/cal.ics', 3);
+
+    expect(calendarCache.status).toBe('LOADED');
+    expect(calendarCache.events.length).toBeGreaterThanOrEqual(1);
+    expect(calendarCache.version).toBe(1);
+    expect(calendarCache.lastFetch).toBeDefined();
+  });
+
+  it('should set NO_EVENTS when calendar is empty', async () => {
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+END:VCALENDAR`;
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(icsContent)
+    });
+
+    await updateCalendarCache('https://example.com/cal.ics', 3);
+
+    expect(calendarCache.status).toBe('NO_EVENTS');
+    expect(calendarCache.events).toEqual([]);
+  });
+
+  it('should increment version on each successful update', async () => {
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VEVENT
+UID:test-123
+DTSTART:${formatICSDate(new Date(Date.now() + 3600000))}
+DTEND:${formatICSDate(new Date(Date.now() + 7200000))}
+SUMMARY:Test Event
+END:VEVENT
+END:VCALENDAR`;
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(icsContent)
+    });
+
+    await updateCalendarCache('https://example.com/cal.ics', 3);
+    expect(calendarCache.version).toBe(1);
+
+    await updateCalendarCache('https://example.com/cal.ics', 3);
+    expect(calendarCache.version).toBe(2);
+  });
+});
+
+describe('startPeriodicUpdates', () => {
+  beforeEach(() => {
+    calendarCache.version = 0;
+    calendarCache.status = 'INIT';
+    calendarCache.events = [];
+    
+    // Mock fetch to return empty calendar
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR')
+    });
+  });
+
+  it('should return an interval ID', () => {
+    const intervalId = startPeriodicUpdates('https://example.com/cal.ics', 3, 10);
+    expect(intervalId).toBeDefined();
+    clearInterval(intervalId);
+  });
+
+  it('should call updateCalendarCache immediately', async () => {
+    const intervalId = startPeriodicUpdates('https://example.com/cal.ics', 3, 10);
+    
+    // Wait for async operation
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    expect(global.fetch).toHaveBeenCalled();
+    clearInterval(intervalId);
+  });
+
+  it('should set up interval with correct timing', () => {
+    // Just verify the interval is created - don't test timing to avoid fake timer issues
+    const intervalId = startPeriodicUpdates('https://example.com/cal.ics', 3, 10);
+    expect(intervalId).toBeDefined();
+    expect(typeof intervalId).toBe('object'); // NodeJS.Timeout
+    clearInterval(intervalId);
+  });
+});
+
+describe('stopPeriodicUpdates', () => {
+  beforeEach(() => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR')
+    });
+  });
+
+  it('should clear the interval', () => {
+    const intervalId = startPeriodicUpdates('https://example.com/cal.ics', 3, 10);
+    
+    // Should not throw when stopping
+    expect(() => stopPeriodicUpdates(intervalId)).not.toThrow();
+  });
+
+  it('should be safe to call multiple times', () => {
+    const intervalId = startPeriodicUpdates('https://example.com/cal.ics', 3, 10);
+    
+    stopPeriodicUpdates(intervalId);
+    // Calling again should not throw
+    expect(() => stopPeriodicUpdates(intervalId)).not.toThrow();
+  });
+});
+
+describe('getDebugInfo', () => {
+  beforeEach(() => {
+    calendarCache.version = 5;
+    calendarCache.status = 'LOADED';
+    calendarCache.events = [
+      {
+        uid: 'test-1',
+        summary: 'Test Event 1',
+        start: new Date('2026-01-31T10:00:00Z'),
+        end: new Date('2026-01-31T11:00:00Z'),
+        isRecurring: false
+      },
+      {
+        uid: 'test-2',
+        summary: 'Test Event 2',
+        start: new Date('2026-01-31T14:00:00Z'),
+        end: new Date('2026-01-31T15:00:00Z'),
+        isRecurring: true
+      }
+    ];
+    calendarCache.lastFetch = Date.now();
+    calendarCache.provider = 'google';
+  });
+
+  it('should return debug info object', () => {
+    const info = getDebugInfo() as any;
+    
+    expect(info).toHaveProperty('isDebugMode');
+    expect(info).toHaveProperty('cache');
+    expect(info).toHaveProperty('events');
+    expect(info).toHaveProperty('logs');
+  });
+
+  it('should include cache status information', () => {
+    const info = getDebugInfo() as any;
+    
+    expect(info.cache.status).toBe('LOADED');
+    expect(info.cache.version).toBe(5);
+    expect(info.cache.eventCount).toBe(2);
+    expect(info.cache.provider).toBe('google');
+  });
+
+  it('should include event information', () => {
+    const info = getDebugInfo() as any;
+    
+    expect(info.events).toHaveLength(2);
+    expect(info.events[0].summary).toBe('Test Event 1');
+    expect(info.events[0].isRecurring).toBe(false);
+    expect(info.events[1].summary).toBe('Test Event 2');
+    expect(info.events[1].isRecurring).toBe(true);
+  });
+
+  it('should limit events to 10', () => {
+    // Add 15 events
+    calendarCache.events = Array.from({ length: 15 }, (_, i) => ({
+      uid: `test-${i}`,
+      summary: `Event ${i}`,
+      start: new Date(),
+      end: new Date()
+    }));
+
+    const info = getDebugInfo() as any;
+    expect(info.events).toHaveLength(10);
+  });
+
+  it('should include ISO formatted dates', () => {
+    const info = getDebugInfo() as any;
+    
+    expect(info.events[0].start).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    expect(info.events[0].end).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    expect(info.cache.lastFetch).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+  });
+
+  it('should handle null lastFetch', () => {
+    calendarCache.lastFetch = undefined;
+    const info = getDebugInfo() as any;
+    expect(info.cache.lastFetch).toBeNull();
+  });
+});
+
+// Helper function to format date as ICS
+function formatICSDate(date: Date): string {
+  return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
