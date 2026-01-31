@@ -8,7 +8,7 @@
  */
 
 import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent, KeyDownEvent, KeyUpEvent } from '@elgato/streamdeck';
-import { calendarCache, getStatusText } from '../services/calendar-service.js';
+import { calendarCache, getStatusText, forceRefreshCache } from '../services/calendar-service.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -133,17 +133,25 @@ export abstract class BaseAction extends SingletonAction {
    * Handle double key press (force refresh)
    */
   protected async handleDoublePress(action: any): Promise<void> {
-    logger.debug('Double press detected - forcing refresh');
+    logger.info('🔄 Double press detected - forcing calendar refresh');
+    
+    // Stop the current timer
     this.stopTimer();
-    await action.setTitle('Loading\nUpcoming\nMeeting');
+    
+    // Show loading state
+    await action.setTitle('Refreshing\n...');
     await this.setInitialImage(action);
     
-    // Wait a moment and restart
-    setTimeout(() => {
-      if (calendarCache.status === 'LOADED') {
-        this.startTimer(action);
-      }
-    }, 1000);
+    try {
+      // Actually refresh the calendar cache
+      await forceRefreshCache();
+      logger.info('✅ Force refresh completed');
+    } catch (error) {
+      logger.error('❌ Force refresh failed:', error);
+    }
+    
+    // Restart the timer to show updated data
+    this.waitForCacheAndStart(action);
   }
   
   /**
