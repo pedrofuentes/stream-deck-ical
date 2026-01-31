@@ -10,8 +10,8 @@
 import streamDeck, { LogLevel } from '@elgato/streamdeck';
 import { NextMeetingAction } from './actions/next-meeting.js';
 import { TimeLeftAction } from './actions/time-left.js';
-import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache } from './services/calendar-service.js';
-import { logger } from './utils/logger.js';
+import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo } from './services/calendar-service.js';
+import { logger, isDebugMode } from './utils/logger.js';
 
 // Global settings
 let currentUrl: string = '';
@@ -74,6 +74,26 @@ streamDeck.settings.getGlobalSettings().then((ev) => {
 });
 
 /**
+ * Handle sendToPlugin events from Property Inspector
+ */
+streamDeck.ui.onSendToPlugin((ev) => {
+  const payload = ev.payload as any;
+  
+  if (payload && payload.action === 'getDebugInfo') {
+    logger.debug('Debug info requested from PI');
+    
+    // Send debug info back to Property Inspector
+    // In SDK v1.x, use streamDeck.ui.current?.sendToPropertyInspector
+    if (streamDeck.ui.current) {
+      streamDeck.ui.current.sendToPropertyInspector({
+        action: 'debugInfo',
+        data: getDebugInfo()
+      } as any);
+    }
+  }
+});
+
+/**
  * Register actions
  */
 // Actions are registered via decorators
@@ -84,6 +104,9 @@ streamDeck.settings.getGlobalSettings().then((ev) => {
 streamDeck.connect();
 
 logger.info('Stream Deck iCal Plugin initialized');
+if (isDebugMode()) {
+  logger.info('Debug mode is ENABLED');
+}
 
 /**
  * Handle process termination

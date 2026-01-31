@@ -12,7 +12,7 @@ import { calendarCache, getStatusText } from '../services/calendar-service.js';
 import { findNextEvent } from '../utils/event-utils.js';
 import { secondsUntil } from '../utils/time-utils.js';
 import { sec2time } from '../utils/time-utils.js';
-import { logger } from '../utils/logger.js';
+import { logger, isDebugMode } from '../utils/logger.js';
 
 /**
  * NextMeeting action class
@@ -121,6 +121,9 @@ export class NextMeetingAction extends BaseAction {
     // Check cache status
     if (calendarCache.status !== 'LOADED') {
       const statusText = getStatusText(calendarCache.status);
+      if (isDebugMode()) {
+        logger.debug(`[NextMeeting] Cache not loaded: ${calendarCache.status}`);
+      }
       await action.setTitle(statusText);
       await this.setImage(action, 'nextMeeting');
       return;
@@ -130,6 +133,9 @@ export class NextMeetingAction extends BaseAction {
     const nextEvent = findNextEvent(calendarCache.events);
     
     if (!nextEvent) {
+      if (isDebugMode()) {
+        logger.debug(`[NextMeeting] No upcoming events found`);
+      }
       await action.setTitle('No\nUpcoming\nMeeting');
       await this.setImage(action, 'nextMeeting');
       return;
@@ -137,6 +143,10 @@ export class NextMeetingAction extends BaseAction {
     
     // Calculate time until meeting
     const secondsRemaining = secondsUntil(nextEvent.start);
+    
+    if (isDebugMode()) {
+      logger.debug(`[NextMeeting] Next: "${nextEvent.summary}" in ${secondsRemaining}s`);
+    }
     
     if (secondsRemaining < 0) {
       // Event has started, find the next one

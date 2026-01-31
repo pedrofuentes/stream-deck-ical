@@ -9,7 +9,7 @@
 import { parseICalFeed } from './ical-parser.js';
 import { processRecurringEvents } from './recurrence-expander.js';
 import { CalendarCache, CalendarEvent, ErrorState } from '../types/index.js';
-import { logger } from '../utils/logger.js';
+import { logger, debugLogs, isDebugMode } from '../utils/logger.js';
 import { sortEventsByStartTime, filterEventsInWindow } from '../utils/event-utils.js';
 
 /**
@@ -41,7 +41,8 @@ export function isValidURL(url: string): boolean {
  * @returns iCal feed content as string
  */
 async function fetchICalFeed(url: string): Promise<string> {
-  logger.debug(`Fetching iCal feed from: ${url}`);
+  const startTime = Date.now();
+  logger.debug(`Fetching iCal feed from: ${url.substring(0, 50)}...`);
   
   const response = await fetch(url, {
     headers: {
@@ -50,11 +51,13 @@ async function fetchICalFeed(url: string): Promise<string> {
   });
   
   if (!response.ok) {
+    logger.error(`Fetch failed: HTTP ${response.status} ${response.statusText}`);
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   }
   
   const content = await response.text();
-  logger.debug(`Fetched ${content.length} bytes`);
+  const elapsed = Date.now() - startTime;
+  logger.debug(`Fetched ${content.length} bytes in ${elapsed}ms`);
   
   return content;
 }
@@ -190,4 +193,28 @@ export function startPeriodicUpdates(
 export function stopPeriodicUpdates(intervalId: NodeJS.Timeout): void {
   clearInterval(intervalId);
   logger.info('Stopped periodic updates');
+}
+
+/**
+ * Get debug information for Property Inspector
+ * @returns Debug info object
+ */
+export function getDebugInfo(): object {
+  return {
+    isDebugMode: isDebugMode(),
+    cache: {
+      status: calendarCache.status,
+      version: calendarCache.version,
+      eventCount: calendarCache.events.length,
+      lastFetch: calendarCache.lastFetch ? new Date(calendarCache.lastFetch).toISOString() : null,
+      provider: calendarCache.provider
+    },
+    events: calendarCache.events.slice(0, 10).map(e => ({
+      summary: e.summary,
+      start: e.start.toISOString(),
+      end: e.end.toISOString(),
+      isRecurring: e.isRecurring
+    })),
+    logs: debugLogs.slice(-20)
+  };
 }

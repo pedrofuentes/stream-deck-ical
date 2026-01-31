@@ -7,6 +7,7 @@ window.websocket = null;
 window.uuid = null;
 window.actionInfo = {};
 window.globalSettings = {};
+window.setupPopup = null;  // Reference to setup popup window
 
 // Local references for convenience
 let websocket = null;
@@ -46,6 +47,16 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, 
             globalSettings = jsonPayload.settings || {};
             window.globalSettings = globalSettings;
             updateUI();
+        }
+        
+        // Forward sendToPropertyInspector messages to popup window
+        if (event === 'sendToPropertyInspector') {
+            if (window.setupPopup && !window.setupPopup.closed) {
+                window.setupPopup.postMessage({
+                    type: 'sendToPropertyInspector',
+                    payload: jsonPayload
+                }, '*');
+            }
         }
     };
 }
@@ -120,7 +131,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const settingsButton = document.getElementById('settings');
     if (settingsButton) {
         settingsButton.addEventListener('click', function() {
-            window.open('setup.html', 'iCal Settings', 'width=600,height=400');
+            window.setupPopup = window.open('setup.html', 'iCal Settings', 'width=600,height=700');
         });
     }
     
