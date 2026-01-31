@@ -43,6 +43,8 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, 
         const event = jsonObj.event;
         const jsonPayload = jsonObj.payload;
         
+        console.log('[PI] Received event:', event, jsonPayload);
+        
         if (event === 'didReceiveGlobalSettings') {
             globalSettings = jsonPayload.settings || {};
             window.globalSettings = globalSettings;
@@ -51,7 +53,10 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, 
         
         // Forward sendToPropertyInspector messages to popup window
         if (event === 'sendToPropertyInspector') {
+            console.log('[PI] sendToPropertyInspector received:', jsonPayload);
+            window.lastDebugInfo = jsonPayload;  // Store for popup access
             if (window.setupPopup && !window.setupPopup.closed) {
+                console.log('[PI] Forwarding to popup');
                 window.setupPopup.postMessage({
                     type: 'sendToPropertyInspector',
                     payload: jsonPayload
@@ -60,6 +65,27 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, 
         }
     };
 }
+
+/**
+ * Request debug info from plugin
+ */
+function requestDebugInfo() {
+    if (websocket && uuid) {
+        console.log('[PI] Requesting debug info, uuid:', uuid);
+        const json = {
+            event: 'sendToPlugin',
+            action: actionInfo.action,  // Use actual action from actionInfo
+            context: uuid,
+            payload: {
+                action: 'getDebugInfo'
+            }
+        };
+        websocket.send(JSON.stringify(json));
+    }
+}
+
+// Expose for popup access
+window.requestDebugInfo = requestDebugInfo;
 
 /**
  * Request global settings from plugin

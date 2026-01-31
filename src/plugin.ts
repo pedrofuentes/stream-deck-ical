@@ -77,18 +77,24 @@ streamDeck.settings.getGlobalSettings().then((ev) => {
  * Handle sendToPlugin events from Property Inspector
  */
 streamDeck.ui.onSendToPlugin((ev) => {
+  logger.info('sendToPlugin received:', ev.payload);
   const payload = ev.payload as any;
   
   if (payload && payload.action === 'getDebugInfo') {
-    logger.debug('Debug info requested from PI');
+    logger.info('Debug info requested from PI');
+    logger.info('streamDeck.ui.current:', streamDeck.ui.current ? 'available' : 'undefined');
     
     // Send debug info back to Property Inspector
     // In SDK v1.x, use streamDeck.ui.current?.sendToPropertyInspector
     if (streamDeck.ui.current) {
+      const debugInfo = getDebugInfo();
+      logger.info('Sending debug info:', debugInfo);
       streamDeck.ui.current.sendToPropertyInspector({
         action: 'debugInfo',
-        data: getDebugInfo()
+        data: debugInfo
       } as any);
+    } else {
+      logger.warn('Cannot send debug info: streamDeck.ui.current is undefined');
     }
   }
 });

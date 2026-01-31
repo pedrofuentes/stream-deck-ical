@@ -86,19 +86,20 @@
         </div>
 
         <!-- Debug Panel (only shown in dev mode) -->
-        <div id="debug-panel" style="display: none;">
+        <div id="debug-panel" style="display: block;">
             <div class="sdpi-heading">Debug Information</div>
             <div class="content">
+                <p id="debug-status" style="color: #888;">Requesting debug info from plugin...</p>
                 <button class="sdpi-item-value" id="refresh-debug">Refresh Debug Info</button>
                 
                 <h4>Cache Status</h4>
-                <pre id="cache-status" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 100px; overflow-y: auto;">Loading...</pre>
+                <pre id="cache-status" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 100px; overflow-y: auto;">Waiting for data...</pre>
                 
                 <h4>Upcoming Events (first 10)</h4>
-                <pre id="events-list" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 150px; overflow-y: auto;">Loading...</pre>
+                <pre id="events-list" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 150px; overflow-y: auto;">Waiting for data...</pre>
                 
                 <h4>Recent Logs</h4>
-                <pre id="debug-logs" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 200px; overflow-y: auto;">Loading...</pre>
+                <pre id="debug-logs" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 200px; overflow-y: auto;">Waiting for data...</pre>
             </div>
         </div>
     </div>

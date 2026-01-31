@@ -178,17 +178,44 @@ document.addEventListener('DOMContentLoaded', function() {
  */
 function requestDebugInfo() {
     const opener = getOpener();
-    if (opener && opener.websocket) {
-        // Send request to plugin for debug info
-        const json = {
-            event: 'sendToPlugin',
-            action: 'com.pedrofuentes.ical.time-left',  // Any action UUID
-            context: opener.uuid,
-            payload: {
-                action: 'getDebugInfo'
-            }
-        };
-        opener.websocket.send(JSON.stringify(json));
+    console.log('[SETUP] requestDebugInfo called, opener:', !!opener);
+    
+    // Update status
+    const debugStatus = document.getElementById('debug-status');
+    if (debugStatus) {
+        debugStatus.textContent = 'Requesting debug info...';
+    }
+    
+    if (opener) {
+        // Check if there's already cached debug info
+        if (opener.lastDebugInfo) {
+            console.log('[SETUP] Using cached debug info');
+            handlePluginMessage(opener.lastDebugInfo);
+        }
+        
+        // Request fresh debug info via PI's function
+        if (opener.requestDebugInfo) {
+            console.log('[SETUP] Calling opener.requestDebugInfo()');
+            opener.requestDebugInfo();
+        } else if (opener.websocket) {
+            // Fallback: send directly
+            console.log('[SETUP] Fallback: sending directly via websocket');
+            const json = {
+                event: 'sendToPlugin',
+                action: opener.actionInfo?.action || 'com.pedrofuentes.ical.time-left',
+                context: opener.uuid,
+                payload: {
+                    action: 'getDebugInfo'
+                }
+            };
+            opener.websocket.send(JSON.stringify(json));
+        }
+    } else {
+        console.log('[SETUP] No opener available');
+        if (debugStatus) {
+            debugStatus.textContent = 'Error: Cannot communicate with Property Inspector';
+            debugStatus.style.color = '#f44336';
+        }
     }
 }
 
@@ -196,46 +223,54 @@ function requestDebugInfo() {
  * Handle messages from plugin
  */
 function handlePluginMessage(message) {
+    console.log('[DEBUG] handlePluginMessage received:', message);
+    
+    // Update status
+    const debugStatus = document.getElementById('debug-status');
+    if (debugStatus) {
+        debugStatus.textContent = 'Received response from plugin';
+        debugStatus.style.color = '#4CAF50';
+    }
+    
     if (message && message.action === 'debugInfo') {
         const data = message.data;
+        console.log('[DEBUG] Debug info data:', data);
         
-        // Show debug panel if debug mode is enabled
-        if (data.isDebugMode) {
-            const debugPanel = document.getElementById('debug-panel');
-            if (debugPanel) {
-                debugPanel.style.display = 'block';
+        // Always show data when received
+        const debugPanel = document.getElementById('debug-panel');
+        if (debugPanel) {
+            debugPanel.style.display = 'block';
+        }
+        
+        // Update cache status
+        const cacheStatus = document.getElementById('cache-status');
+        if (cacheStatus && data.cache) {
+            cacheStatus.textContent = JSON.stringify(data.cache, null, 2);
+        }
+        
+        // Update events list
+        const eventsList = document.getElementById('events-list');
+        if (eventsList && data.events) {
+            if (data.events.length > 0) {
+                eventsList.textContent = data.events.map(e => 
+                    `${e.summary}\n  Start: ${e.start}\n  End: ${e.end}${e.isRecurring ? ' (recurring)' : ''}`
+                ).join('\n\n');
+            } else {
+                eventsList.textContent = 'No events in cache';
             }
-            
-            // Update cache status
-            const cacheStatus = document.getElementById('cache-status');
-            if (cacheStatus && data.cache) {
-                cacheStatus.textContent = JSON.stringify(data.cache, null, 2);
-            }
-            
-            // Update events list
-            const eventsList = document.getElementById('events-list');
-            if (eventsList && data.events) {
-                if (data.events.length > 0) {
-                    eventsList.textContent = data.events.map(e => 
-                        `${e.summary}\n  Start: ${e.start}\n  End: ${e.end}${e.isRecurring ? ' (recurring)' : ''}`
-                    ).join('\n\n');
-                } else {
-                    eventsList.textContent = 'No events in cache';
-                }
-            }
-            
-            // Update logs
-            const debugLogs = document.getElementById('debug-logs');
-            if (debugLogs && data.logs) {
-                if (data.logs.length > 0) {
-                    debugLogs.textContent = data.logs.map(log => 
-                        `[${log.timestamp}] [${log.level}] ${log.message}${log.data ? '\n  ' + JSON.stringify(log.data) : ''}`
-                    ).join('\n');
-                    // Auto-scroll to bottom
-                    debugLogs.scrollTop = debugLogs.scrollHeight;
-                } else {
-                    debugLogs.textContent = 'No logs available';
-                }
+        }
+        
+        // Update logs
+        const debugLogs = document.getElementById('debug-logs');
+        if (debugLogs && data.logs) {
+            if (data.logs.length > 0) {
+                debugLogs.textContent = data.logs.map(log => 
+                    `[${log.timestamp}] [${log.level}] ${log.message}${log.data ? '\n  ' + JSON.stringify(log.data) : ''}`
+                ).join('\n');
+                // Auto-scroll to bottom
+                debugLogs.scrollTop = debugLogs.scrollHeight;
+            } else {
+                debugLogs.textContent = 'No logs available';
             }
         }
     }
@@ -243,6 +278,7 @@ function handlePluginMessage(message) {
 
 // Listen for messages from opener window (set up by pi.js)
 window.addEventListener('message', function(event) {
+    console.log('[DEBUG] Window message received:', event.data);
     if (event.data && event.data.type === 'sendToPropertyInspector') {
         handlePluginMessage(event.data.payload);
     }
