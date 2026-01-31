@@ -64,21 +64,25 @@ export abstract class BaseAction extends SingletonAction {
     const statusText = getStatusText(calendarCache.status);
     action.setTitle(statusText);
     
-    // Check every 2 seconds for cache to become available
+    // Check every 500ms for cache to become available (faster response on startup)
     this.waitingForCacheInterval = setInterval(() => {
+      // Use stored actionRef if available (more reliable after plugin restart)
+      const currentAction = this.actionRef || action;
+      
       if (calendarCache.status === 'LOADED' || calendarCache.status === 'NO_EVENTS') {
         // Cache is ready, start timer
         if (this.waitingForCacheInterval) {
           clearInterval(this.waitingForCacheInterval);
           this.waitingForCacheInterval = undefined;
         }
-        this.startTimer(action);
+        logger.debug('Cache ready, starting timer');
+        this.startTimer(currentAction);
       } else {
         // Update status text while waiting
         const statusText = getStatusText(calendarCache.status);
-        action.setTitle(statusText);
+        currentAction.setTitle(statusText);
       }
-    }, 2000);
+    }, 500);
     
     logger.debug('Waiting for cache to become available...');
   }
@@ -277,11 +281,10 @@ export abstract class BaseAction extends SingletonAction {
   }
   
   /**
-   * Get title display duration from settings (in ms)
+   * Get title display duration from settings (in seconds)
    */
   protected getTitleDisplayDuration(): number {
     const settings = getSettings();
-    const seconds = settings.titleDisplayDuration ?? 15;
-    return seconds * 1000;
+    return settings.titleDisplayDuration ?? 15;
   }
 }
