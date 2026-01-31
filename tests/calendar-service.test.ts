@@ -61,7 +61,7 @@ describe('isValidURL', () => {
 
 describe('getStatusText', () => {
   it('should return correct text for INIT status', () => {
-    expect(getStatusText('INIT')).toBe('Loading\niCal');
+    expect(getStatusText('INIT')).toBe('Please\nSetup');
   });
 
   it('should return correct text for LOADING status', () => {
