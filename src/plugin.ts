@@ -19,9 +19,15 @@ let currentTimeWindow: number = 3; // Default 3 days
 let updateIntervalId: NodeJS.Timeout | null = null;
 
 /**
- * Initialize plugin
+ * Initialize plugin - Set log level first
  */
 streamDeck.logger.setLevel(LogLevel.TRACE);
+
+/**
+ * Register actions - MUST be done before connect()
+ */
+streamDeck.actions.registerAction(new NextMeetingAction());
+streamDeck.actions.registerAction(new TimeLeftAction());
 
 logger.info('Stream Deck iCal Plugin starting...');
 
@@ -57,13 +63,16 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
 
 /**
  * Request global settings on startup
+ * Note: getGlobalSettings() returns the settings directly, not an event wrapper
  */
-streamDeck.settings.getGlobalSettings().then((ev) => {
-  const settings = ev.settings as any;
+streamDeck.settings.getGlobalSettings().then((settings: any) => {
   logger.debug('Initial global settings:', settings);
   
-  currentUrl = (settings.url as string) || '';
-  currentTimeWindow = (settings.timeWindow as number) || 3;
+  // Handle both old format (ev.settings) and direct settings object
+  const actualSettings = settings?.settings ?? settings;
+  
+  currentUrl = (actualSettings?.url as string) || '';
+  currentTimeWindow = (actualSettings?.timeWindow as number) || 3;
   
   // Start periodic updates if URL is set
   if (currentUrl) {
@@ -71,6 +80,8 @@ streamDeck.settings.getGlobalSettings().then((ev) => {
   } else {
     logger.warn('No iCal URL configured');
   }
+}).catch((err) => {
+  logger.error('Error getting global settings:', err);
 });
 
 /**
@@ -98,11 +109,6 @@ streamDeck.ui.onSendToPlugin((ev) => {
     }
   }
 });
-
-/**
- * Register actions
- */
-// Actions are registered via decorators
 
 /**
  * Connect to Stream Deck

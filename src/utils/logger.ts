@@ -1,10 +1,13 @@
 /**
  * Logger utility for debugging
+ * Uses Stream Deck SDK logger for proper log file output
  *
  * @author Pedro Fuentes <git@pedrofuent.es>
  * @copyright Pedro Pablo Fuentes Schuster
  * @license MIT
  */
+
+import streamDeck from '@elgato/streamdeck';
 
 const DEBUG = process.env.DEBUG === 'true' || process.env.NODE_ENV === 'development';
 
@@ -54,27 +57,29 @@ export function isDebugMode(): boolean {
 
 export const logger = {
   debug: (...args: any[]): void => {
-    if (DEBUG) {
-      console.log('[DEBUG]', ...args);
-    }
+    const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    streamDeck.logger.debug(message);
     // Always add to debug logs for the debug panel
     addDebugLog('debug', ...args);
   },
 
   info: (...args: any[]): void => {
-    console.log('[INFO]', ...args);
+    const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    streamDeck.logger.info(message);
     // Always add to debug logs for the debug panel
     addDebugLog('info', ...args);
   },
 
   warn: (...args: any[]): void => {
-    console.warn('[WARN]', ...args);
+    const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    streamDeck.logger.warn(message);
     // Always add to debug logs for the debug panel
     addDebugLog('warn', ...args);
   },
 
   error: (...args: any[]): void => {
-    console.error('[ERROR]', ...args);
+    const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+    streamDeck.logger.error(message);
     // Always add to debug logs for the debug panel
     addDebugLog('error', ...args);
   }
