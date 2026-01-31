@@ -3,8 +3,10 @@ import resolve from '@rollup/plugin-node-resolve';
 import commonjs from '@rollup/plugin-commonjs';
 import json from '@rollup/plugin-json';
 import copy from 'rollup-plugin-copy';
+import replace from '@rollup/plugin-replace';
 
 const isProduction = process.env.NODE_ENV === 'production';
+const isDebugMode = process.env.STREAMDECK_DEBUG === '1' || process.env.STREAMDECK_DEBUG === 'true';
 const outputDir = isProduction ? 'release/com.pedrofuentes.ical.sdPlugin' : 'dist/com.pedrofuentes.ical.sdPlugin';
 
 // Main plugin build (Node.js runtime)
@@ -18,6 +20,13 @@ const pluginConfig = {
   },
   external: [],
   plugins: [
+    replace({
+      preventAssignment: true,
+      values: {
+        'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development'),
+        'process.env.STREAMDECK_DEBUG': JSON.stringify(isDebugMode ? '1' : '0')
+      }
+    }),
     json(),
     resolve({
       preferBuiltins: true,
@@ -32,7 +41,8 @@ const pluginConfig = {
     copy({
       targets: [
         { src: 'manifest.json', dest: outputDir },
-        { src: 'assets', dest: outputDir }
+        { src: 'assets', dest: outputDir },
+        { src: 'bin-package.json', dest: `${outputDir}/bin`, rename: 'package.json' }
       ]
     })
   ]
