@@ -103,7 +103,7 @@ Actions are the buttons users place on their Stream Deck. Each action:
 #### Services
 
 Services handle the business logic:
-- **CalendarService**: Fetches and caches iCal feeds
+- **CalendarService**: Fetches and caches iCal feeds, filters all-day events
 - **ICalParser**: Parses iCal format with timezone support
 - **RecurrenceExpander**: Expands recurring events using RRULE
 - **TimezoneService**: Converts Windows timezones to IANA format
@@ -374,12 +374,25 @@ Parse \n, \,, \; correctly according to RFC 5545.
 
 ### Common Edge Cases
 
-1. **All-day events**: `VALUE=DATE` parameter, no time component
+1. **All-day events**: `VALUE=DATE` parameter, no time component (filtered by default via `excludeAllDay` setting)
 2. **Recurring events**: RRULE with various frequency types
 3. **EXDATE**: Dates excluded from recurrence
 4. **Folded lines**: Long lines split with leading whitespace
 5. **Escaped text**: `\n`, `\,`, `\;` in SUMMARY/DESCRIPTION
 6. **DST transitions**: Events during daylight saving time changes
+
+## Global Settings
+
+The plugin uses these global settings stored via Stream Deck SDK:
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `url` | string | `''` | iCal feed URL |
+| `timeWindow` | number | `3` | Time window in days (1, 3, 5, or 7) |
+| `excludeAllDay` | boolean | `true` | Filter out all-day events |
+| `urlVersion` | number | `0` | Incremented on force refresh to trigger update |
+
+Settings are managed in `src/plugin.ts` and `pi/setup.js`.
 
 ## Questions or Issues?
 

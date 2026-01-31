@@ -17,6 +17,7 @@ This plugin is available on the Stream Deck store, you can also download [the la
 ## Features ##
 * ✅ **Recurring events** with RRULE expansion and EXDATE handling
 * ✅ **Configurable time window** (1, 3, 5, or 7 days)
+* ✅ **Exclude all-day events** option (enabled by default)
 * ✅ Checks for updates every 10 minutes
 * ✅ When a new URL is saved, an immediate update is triggered
 * ✅ **Force Refresh** - Two ways to manually refresh:
@@ -105,7 +106,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup instructions.
 3. Click "Settings" button
 4. Enter your iCal URL
 5. Choose time window (1, 3, 5, or 7 days)
-6. Click "Save Settings"
+6. Optionally uncheck "Exclude All-Day Events" to show all-day events
+7. Click "Save Settings"
 
 ## Troubleshooting
 
@@ -157,6 +159,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - ✨ **Major Update**: Migrated to Node.js SDK v2
 - ✨ Added recurring events support (RRULE, EXDATE)
 - ✨ Added configurable time window (1/3/5/7 days)
+- ✨ **Exclude All-Day Events**: Option to filter out all-day events (default: on)
 - ✨ Improved timezone handling with windows-iana
 - ✨ Enhanced error states and messaging
 - ✨ **Force Refresh**: Double-press button or use Settings button
