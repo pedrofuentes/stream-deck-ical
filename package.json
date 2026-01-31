@@ -11,8 +11,16 @@
     "build": "cross-env NODE_ENV=development rollup -c",
     "build:production": "cross-env NODE_ENV=production rollup -c",
     "watch": "cross-env NODE_ENV=development rollup -c -w",
-    "dev": "npm run build",
-    "clean": "rimraf dist release"
+    "dev": "npm run build && streamdeck link dist/com.pedrofuentes.ical.sdPlugin",
+    "clean": "rimraf dist release",
+    "streamdeck:link": "streamdeck link dist/com.pedrofuentes.ical.sdPlugin",
+    "streamdeck:unlink": "streamdeck unlink dist/com.pedrofuentes.ical.sdPlugin",
+    "streamdeck:restart": "streamdeck restart com.pedrofuentes.ical",
+    "streamdeck:stop": "streamdeck stop com.pedrofuentes.ical",
+    "streamdeck:validate": "streamdeck validate dist/com.pedrofuentes.ical.sdPlugin",
+    "streamdeck:pack": "npm run build:production && streamdeck pack release/com.pedrofuentes.ical.sdPlugin --output release",
+    "streamdeck:dev": "streamdeck dev",
+    "streamdeck:dev:disable": "streamdeck dev --disable"
   },
   "repository": {
     "type": "git",
