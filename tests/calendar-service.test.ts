@@ -42,7 +42,7 @@ describe('isValidURL', () => {
   });
 
   it('should return true for URLs with encoded characters', () => {
-    expect(isValidURL('https://calendar.google.com/calendar/ical/4e5afefe2a21e0bf1c4cf7165a1d77212453576439dddb7a8298d8c6fff7c292%40group.calendar.google.com/private-c19704f723de81f26d780256a8db639d/basic.ics')).toBe(true);
+    expect(isValidURL('https://calendar.google.com/calendar/ical/abcd1234567890abcd1234567890abcd1234567890abcd1234567890abcd1234%40group.calendar.google.com/private-abcd1234567890abcd1234567890abcd/basic.ics')).toBe(true);
   });
 
   it('should return false for invalid URLs', () => {
