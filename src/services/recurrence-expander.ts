@@ -87,7 +87,8 @@ export function expandRecurringEvent(
         start: occurrence,
         end: endTime,
         recurrenceId: occurrence,
-        isRecurring: true
+        isRecurring: true,
+        isAllDay: event.isAllDay
       };
     });
     
@@ -147,6 +148,7 @@ export function processRecurringEvents(
           location: event.location,
           status: event.status,
           isRecurring: true,
+          isAllDay: exp.isAllDay,
           recurrenceId: exp.recurrenceId?.toISOString()
         });
       }
