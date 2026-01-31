@@ -12,6 +12,8 @@ Thank you for your interest in contributing to the Stream Deck iCal Plugin! This
 - [Code Style and Conventions](#code-style-and-conventions)
 - [Commit Messages](#commit-messages)
 - [Provider-Specific Notes](#provider-specific-notes)
+- [Creating Releases](#creating-releases)
+- [Global Settings](#global-settings)
 
 ## Development Environment Setup
 
@@ -394,6 +396,75 @@ Parse \n, \,, \; correctly according to RFC 5545.
 4. **Folded lines**: Long lines split with leading whitespace
 5. **Escaped text**: `\n`, `\,`, `\;` in SUMMARY/DESCRIPTION
 6. **DST transitions**: Events during daylight saving time changes
+
+## Creating Releases
+
+### Release Process
+
+1. **Update version numbers** in `manifest.json` and `package.json`:
+   ```json
+   // manifest.json
+   "Version": "X.Y.Z.0"
+   
+   // package.json
+   "version": "X.Y.Z"
+   ```
+
+2. **Build for production**:
+   ```bash
+   npm run build:production
+   ```
+   This creates an optimized build in `release/com.pedrofuentes.ical.sdPlugin/`.
+
+3. **Create the plugin package** using Stream Deck CLI:
+   ```bash
+   streamdeck pack "release/com.pedrofuentes.ical.sdPlugin" --output release
+   ```
+   This creates `release/com.pedrofuentes.ical.streamDeckPlugin` - the official package format.
+
+   > **Important**: Do NOT use `Compress-Archive` or manual zipping. The Stream Deck CLI creates a properly formatted package that Stream Deck can install.
+
+4. **Create a Git tag**:
+   ```bash
+   git tag -a vX.Y.Z -m "vX.Y.Z - Release description"
+   git push origin vX.Y.Z
+   ```
+
+5. **Create GitHub release** with the plugin package:
+   ```bash
+   gh release create vX.Y.Z "release/com.pedrofuentes.ical.streamDeckPlugin" \
+     --title "vX.Y.Z - Release Title" \
+     --notes "Release notes here"
+   ```
+
+### Testing a Release Package
+
+Before publishing, test the package:
+
+1. **Uninstall the development plugin**:
+   ```powershell
+   # Stop Stream Deck
+   Stop-Process -Name "StreamDeck" -Force
+   
+   # Remove plugin
+   Remove-Item "$env:APPDATA\Elgato\StreamDeck\Plugins\com.pedrofuentes.ical.sdPlugin" -Recurse -Force
+   
+   # Start Stream Deck
+   Start-Process "$env:ProgramFiles\Elgato\StreamDeck\StreamDeck.exe"
+   ```
+
+2. **Install the release package**: Double-click `com.pedrofuentes.ical.streamDeckPlugin`
+
+3. **Verify functionality**: Test all actions and settings
+
+### Version Numbering
+
+Follow [Semantic Versioning](https://semver.org/):
+- **MAJOR**: Breaking changes or major rewrites
+- **MINOR**: New features, backward compatible
+- **PATCH**: Bug fixes, backward compatible
+
+The manifest uses 4-part version (`X.Y.Z.0`), package.json uses 3-part (`X.Y.Z`).
 
 ## Global Settings
 

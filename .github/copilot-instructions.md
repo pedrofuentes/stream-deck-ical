@@ -167,3 +167,47 @@ const setting = value === undefined ? true : Boolean(value);
 - **PI HTML**: `pi/setup.html` - Settings popup
 - **PI JS**: `pi/setup.js` - Settings logic (not TypeScript)
 - **Tests**: `tests/` - Vitest test files
+
+## Release Process
+
+### Creating a Release Package
+
+**CRITICAL**: Always use the Stream Deck CLI to create packages. Manual zipping will create invalid packages.
+
+```powershell
+# 1. Build for production (outputs to release/ folder)
+npm run build:production
+
+# 2. Create package using Stream Deck CLI
+streamdeck pack "release/com.pedrofuentes.ical.sdPlugin" --output release
+
+# 3. Creates: release/com.pedrofuentes.ical.streamDeckPlugin
+```
+
+### Creating a GitHub Release
+
+```powershell
+# 1. Create annotated tag
+git tag -a vX.Y.Z -m "vX.Y.Z - Description"
+git push origin vX.Y.Z
+
+# 2. Create release with plugin package
+gh release create vX.Y.Z "release/com.pedrofuentes.ical.streamDeckPlugin" `
+  --title "vX.Y.Z - Title" `
+  --notes "Release notes"
+```
+
+### Testing Before Release
+
+```powershell
+# Remove dev plugin and test the package
+Stop-Process -Name "StreamDeck" -Force
+Remove-Item "$env:APPDATA\Elgato\StreamDeck\Plugins\com.pedrofuentes.ical.sdPlugin" -Recurse -Force
+Start-Process "$env:ProgramFiles\Elgato\StreamDeck\StreamDeck.exe"
+# Then double-click the .streamDeckPlugin file to install
+```
+
+### Version Numbers
+
+- `manifest.json`: 4-part version `"Version": "X.Y.Z.0"`
+- `package.json`: 3-part version `"version": "X.Y.Z"`
