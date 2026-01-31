@@ -18,6 +18,7 @@ export interface CalendarEvent {
   location?: string;
   status?: string;
   isRecurring?: boolean;
+  isAllDay?: boolean;
   rrule?: string;
   exdate?: Date[];
   recurrenceId?: string;
@@ -64,6 +65,7 @@ export interface GlobalSettings {
   url: string;
   urlVersion: number;
   timeWindow: 1 | 3 | 5 | 7; // days
+  excludeAllDay?: boolean; // default true
 }
 
 /**

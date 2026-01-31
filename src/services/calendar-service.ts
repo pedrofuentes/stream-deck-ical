@@ -67,10 +67,12 @@ async function fetchICalFeed(url: string): Promise<string> {
  * Update calendar cache with new events
  * @param url - iCal feed URL
  * @param timeWindowDays - Number of days to look ahead/behind (default 3)
+ * @param excludeAllDay - Whether to exclude all-day events (default true)
  */
 export async function updateCalendarCache(
   url: string,
-  timeWindowDays: number = 3
+  timeWindowDays: number = 3,
+  excludeAllDay: boolean = true
 ): Promise<void> {
   if (!url || url.trim() === '') {
     logger.warn('No URL provided, skipping cache update');
@@ -88,7 +90,7 @@ export async function updateCalendarCache(
   
   try {
     calendarCache.status = 'LOADING';
-    logger.info(`🔄 Updating calendar cache (${timeWindowDays} day window)...`);
+    logger.info(`🔄 Updating calendar cache (${timeWindowDays} day window, excludeAllDay=${excludeAllDay})...`);
     
     // Fetch the feed
     const icsContent = await fetchICalFeed(url);
@@ -107,7 +109,17 @@ export async function updateCalendarCache(
     logger.debug(`Time window: ${startWindow.toISOString()} to ${endWindow.toISOString()}`);
     
     // Process recurring events and filter to time window
-    const allEvents = processRecurringEvents(parsed.events, startWindow, endWindow);
+    let allEvents = processRecurringEvents(parsed.events, startWindow, endWindow);
+    
+    // Filter out all-day events if setting is enabled
+    if (excludeAllDay) {
+      const beforeCount = allEvents.length;
+      allEvents = allEvents.filter(e => !e.isAllDay);
+      const filtered = beforeCount - allEvents.length;
+      if (filtered > 0) {
+        logger.info(`📅 Filtered out ${filtered} all-day event(s)`);
+      }
+    }
     
     // Sort by start time
     const sortedEvents = sortEventsByStartTime(allEvents);
@@ -168,20 +180,22 @@ export function getStatusText(status: ErrorState): string {
  * @param url - iCal feed URL
  * @param timeWindowDays - Number of days to look ahead/behind
  * @param updateIntervalMinutes - Update frequency in minutes (default 10)
+ * @param excludeAllDay - Whether to exclude all-day events (default true)
  * @returns Interval ID for cleanup
  */
 export function startPeriodicUpdates(
   url: string,
   timeWindowDays: number = 3,
-  updateIntervalMinutes: number = 10
+  updateIntervalMinutes: number = 10,
+  excludeAllDay: boolean = true
 ): NodeJS.Timeout {
   // Initial update
-  updateCalendarCache(url, timeWindowDays);
+  updateCalendarCache(url, timeWindowDays, excludeAllDay);
   
   // Set up periodic updates
   const intervalMs = updateIntervalMinutes * 60 * 1000;
   const intervalId = setInterval(() => {
-    updateCalendarCache(url, timeWindowDays);
+    updateCalendarCache(url, timeWindowDays, excludeAllDay);
   }, intervalMs);
   
   logger.info(`Started periodic updates every ${updateIntervalMinutes} minutes`);
@@ -201,13 +215,15 @@ export function stopPeriodicUpdates(intervalId: NodeJS.Timeout): void {
 // Store current URL and time window for force refresh
 let currentFeedUrl: string = '';
 let currentTimeWindow: number = 3;
+let currentExcludeAllDay: boolean = true;
 
 /**
  * Set current feed configuration (called by plugin when settings change)
  */
-export function setFeedConfig(url: string, timeWindowDays: number): void {
+export function setFeedConfig(url: string, timeWindowDays: number, excludeAllDay: boolean = true): void {
   currentFeedUrl = url;
   currentTimeWindow = timeWindowDays;
+  currentExcludeAllDay = excludeAllDay;
 }
 
 /**
@@ -222,7 +238,7 @@ export async function forceRefreshCache(): Promise<void> {
     return;
   }
   
-  await updateCalendarCache(currentFeedUrl, currentTimeWindow);
+  await updateCalendarCache(currentFeedUrl, currentTimeWindow, currentExcludeAllDay);
 }
 
 /**

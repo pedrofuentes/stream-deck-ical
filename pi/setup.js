@@ -42,6 +42,7 @@ function getOpener() {
 function saveUrl() {
     const url = document.getElementById('url').value.trim();
     const timeWindow = parseInt(document.getElementById('timeWindow').value, 10);
+    const excludeAllDay = document.getElementById('excludeAllDay').checked;
     
     if (!url) {
         showAlert('Please enter an iCal URL');
@@ -59,6 +60,7 @@ function saveUrl() {
         const settings = {
             url: url,
             timeWindow: timeWindow,
+            excludeAllDay: excludeAllDay,
             urlVersion: (opener.globalSettings.urlVersion || 0) + 1
         };
         
@@ -137,12 +139,17 @@ document.addEventListener('DOMContentLoaded', function() {
     if (opener && opener.globalSettings) {
         const urlInput = document.getElementById('url');
         const timeWindowSelect = document.getElementById('timeWindow');
+        const excludeAllDayCheckbox = document.getElementById('excludeAllDay');
         
         if (urlInput) {
             urlInput.value = opener.globalSettings.url || '';
         }
         if (timeWindowSelect) {
             timeWindowSelect.value = opener.globalSettings.timeWindow || 3;
+        }
+        if (excludeAllDayCheckbox) {
+            // Default to true if not set
+            excludeAllDayCheckbox.checked = opener.globalSettings.excludeAllDay !== false;
         }
     }
     

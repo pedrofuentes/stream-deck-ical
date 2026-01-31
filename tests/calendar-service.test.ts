@@ -388,7 +388,106 @@ describe('getDebugInfo', () => {
   });
 });
 
+describe('All-Day Event Filtering', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    calendarCache.events = [];
+    calendarCache.status = 'INIT';
+    calendarCache.version = 0;
+  });
+
+  it('should detect all-day events from parsed iCal', async () => {
+    const allDayIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VEVENT
+UID:all-day-test
+DTSTART;VALUE=DATE:20260201
+DTEND;VALUE=DATE:20260202
+SUMMARY:All Day Event
+END:VEVENT
+END:VCALENDAR`;
+
+    // Mock fetch
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(allDayIcs)
+    }));
+
+    // With excludeAllDay=true, all-day events should be filtered
+    await updateCalendarCache('https://example.com/cal.ics', 3, true);
+    expect(calendarCache.events.length).toBe(0);
+  });
+
+  it('should include all-day events when excludeAllDay is false', async () => {
+    const allDayIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VEVENT
+UID:all-day-test
+DTSTART;VALUE=DATE:20260201
+DTEND;VALUE=DATE:20260202
+SUMMARY:All Day Event
+END:VEVENT
+END:VCALENDAR`;
+
+    // Mock fetch
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(allDayIcs)
+    }));
+
+    // With excludeAllDay=false, all-day events should be included
+    await updateCalendarCache('https://example.com/cal.ics', 365, false);
+    expect(calendarCache.events.length).toBe(1);
+    expect(calendarCache.events[0].isAllDay).toBe(true);
+  });
+
+  it('should keep timed events when filtering all-day events', async () => {
+    const now = new Date();
+    const start = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
+    const end = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
+    
+    const mixedIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VEVENT
+UID:all-day-test
+DTSTART;VALUE=DATE:${formatICSDateOnly(now)}
+DTEND;VALUE=DATE:${formatICSDateOnly(new Date(now.getTime() + 24 * 60 * 60 * 1000))}
+SUMMARY:All Day Event
+END:VEVENT
+BEGIN:VEVENT
+UID:timed-test
+DTSTART:${formatICSDate(start)}
+DTEND:${formatICSDate(end)}
+SUMMARY:Timed Event
+END:VEVENT
+END:VCALENDAR`;
+
+    // Mock fetch
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(mixedIcs)
+    }));
+
+    // With excludeAllDay=true, only timed event should remain
+    await updateCalendarCache('https://example.com/cal.ics', 3, true);
+    expect(calendarCache.events.length).toBe(1);
+    expect(calendarCache.events[0].summary).toBe('Timed Event');
+    expect(calendarCache.events[0].isAllDay).toBeFalsy();
+  });
+});
+
 // Helper function to format date as ICS
 function formatICSDate(date: Date): string {
   return date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+
+// Helper function to format date-only (for all-day events)
+function formatICSDateOnly(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
 }

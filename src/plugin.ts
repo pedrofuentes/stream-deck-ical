@@ -17,6 +17,7 @@ import { logger, isDebugMode } from './utils/logger.js';
 let currentUrl: string = '';
 let currentTimeWindow: number = 3; // Default 3 days
 let currentUrlVersion: number = 0; // Track force refresh requests
+let currentExcludeAllDay: boolean = true; // Default: exclude all-day events
 let updateIntervalId: NodeJS.Timeout | null = null;
 
 /**
@@ -42,6 +43,7 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
   const newUrl = (settings.url as string) || '';
   const newTimeWindow = (settings.timeWindow as number) || 3;
   const newUrlVersion = (settings.urlVersion as number) || 0;
+  const newExcludeAllDay = settings.excludeAllDay !== false; // Default true if not set
   
   // Check if force refresh was requested (urlVersion changed)
   const forceRefreshRequested = newUrlVersion !== currentUrlVersion && currentUrlVersion !== 0;
@@ -49,16 +51,21 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
     logger.info(`🔄 Force refresh requested from Property Inspector (urlVersion: ${currentUrlVersion} -> ${newUrlVersion})`);
   }
   
-  // Check if URL or time window changed, or force refresh requested
-  if (newUrl !== currentUrl || newTimeWindow !== currentTimeWindow || forceRefreshRequested) {
-    logger.info(`Settings changed: URL=${newUrl ? '[set]' : '[empty]'}, timeWindow=${newTimeWindow} days`);
+  // Check if any setting changed, or force refresh requested
+  const settingsChanged = newUrl !== currentUrl || 
+                          newTimeWindow !== currentTimeWindow || 
+                          newExcludeAllDay !== currentExcludeAllDay;
+  
+  if (settingsChanged || forceRefreshRequested) {
+    logger.info(`Settings changed: URL=${newUrl ? '[set]' : '[empty]'}, timeWindow=${newTimeWindow} days, excludeAllDay=${newExcludeAllDay}`);
     
     currentUrl = newUrl;
     currentTimeWindow = newTimeWindow;
     currentUrlVersion = newUrlVersion;
+    currentExcludeAllDay = newExcludeAllDay;
     
     // Update the feed config for force refresh
-    setFeedConfig(newUrl, newTimeWindow);
+    setFeedConfig(newUrl, newTimeWindow, newExcludeAllDay);
     
     // Stop existing updates
     if (updateIntervalId) {
@@ -68,7 +75,7 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
     
     // Start new updates if URL is set
     if (newUrl) {
-      updateIntervalId = startPeriodicUpdates(newUrl, newTimeWindow, 10);
+      updateIntervalId = startPeriodicUpdates(newUrl, newTimeWindow, 10, newExcludeAllDay);
     }
   } else {
     // Just update the urlVersion tracker
@@ -88,10 +95,11 @@ streamDeck.settings.getGlobalSettings().then((settings: any) => {
   
   currentUrl = (actualSettings?.url as string) || '';
   currentTimeWindow = (actualSettings?.timeWindow as number) || 3;
+  currentExcludeAllDay = actualSettings?.excludeAllDay !== false; // Default true
   
   // Start periodic updates if URL is set
   if (currentUrl) {
-    updateIntervalId = startPeriodicUpdates(currentUrl, currentTimeWindow, 10);
+    updateIntervalId = startPeriodicUpdates(currentUrl, currentTimeWindow, 10, currentExcludeAllDay);
   } else {
     logger.warn('No iCal URL configured');
   }

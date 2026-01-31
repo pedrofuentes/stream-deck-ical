@@ -200,6 +200,9 @@ export function parseICS(icsContent: string): ParsedCalendar {
         }
       }
 
+      // Detect all-day events
+      const isAllDay = startTime.isDate === true;
+
       events.push({
         uid: event.uid || `generated-${Math.random().toString(36)}`,
         summary: event.summary || '(No title)',
@@ -209,6 +212,7 @@ export function parseICS(icsContent: string): ParsedCalendar {
         location: event.location || undefined,
         status: vevent.getFirstPropertyValue('status')?.toString(),
         isRecurring,
+        isAllDay,
         rrule: rruleString,
         exdate: exdates,
         recurrenceId
