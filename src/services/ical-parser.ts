@@ -167,10 +167,7 @@ export function parseICS(icsContent: string): ParsedCalendar {
       const start = icalTimeToDate(startTime, calendarTimezone);
       const end = icalTimeToDate(endTime, calendarTimezone);
 
-      // Debug logging for time parsing
-      logger.info(`📅 Parsing event: "${event.summary}"`);
-      logger.info(`   Raw DTSTART: ${startTime.toString()}, zone: ${startTime.zone?.tzid || 'none'}`);
-      logger.info(`   Parsed start: ${start.toISOString()} (local: ${start.toLocaleString()})`);
+      logger.debug(`Parsing event: "${event.summary}", start: ${start.toISOString()}`);
 
       // Check for recurrence
       const rruleProp = vevent.getFirstPropertyValue('rrule');
@@ -180,7 +177,7 @@ export function parseICS(icsContent: string): ParsedCalendar {
       let rruleString: string | undefined;
       if (rruleProp) {
         rruleString = rruleProp.toString();
-        logger.info(`   RRULE: ${rruleString}`);
+        logger.debug(`  RRULE: ${rruleString}`);
       }
 
       // Get EXDATE exclusions
