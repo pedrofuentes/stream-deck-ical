@@ -66,20 +66,19 @@ export class NextMeetingAction extends BaseAction {
     // Clear any existing marquee
     this.stopMarquee();
     
-    // Pad title for smooth scrolling
-    const paddedTitle = `${title}     `;
+    // Pad title for smooth scrolling (spaces at end for wrap-around)
+    const paddedTitle = `${title}  •  `;
+    const displayWidth = 7; // Characters visible at once (fits Stream Deck button)
     
     const updateMarquee = async () => {
-      // Display 9 characters at a time (3 lines of 3 chars each for readability)
-      const displayText = paddedTitle.substring(this.marqueePosition, this.marqueePosition + 9);
+      // Extract visible portion with wrap-around
+      let displayText = '';
+      for (let i = 0; i < displayWidth; i++) {
+        const charIndex = (this.marqueePosition + i) % paddedTitle.length;
+        displayText += paddedTitle[charIndex];
+      }
       
-      // Format as 3 lines
-      const line1 = displayText.substring(0, 3);
-      const line2 = displayText.substring(3, 6);
-      const line3 = displayText.substring(6, 9);
-      const formatted = `${line1}\n${line2}\n${line3}`.trim();
-      
-      await action.setTitle(formatted);
+      await action.setTitle(displayText);
       
       this.marqueePosition++;
       if (this.marqueePosition >= paddedTitle.length) {
@@ -90,15 +89,15 @@ export class NextMeetingAction extends BaseAction {
     // Update immediately
     updateMarquee();
     
-    // Update every 300ms for smooth scrolling
-    this.marqueeInterval = setInterval(updateMarquee, 300);
+    // Update every 250ms for smooth scrolling
+    this.marqueeInterval = setInterval(updateMarquee, 250);
     
-    // Auto-stop after 10 seconds
+    // Auto-stop after 15 seconds
     this.titleTimeout = setTimeout(() => {
       this.stopMarquee();
       this.showingTitle = false;
       this.updateDisplay(action);
-    }, 10000);
+    }, 15000);
   }
   
   /**
