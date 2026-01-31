@@ -42,7 +42,8 @@ function getOpener() {
 function saveUrl() {
     const url = document.getElementById('url').value.trim();
     const timeWindow = parseInt(document.getElementById('timeWindow').value, 10);
-    const excludeAllDay = document.getElementById('excludeAllDay').checked;
+    const excludeAllDayEl = document.getElementById('excludeAllDay');
+    const excludeAllDay = excludeAllDayEl ? excludeAllDayEl.checked : true;
     
     if (!url) {
         showAlert('Please enter an iCal URL');
