@@ -44,6 +44,10 @@ function saveUrl() {
     const timeWindow = parseInt(document.getElementById('timeWindow').value, 10);
     const excludeAllDayEl = document.getElementById('excludeAllDay');
     const excludeAllDay = excludeAllDayEl ? excludeAllDayEl.checked : true;
+    const titleDisplayDurationEl = document.getElementById('titleDisplayDuration');
+    const titleDisplayDuration = titleDisplayDurationEl ? parseInt(titleDisplayDurationEl.value, 10) : 15;
+    const flashOnMeetingStartEl = document.getElementById('flashOnMeetingStart');
+    const flashOnMeetingStart = flashOnMeetingStartEl ? flashOnMeetingStartEl.checked : true;
     
     if (!url) {
         showAlert('Please enter an iCal URL');
@@ -62,6 +66,8 @@ function saveUrl() {
             url: url,
             timeWindow: timeWindow,
             excludeAllDay: excludeAllDay,
+            titleDisplayDuration: titleDisplayDuration,
+            flashOnMeetingStart: flashOnMeetingStart,
             urlVersion: (opener.globalSettings.urlVersion || 0) + 1
         };
         
@@ -151,6 +157,17 @@ document.addEventListener('DOMContentLoaded', function() {
         if (excludeAllDayCheckbox) {
             // Default to true if not set
             excludeAllDayCheckbox.checked = opener.globalSettings.excludeAllDay !== false;
+        }
+        
+        // New settings
+        const titleDisplayDurationSelect = document.getElementById('titleDisplayDuration');
+        if (titleDisplayDurationSelect) {
+            titleDisplayDurationSelect.value = opener.globalSettings.titleDisplayDuration || 15;
+        }
+        const flashOnMeetingStartCheckbox = document.getElementById('flashOnMeetingStart');
+        if (flashOnMeetingStartCheckbox) {
+            // Default to true if not set
+            flashOnMeetingStartCheckbox.checked = opener.globalSettings.flashOnMeetingStart !== false;
         }
     }
     

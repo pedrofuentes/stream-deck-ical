@@ -92,12 +92,13 @@ export class NextMeetingAction extends BaseAction {
     // Update every 250ms for smooth scrolling
     this.marqueeInterval = setInterval(updateMarquee, 250);
     
-    // Auto-stop after 15 seconds
+    // Auto-stop after configurable duration (default 15 seconds)
+    const displayDuration = this.getTitleDisplayDuration() * 1000;
     this.titleTimeout = setTimeout(() => {
       this.stopMarquee();
       this.showingTitle = false;
       this.updateDisplay(action);
-    }, 15000);
+    }, displayDuration);
   }
   
   /**

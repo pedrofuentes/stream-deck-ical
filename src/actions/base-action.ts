@@ -8,7 +8,7 @@
  */
 
 import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent, KeyDownEvent, KeyUpEvent } from '@elgato/streamdeck';
-import { calendarCache, getStatusText, forceRefreshCache } from '../services/calendar-service.js';
+import { calendarCache, getStatusText, forceRefreshCache, getSettings } from '../services/calendar-service.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -21,6 +21,8 @@ export abstract class BaseAction extends SingletonAction {
   protected currentImage: string = '';
   protected lastKeyPress: number = 0;
   protected actionRef?: any; // Keep reference to action for async operations
+  protected flashInterval?: NodeJS.Timeout;
+  protected isFlashing: boolean = false;
   
   // Color zones (in seconds)
   protected readonly RED_ZONE = 30;
@@ -217,5 +219,69 @@ export abstract class BaseAction extends SingletonAction {
       this.currentImage = imageName;
       await action.setImage(`assets/${imageName}.png`);
     }
+  }
+  
+  /**
+   * Flash the button to draw attention (e.g., meeting starting)
+   * Alternates between normal and highlight image
+   */
+  protected async flashButton(action: any, normalImage: string, highlightImage: string, count: number = 10): Promise<void> {
+    // Check if flash is enabled in settings
+    const settings = getSettings();
+    if (settings.flashOnMeetingStart === false) {
+      return;
+    }
+    
+    // Don't start new flash if already flashing
+    if (this.isFlashing) {
+      return;
+    }
+    
+    this.isFlashing = true;
+    let flashCount = 0;
+    const flashInterval = 200; // ms between flashes
+    
+    logger.info(`🔔 Flashing button ${count} times`);
+    
+    this.flashInterval = setInterval(async () => {
+      if (flashCount >= count * 2) {
+        // Done flashing
+        if (this.flashInterval) {
+          clearInterval(this.flashInterval);
+          this.flashInterval = undefined;
+        }
+        this.isFlashing = false;
+        // Reset to normal image
+        this.currentImage = '';
+        await this.setImage(action, normalImage);
+        return;
+      }
+      
+      // Alternate between highlight and normal
+      const useHighlight = flashCount % 2 === 0;
+      this.currentImage = ''; // Force image update
+      await action.setImage(`assets/${useHighlight ? highlightImage : normalImage}.png`);
+      flashCount++;
+    }, flashInterval);
+  }
+  
+  /**
+   * Stop any ongoing flash
+   */
+  protected stopFlash(): void {
+    if (this.flashInterval) {
+      clearInterval(this.flashInterval);
+      this.flashInterval = undefined;
+    }
+    this.isFlashing = false;
+  }
+  
+  /**
+   * Get title display duration from settings (in ms)
+   */
+  protected getTitleDisplayDuration(): number {
+    const settings = getSettings();
+    const seconds = settings.titleDisplayDuration ?? 15;
+    return seconds * 1000;
   }
 }

@@ -27,7 +27,9 @@ import {
   getStatusText,
   startPeriodicUpdates,
   stopPeriodicUpdates,
-  getDebugInfo
+  getDebugInfo,
+  setActionSettings,
+  getSettings
 } from '../src/services/calendar-service';
 import { ErrorState } from '../src/types/index';
 
@@ -788,6 +790,65 @@ END:VCALENDAR`;
       expect(calendarCache.events.length).toBe(2);
       expect(calendarCache.events.every(e => !e.isAllDay)).toBe(true);
       expect(calendarCache.events.map(e => e.summary).sort()).toEqual(['Afternoon Meeting', 'Morning Meeting']);
+    });
+  });
+});
+
+describe('Action Settings', () => {
+  beforeEach(() => {
+    // Reset settings to defaults
+    setActionSettings({
+      titleDisplayDuration: 15,
+      flashOnMeetingStart: true
+    });
+  });
+
+  describe('setActionSettings', () => {
+    it('should store action settings', () => {
+      setActionSettings({
+        titleDisplayDuration: 30,
+        flashOnMeetingStart: false
+      });
+
+      const settings = getSettings();
+      expect(settings.titleDisplayDuration).toBe(30);
+      expect(settings.flashOnMeetingStart).toBe(false);
+    });
+
+    it('should allow partial updates', () => {
+      setActionSettings({ titleDisplayDuration: 5 });
+      
+      const settings = getSettings();
+      expect(settings.titleDisplayDuration).toBe(5);
+      expect(settings.flashOnMeetingStart).toBe(true); // unchanged
+    });
+  });
+
+  describe('getSettings', () => {
+    it('should return default settings initially', () => {
+      const settings = getSettings();
+      expect(settings.titleDisplayDuration).toBe(15);
+      expect(settings.flashOnMeetingStart).toBe(true);
+    });
+
+    it('should return updated settings after setActionSettings', () => {
+      setActionSettings({
+        titleDisplayDuration: 10,
+        flashOnMeetingStart: false
+      });
+
+      const settings = getSettings();
+      expect(settings.titleDisplayDuration).toBe(10);
+      expect(settings.flashOnMeetingStart).toBe(false);
+    });
+
+    it('should support all valid titleDisplayDuration values', () => {
+      const validDurations = [5, 10, 15, 30];
+      
+      for (const duration of validDurations) {
+        setActionSettings({ titleDisplayDuration: duration as 5 | 10 | 15 | 30 });
+        expect(getSettings().titleDisplayDuration).toBe(duration);
+      }
     });
   });
 });

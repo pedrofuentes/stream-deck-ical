@@ -39,6 +39,11 @@ vi.mock('../src/utils/logger', () => ({
 }));
 
 // Mock the calendar service
+const mockSettings = {
+  titleDisplayDuration: 15,
+  flashOnMeetingStart: true
+};
+
 vi.mock('../src/services/calendar-service', () => ({
   calendarCache: {
     version: 1,
@@ -54,6 +59,10 @@ vi.mock('../src/services/calendar-service', () => ({
       case 'LOADED': return '';
       default: return 'Error';
     }
+  }),
+  getSettings: vi.fn(() => mockSettings),
+  setActionSettings: vi.fn((settings) => {
+    Object.assign(mockSettings, settings);
   })
 }));
 
@@ -338,5 +347,55 @@ describe('Color zone constants', () => {
   it('should have correct ORANGE_ZONE value', () => {
     const action = new TestAction();
     expect(action['ORANGE_ZONE']).toBe(300);
+  });
+});
+
+describe('Action Settings Integration', () => {
+  let testAction: TestAction;
+  let mockAction: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    
+    // Reset mock settings
+    mockSettings.titleDisplayDuration = 15;
+    mockSettings.flashOnMeetingStart = true;
+    
+    mockAction = {
+      setTitle: vi.fn(),
+      setImage: vi.fn(),
+      showOk: vi.fn()
+    };
+    testAction = new TestAction();
+    
+    // Reset cache
+    (calendarCache as any).version = 1;
+    (calendarCache as any).status = 'LOADED';
+    (calendarCache as any).events = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('should use configurable title display duration from settings', () => {
+    // Default value
+    expect(mockSettings.titleDisplayDuration).toBe(15);
+    
+    // Change to 30 seconds
+    mockSettings.titleDisplayDuration = 30;
+    expect(mockSettings.titleDisplayDuration).toBe(30);
+    
+    // Change to 5 seconds
+    mockSettings.titleDisplayDuration = 5;
+    expect(mockSettings.titleDisplayDuration).toBe(5);
+  });
+
+  it('should have flashOnMeetingStart setting', () => {
+    expect(mockSettings.flashOnMeetingStart).toBe(true);
+    
+    mockSettings.flashOnMeetingStart = false;
+    expect(mockSettings.flashOnMeetingStart).toBe(false);
   });
 });

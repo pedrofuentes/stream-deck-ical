@@ -10,7 +10,7 @@
 import streamDeck, { LogLevel } from '@elgato/streamdeck';
 import { NextMeetingAction } from './actions/next-meeting.js';
 import { TimeLeftAction } from './actions/time-left.js';
-import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo, setFeedConfig } from './services/calendar-service.js';
+import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo, setFeedConfig, setActionSettings } from './services/calendar-service.js';
 import { logger, isDebugMode } from './utils/logger.js';
 
 // Global settings
@@ -18,6 +18,8 @@ let currentUrl: string = '';
 let currentTimeWindow: number = 3; // Default 3 days
 let currentUrlVersion: number = 0; // Track force refresh requests
 let currentExcludeAllDay: boolean = true; // Default: exclude all-day events
+let currentTitleDisplayDuration: number = 15; // Default: 15 seconds
+let currentFlashOnMeetingStart: boolean = true; // Default: enabled
 let updateIntervalId: NodeJS.Timeout | null = null;
 
 /**
@@ -50,6 +52,8 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
   const newUrlVersion = (settings.urlVersion as number) || 0;
   // Handle explicit false vs undefined: undefined = true (default), false = false, true = true
   const newExcludeAllDay = settings.excludeAllDay === undefined ? true : Boolean(settings.excludeAllDay);
+  const newTitleDisplayDuration = (settings.titleDisplayDuration as number) || 15;
+  const newFlashOnMeetingStart = settings.flashOnMeetingStart === undefined ? true : Boolean(settings.flashOnMeetingStart);
   
   // Check if force refresh was requested (urlVersion changed)
   const forceRefreshRequested = newUrlVersion !== currentUrlVersion && currentUrlVersion !== 0;
@@ -61,6 +65,20 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
   const settingsChanged = newUrl !== currentUrl || 
                           newTimeWindow !== currentTimeWindow || 
                           newExcludeAllDay !== currentExcludeAllDay;
+  
+  // Check if action settings changed
+  const actionSettingsChanged = newTitleDisplayDuration !== currentTitleDisplayDuration ||
+                                newFlashOnMeetingStart !== currentFlashOnMeetingStart;
+  
+  if (actionSettingsChanged) {
+    currentTitleDisplayDuration = newTitleDisplayDuration;
+    currentFlashOnMeetingStart = newFlashOnMeetingStart;
+    setActionSettings({
+      titleDisplayDuration: newTitleDisplayDuration,
+      flashOnMeetingStart: newFlashOnMeetingStart
+    });
+    logger.info(`Action settings updated: titleDisplayDuration=${newTitleDisplayDuration}s, flashOnMeetingStart=${newFlashOnMeetingStart}`);
+  }
   
   if (settingsChanged || forceRefreshRequested) {
     logger.info(`Settings changed: URL=${newUrl ? '[set]' : '[empty]'}, timeWindow=${newTimeWindow} days, excludeAllDay=${newExcludeAllDay}`);
@@ -103,8 +121,16 @@ streamDeck.settings.getGlobalSettings().then((settings: any) => {
   currentTimeWindow = (actualSettings?.timeWindow as number) || 3;
   // Handle explicit false vs undefined: undefined = true (default), false = false, true = true
   currentExcludeAllDay = actualSettings?.excludeAllDay === undefined ? true : Boolean(actualSettings?.excludeAllDay);
+  currentTitleDisplayDuration = (actualSettings?.titleDisplayDuration as number) || 15;
+  currentFlashOnMeetingStart = actualSettings?.flashOnMeetingStart === undefined ? true : Boolean(actualSettings?.flashOnMeetingStart);
   
-  logger.info(`📋 Loaded settings: url=${currentUrl ? '[set]' : '[empty]'}, timeWindow=${currentTimeWindow}, excludeAllDay=${currentExcludeAllDay}`);
+  // Set action settings
+  setActionSettings({
+    titleDisplayDuration: currentTitleDisplayDuration,
+    flashOnMeetingStart: currentFlashOnMeetingStart
+  });
+  
+  logger.info(`📋 Loaded settings: url=${currentUrl ? '[set]' : '[empty]'}, timeWindow=${currentTimeWindow}, excludeAllDay=${currentExcludeAllDay}, titleDisplayDuration=${currentTitleDisplayDuration}s, flashOnMeetingStart=${currentFlashOnMeetingStart}`);
   
   // Start periodic updates if URL is set
   if (currentUrl) {
