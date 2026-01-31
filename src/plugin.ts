@@ -38,12 +38,13 @@ logger.info('Stream Deck iCal Plugin starting...');
  */
 streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
   const settings = ev.settings as any;
-  logger.debug('Global settings received:', settings);
+  logger.debug('Global settings received:', JSON.stringify(settings));
   
   const newUrl = (settings.url as string) || '';
   const newTimeWindow = (settings.timeWindow as number) || 3;
   const newUrlVersion = (settings.urlVersion as number) || 0;
-  const newExcludeAllDay = settings.excludeAllDay !== false; // Default true if not set
+  // Handle explicit false vs undefined: undefined = true (default), false = false, true = true
+  const newExcludeAllDay = settings.excludeAllDay === undefined ? true : Boolean(settings.excludeAllDay);
   
   // Check if force refresh was requested (urlVersion changed)
   const forceRefreshRequested = newUrlVersion !== currentUrlVersion && currentUrlVersion !== 0;
@@ -88,14 +89,17 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
  * Note: getGlobalSettings() returns the settings directly, not an event wrapper
  */
 streamDeck.settings.getGlobalSettings().then((settings: any) => {
-  logger.debug('Initial global settings:', settings);
+  logger.debug('Initial global settings:', JSON.stringify(settings));
   
   // Handle both old format (ev.settings) and direct settings object
   const actualSettings = settings?.settings ?? settings;
   
   currentUrl = (actualSettings?.url as string) || '';
   currentTimeWindow = (actualSettings?.timeWindow as number) || 3;
-  currentExcludeAllDay = actualSettings?.excludeAllDay !== false; // Default true
+  // Handle explicit false vs undefined: undefined = true (default), false = false, true = true
+  currentExcludeAllDay = actualSettings?.excludeAllDay === undefined ? true : Boolean(actualSettings?.excludeAllDay);
+  
+  logger.info(`📋 Loaded settings: url=${currentUrl ? '[set]' : '[empty]'}, timeWindow=${currentTimeWindow}, excludeAllDay=${currentExcludeAllDay}`);
   
   // Start periodic updates if URL is set
   if (currentUrl) {
