@@ -491,3 +491,303 @@ function formatICSDateOnly(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}${month}${day}`;
 }
+
+describe('All-Day Event Detection - Calendar Provider Compatibility', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    calendarCache.events = [];
+    calendarCache.status = 'INIT';
+    calendarCache.version = 0;
+  });
+
+  describe('Google Calendar', () => {
+    it('should detect Google Calendar all-day events (VALUE=DATE format)', async () => {
+      // Google Calendar uses VALUE=DATE for all-day events
+      const googleAllDayIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Google Inc//Google Calendar 70.9054//EN
+X-WR-CALNAME:Test Calendar
+BEGIN:VEVENT
+UID:google-all-day@google.com
+DTSTART;VALUE=DATE:20260201
+DTEND;VALUE=DATE:20260202
+SUMMARY:Google All Day Event
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR`;
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(googleAllDayIcs)
+      }));
+
+      await updateCalendarCache('https://example.com/cal.ics', 365, false);
+      expect(calendarCache.events.length).toBe(1);
+      expect(calendarCache.events[0].isAllDay).toBe(true);
+      expect(calendarCache.events[0].summary).toBe('Google All Day Event');
+    });
+
+    it('should detect Google Calendar recurring all-day events', async () => {
+      const now = new Date();
+      const googleRecurringAllDayIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Google Inc//Google Calendar 70.9054//EN
+BEGIN:VEVENT
+UID:google-recurring-all-day@google.com
+DTSTART;VALUE=DATE:${formatICSDateOnly(now)}
+DTEND;VALUE=DATE:${formatICSDateOnly(new Date(now.getTime() + 24 * 60 * 60 * 1000))}
+RRULE:FREQ=DAILY;COUNT=5
+SUMMARY:Daily All Day Event
+END:VEVENT
+END:VCALENDAR`;
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(googleRecurringAllDayIcs)
+      }));
+
+      // With excludeAllDay=false, recurring all-day events should be included
+      await updateCalendarCache('https://example.com/cal.ics', 7, false);
+      expect(calendarCache.events.length).toBeGreaterThan(0);
+      expect(calendarCache.events.every(e => e.isAllDay === true)).toBe(true);
+    });
+
+    it('should filter Google Calendar recurring all-day events when excludeAllDay=true', async () => {
+      const now = new Date();
+      const googleRecurringAllDayIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Google Inc//Google Calendar 70.9054//EN
+BEGIN:VEVENT
+UID:google-recurring-all-day@google.com
+DTSTART;VALUE=DATE:${formatICSDateOnly(now)}
+DTEND;VALUE=DATE:${formatICSDateOnly(new Date(now.getTime() + 24 * 60 * 60 * 1000))}
+RRULE:FREQ=DAILY;COUNT=5
+SUMMARY:Daily All Day Event
+END:VEVENT
+END:VCALENDAR`;
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(googleRecurringAllDayIcs)
+      }));
+
+      // With excludeAllDay=true, recurring all-day events should be filtered
+      await updateCalendarCache('https://example.com/cal.ics', 7, true);
+      expect(calendarCache.events.length).toBe(0);
+    });
+  });
+
+  describe('Microsoft Outlook / Office 365', () => {
+    it('should detect Outlook all-day events (VALUE=DATE format)', async () => {
+      // Outlook/O365 uses VALUE=DATE for all-day events
+      const outlookAllDayIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Microsoft Corporation//Outlook 16.0 MIMEDIR//EN
+METHOD:PUBLISH
+X-WR-CALNAME:Calendar
+BEGIN:VTIMEZONE
+TZID:Eastern Standard Time
+BEGIN:STANDARD
+DTSTART:16010101T020000
+RRULE:FREQ=YEARLY;BYDAY=1SU;BYMONTH=11
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:16010101T020000
+RRULE:FREQ=YEARLY;BYDAY=2SU;BYMONTH=3
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:outlook-all-day@outlook.com
+DTSTART;VALUE=DATE:20260201
+DTEND;VALUE=DATE:20260202
+SUMMARY:Outlook All Day Event
+STATUS:CONFIRMED
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+END:VEVENT
+END:VCALENDAR`;
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(outlookAllDayIcs)
+      }));
+
+      await updateCalendarCache('https://example.com/cal.ics', 365, false);
+      expect(calendarCache.events.length).toBe(1);
+      expect(calendarCache.events[0].isAllDay).toBe(true);
+      expect(calendarCache.events[0].summary).toBe('Outlook All Day Event');
+    });
+
+    it('should detect Outlook recurring all-day events with Windows timezone', async () => {
+      const now = new Date();
+      const outlookRecurringAllDayIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Microsoft Corporation//Outlook 16.0 MIMEDIR//EN
+BEGIN:VTIMEZONE
+TZID:Eastern Standard Time
+BEGIN:STANDARD
+DTSTART:16010101T020000
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+END:STANDARD
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:outlook-recurring-all-day@outlook.com
+DTSTART;VALUE=DATE:${formatICSDateOnly(now)}
+DTEND;VALUE=DATE:${formatICSDateOnly(new Date(now.getTime() + 24 * 60 * 60 * 1000))}
+RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR;COUNT=10
+SUMMARY:Outlook Weekly All Day
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+END:VEVENT
+END:VCALENDAR`;
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(outlookRecurringAllDayIcs)
+      }));
+
+      // With excludeAllDay=false, should include all-day events
+      await updateCalendarCache('https://example.com/cal.ics', 14, false);
+      expect(calendarCache.events.length).toBeGreaterThan(0);
+      expect(calendarCache.events.every(e => e.isAllDay === true)).toBe(true);
+    });
+  });
+
+  describe('Apple Calendar / iCloud', () => {
+    it('should detect Apple Calendar all-day events (VALUE=DATE format)', async () => {
+      // Apple Calendar uses VALUE=DATE for all-day events
+      const appleAllDayIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Apple Inc.//Mac OS X 10.15.7//EN
+CALSCALE:GREGORIAN
+BEGIN:VEVENT
+UID:apple-all-day@icloud.com
+DTSTART;VALUE=DATE:20260201
+DTEND;VALUE=DATE:20260202
+SUMMARY:Apple All Day Event
+STATUS:CONFIRMED
+CREATED:20260101T000000Z
+END:VEVENT
+END:VCALENDAR`;
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(appleAllDayIcs)
+      }));
+
+      await updateCalendarCache('https://example.com/cal.ics', 365, false);
+      expect(calendarCache.events.length).toBe(1);
+      expect(calendarCache.events[0].isAllDay).toBe(true);
+      expect(calendarCache.events[0].summary).toBe('Apple All Day Event');
+    });
+
+    it('should detect Apple Calendar multi-day all-day events', async () => {
+      // Apple Calendar multi-day events have DTEND = DTSTART + N days
+      const appleMultiDayIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Apple Inc.//Mac OS X 10.15.7//EN
+CALSCALE:GREGORIAN
+BEGIN:VEVENT
+UID:apple-multi-day@icloud.com
+DTSTART;VALUE=DATE:20260201
+DTEND;VALUE=DATE:20260205
+SUMMARY:4-Day Conference
+STATUS:CONFIRMED
+END:VEVENT
+END:VCALENDAR`;
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(appleMultiDayIcs)
+      }));
+
+      await updateCalendarCache('https://example.com/cal.ics', 365, false);
+      expect(calendarCache.events.length).toBe(1);
+      expect(calendarCache.events[0].isAllDay).toBe(true);
+      expect(calendarCache.events[0].summary).toBe('4-Day Conference');
+    });
+  });
+
+  describe('Mixed timed and all-day events', () => {
+    it('should correctly distinguish timed events from all-day events (Google)', async () => {
+      const now = new Date();
+      const start = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
+      const end = new Date(now.getTime() + 2 * 60 * 60 * 1000); // 2 hours from now
+
+      const mixedIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Google Inc//Google Calendar 70.9054//EN
+BEGIN:VEVENT
+UID:google-timed@google.com
+DTSTART:${formatICSDate(start)}
+DTEND:${formatICSDate(end)}
+SUMMARY:Timed Meeting
+END:VEVENT
+BEGIN:VEVENT
+UID:google-all-day@google.com
+DTSTART;VALUE=DATE:${formatICSDateOnly(now)}
+DTEND;VALUE=DATE:${formatICSDateOnly(new Date(now.getTime() + 24 * 60 * 60 * 1000))}
+SUMMARY:All Day Event
+END:VEVENT
+END:VCALENDAR`;
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(mixedIcs)
+      }));
+
+      // With excludeAllDay=false, both should be included
+      await updateCalendarCache('https://example.com/cal.ics', 3, false);
+      expect(calendarCache.events.length).toBe(2);
+      
+      const timedEvent = calendarCache.events.find(e => e.summary === 'Timed Meeting');
+      const allDayEvent = calendarCache.events.find(e => e.summary === 'All Day Event');
+      
+      expect(timedEvent?.isAllDay).toBeFalsy();
+      expect(allDayEvent?.isAllDay).toBe(true);
+    });
+
+    it('should filter only all-day events when excludeAllDay=true (mixed calendar)', async () => {
+      const now = new Date();
+      const start = new Date(now.getTime() + 60 * 60 * 1000);
+      const end = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+      const mixedIcs = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VEVENT
+UID:timed-1
+DTSTART:${formatICSDate(start)}
+DTEND:${formatICSDate(end)}
+SUMMARY:Morning Meeting
+END:VEVENT
+BEGIN:VEVENT
+UID:all-day-1
+DTSTART;VALUE=DATE:${formatICSDateOnly(now)}
+DTEND;VALUE=DATE:${formatICSDateOnly(new Date(now.getTime() + 24 * 60 * 60 * 1000))}
+SUMMARY:Holiday
+END:VEVENT
+BEGIN:VEVENT
+UID:timed-2
+DTSTART:${formatICSDate(new Date(start.getTime() + 3 * 60 * 60 * 1000))}
+DTEND:${formatICSDate(new Date(end.getTime() + 3 * 60 * 60 * 1000))}
+SUMMARY:Afternoon Meeting
+END:VEVENT
+END:VCALENDAR`;
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+        ok: true,
+        text: () => Promise.resolve(mixedIcs)
+      }));
+
+      // With excludeAllDay=true, only timed events should remain
+      await updateCalendarCache('https://example.com/cal.ics', 3, true);
+      expect(calendarCache.events.length).toBe(2);
+      expect(calendarCache.events.every(e => !e.isAllDay)).toBe(true);
+      expect(calendarCache.events.map(e => e.summary).sort()).toEqual(['Afternoon Meeting', 'Morning Meeting']);
+    });
+  });
+});
