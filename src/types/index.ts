@@ -119,4 +119,5 @@ export interface ExpandedEvent {
   end: Date;
   recurrenceId?: Date;
   isRecurring: boolean;
+  isAllDay?: boolean;
 }
