@@ -2,7 +2,13 @@
  * Property Inspector for iCal plugin
  */
 
-// Global websocket connection
+// Global websocket connection - exposed on window for popup access
+window.websocket = null;
+window.uuid = null;
+window.actionInfo = {};
+window.globalSettings = {};
+
+// Local references for convenience
 let websocket = null;
 let uuid = null;
 let actionInfo = {};
@@ -13,9 +19,12 @@ let globalSettings = {};
  */
 function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, inActionInfo) {
     uuid = inUUID;
+    window.uuid = inUUID;
     actionInfo = JSON.parse(inActionInfo);
+    window.actionInfo = actionInfo;
     
     websocket = new WebSocket('ws://127.0.0.1:' + inPort);
+    window.websocket = websocket;
     
     websocket.onopen = function() {
         const json = {
@@ -34,7 +43,8 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, 
         const jsonPayload = jsonObj.payload;
         
         if (event === 'didReceiveGlobalSettings') {
-            globalSettings = jsonPayload.settings;
+            globalSettings = jsonPayload.settings || {};
+            window.globalSettings = globalSettings;
             updateUI();
         }
     };
