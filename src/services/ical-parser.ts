@@ -1,11 +1,16 @@
 /**
- * Enhanced iCal parser with timezone support
- * Based on original ical.js with improvements for timezone handling and provider detection
+ * Enhanced iCal parser using Mozilla's ical.js library
+ * Provides robust RFC 5545 compliant parsing with timezone support
+ *
+ * @author Pedro Fuentes <git@pedrofuent.es>
+ * @copyright Pedro Pablo Fuentes Schuster
+ * @license MIT
  */
 
+import ICAL from 'ical.js';
 import { DateTime } from 'luxon';
-import { parseTimezone, getTimezoneFromParams } from './timezone-service.js';
-import { ParsedCalendar, CalendarEvent, ICalComponent } from '../types/index.js';
+import { parseTimezone } from './timezone-service.js';
+import { ParsedCalendar, CalendarEvent } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 
 /**
@@ -23,287 +28,180 @@ function detectProvider(prodId?: string): 'google' | 'outlook' | 'apple' | 'unkn
 }
 
 /**
- * Unescape text per RFC 5545 section 3.3.11
+ * Convert ICAL.Time to JavaScript Date
+ * Handles timezone conversion properly
  */
-function unescapeText(text: string): string {
-  if (!text) return '';
-  return text
-    .replace(/\\,/g, ',')
-    .replace(/\\;/g, ';')
-    .replace(/\\[nN]/g, '\n')
-    .replace(/\\\\/g, '\\');
-}
-
-/**
- * Parse parameters from iCal line
- */
-function parseParams(params: string[]): Record<string, any> {
-  const out: Record<string, any> = {};
-  for (const param of params) {
-    if (param.indexOf('=') > -1) {
-      const [key, ...valueParts] = param.split('=');
-      const value = valueParts.join('=');
-      out[key] = parseValue(value);
-    }
-  }
-  return out;
-}
-
-/**
- * Parse value to appropriate type
- */
-function parseValue(val: string): any {
-  if (val === 'TRUE') return true;
-  if (val === 'FALSE') return false;
-  
-  const number = Number(val);
-  if (!isNaN(number)) return number;
-  
-  return val;
-}
-
-/**
- * Parse date/datetime from iCal format
- */
-function parseDate(val: string, params: string[]): Date {
-  const cleanVal = unescapeText(val);
-  
-  // Check if this is a date-only value
-  const isDateOnly = params.includes('VALUE=DATE');
-  
-  if (isDateOnly) {
-    // Date only: YYYYMMDD
-    const match = /^(\d{4})(\d{2})(\d{2})$/.exec(cleanVal);
-    if (match) {
-      const [, year, month, day] = match;
-      // All-day events are treated as midnight in local timezone
-      const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-      return date;
-    }
-  }
-  
-  // DateTime: YYYYMMDDTHHMMSS or YYYYMMDDTHHMMSSZ
-  const match = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z)?$/.exec(cleanVal);
-  if (match) {
-    const [, year, month, day, hour, minute, second, isUTC] = match;
-    
-    if (isUTC) {
-      // UTC time
-      return new Date(Date.UTC(
-        parseInt(year),
-        parseInt(month) - 1,
-        parseInt(day),
-        parseInt(hour),
-        parseInt(minute),
-        parseInt(second)
-      ));
-    } else {
-      // Has timezone info in params
-      const timezone = getTimezoneFromParams(params);
-      
-      try {
-        // Use Luxon to parse with timezone
-        const dt = DateTime.fromObject({
-          year: parseInt(year),
-          month: parseInt(month),
-          day: parseInt(day),
-          hour: parseInt(hour),
-          minute: parseInt(minute),
-          second: parseInt(second)
-        }, { zone: timezone });
-        
-        if (dt.isValid) {
-          return dt.toJSDate();
-        }
-      } catch (e) {
-        logger.warn(`Failed to parse date with timezone ${timezone}:`, e);
-      }
-      
-      // Fallback to local time
-      return new Date(
-        parseInt(year),
-        parseInt(month) - 1,
-        parseInt(day),
-        parseInt(hour),
-        parseInt(minute),
-        parseInt(second)
-      );
-    }
-  }
-  
-  // Fallback: try to parse as ISO string
-  try {
-    return new Date(cleanVal);
-  } catch (e) {
-    logger.error('Failed to parse date:', cleanVal);
+function icalTimeToDate(icalTime: ICAL.Time, calendarTimezone?: string): Date {
+  if (!icalTime) {
     return new Date();
   }
-}
 
-/**
- * Get line break character from iCal string
- */
-function getLineBreakChar(str: string): string {
-  const indexOfLF = str.indexOf('\n', 1);
-  
-  if (indexOfLF === -1) {
-    if (str.indexOf('\r') !== -1) return '\r';
-    return '\n';
+  // If it's a date-only value (all-day event)
+  if (icalTime.isDate) {
+    return new Date(icalTime.year, icalTime.month - 1, icalTime.day);
   }
-  
-  if (str[indexOfLF - 1] === '\r') return '\r\n';
-  return '\n';
+
+  // If the time is in UTC
+  if (icalTime.zone && icalTime.zone.tzid === 'UTC') {
+    return icalTime.toJSDate();
+  }
+
+  // If the time has a specific timezone
+  if (icalTime.zone && icalTime.zone.tzid && icalTime.zone.tzid !== 'floating') {
+    try {
+      // Try to convert the timezone to IANA format if needed
+      const tzInfo = parseTimezone(icalTime.zone.tzid);
+      const dt = DateTime.fromObject({
+        year: icalTime.year,
+        month: icalTime.month,
+        day: icalTime.day,
+        hour: icalTime.hour,
+        minute: icalTime.minute,
+        second: icalTime.second
+      }, { zone: tzInfo.ianaName });
+
+      if (dt.isValid) {
+        return dt.toJSDate();
+      }
+    } catch (e) {
+      logger.warn(`Failed to parse timezone ${icalTime.zone.tzid}:`, e);
+    }
+  }
+
+  // Fallback: use calendar timezone or treat as local time
+  if (calendarTimezone) {
+    try {
+      const tzInfo = parseTimezone(calendarTimezone);
+      const dt = DateTime.fromObject({
+        year: icalTime.year,
+        month: icalTime.month,
+        day: icalTime.day,
+        hour: icalTime.hour,
+        minute: icalTime.minute,
+        second: icalTime.second
+      }, { zone: tzInfo.ianaName });
+
+      if (dt.isValid) {
+        return dt.toJSDate();
+      }
+    } catch (e) {
+      logger.warn(`Failed to use calendar timezone ${calendarTimezone}:`, e);
+    }
+  }
+
+  // Final fallback: treat as local time
+  return new Date(
+    icalTime.year,
+    icalTime.month - 1,
+    icalTime.day,
+    icalTime.hour,
+    icalTime.minute,
+    icalTime.second
+  );
 }
 
 /**
- * Parse iCal string into structured data
+ * Extract calendar-level timezone from various sources
+ */
+function extractCalendarTimezone(vcalendar: ICAL.Component): string | undefined {
+  // Try X-WR-TIMEZONE first (common in Google, Apple calendars)
+  const xWrTimezone = vcalendar.getFirstPropertyValue('x-wr-timezone');
+  if (xWrTimezone) {
+    return parseTimezone(xWrTimezone.toString()).ianaName;
+  }
+
+  // Try to get timezone from first VTIMEZONE component
+  const vtimezone = vcalendar.getFirstSubcomponent('vtimezone');
+  if (vtimezone) {
+    const tzid = vtimezone.getFirstPropertyValue('tzid');
+    if (tzid) {
+      return parseTimezone(tzid.toString()).ianaName;
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Parse iCal string into structured data using ical.js
  */
 export function parseICS(icsContent: string): ParsedCalendar {
-  const lineBreak = getLineBreakChar(icsContent);
-  const lines = icsContent.split(lineBreak === '\n' ? /\n/ : /\r?\n/);
-  
-  const components: Record<string, any> = {};
-  const stack: any[] = [];
-  let currentComponent: any = {};
-  let calendarTimezone: string | undefined;
-  let prodId: string | undefined;
-  
-  for (let i = 0; i < lines.length; i++) {
-    let line = lines[i];
-    
-    // Unfold lines (RFC 5545 section 3.1)
-    while (lines[i + 1] && /[ \t]/.test(lines[i + 1][0])) {
-      line += lines[i + 1].slice(1);
-      i++;
-    }
-    
-    // Split on colon (but not inside quotes)
-    const colonIndex = line.search(/:(?=(?:[^"]*"[^"]*")*[^"]*$)/);
-    if (colonIndex === -1) continue;
-    
-    const key = line.substring(0, colonIndex);
-    const value = line.substring(colonIndex + 1);
-    
-    const keyParts = key.split(';');
-    const name = keyParts[0];
-    const params = keyParts.slice(1);
-    
-    // Handle component boundaries
-    if (name === 'BEGIN') {
-      stack.push(currentComponent);
-      currentComponent = { type: value, params: [] };
-    } else if (name === 'END') {
-      if (value === 'VCALENDAR') {
-        // Don't pop the root
-        continue;
-      }
-      
-      const parent = stack.pop();
-      
-      if (currentComponent.type === 'VEVENT' && currentComponent.uid) {
-        // Store event by UID
-        if (!parent[currentComponent.uid]) {
-          parent[currentComponent.uid] = currentComponent;
-        } else {
-          // Handle recurrence modifications
-          if (currentComponent.recurrenceid) {
-            if (!parent[currentComponent.uid].recurrences) {
-              parent[currentComponent.uid].recurrences = {};
-            }
-            const dateKey = currentComponent.recurrenceid.toISOString().substring(0, 10);
-            parent[currentComponent.uid].recurrences[dateKey] = currentComponent;
-          } else {
-            // Merge properties
-            Object.assign(parent[currentComponent.uid], currentComponent);
-          }
-        }
-      } else {
-        parent[Math.random().toString(36)] = currentComponent;
-      }
-      
-      currentComponent = parent;
-    } else {
-      // Handle properties
-      const cleanValue = unescapeText(value);
-      
-      switch (name) {
-        case 'PRODID':
-          prodId = cleanValue;
-          currentComponent.prodid = cleanValue;
-          break;
-        case 'SUMMARY':
-          currentComponent.summary = cleanValue;
-          break;
-        case 'DESCRIPTION':
-          currentComponent.description = cleanValue;
-          break;
-        case 'LOCATION':
-          currentComponent.location = cleanValue;
-          break;
-        case 'UID':
-          currentComponent.uid = cleanValue;
-          break;
-        case 'STATUS':
-          currentComponent.status = cleanValue;
-          break;
-        case 'DTSTART':
-          currentComponent.start = parseDate(value, params);
-          if (!calendarTimezone) {
-            calendarTimezone = getTimezoneFromParams(params);
-          }
-          break;
-        case 'DTEND':
-          currentComponent.end = parseDate(value, params);
-          break;
-        case 'RRULE':
-          currentComponent.rrule = cleanValue;
-          break;
-        case 'EXDATE':
-          if (!currentComponent.exdate) {
-            currentComponent.exdate = [];
-          }
-          // EXDATE can contain multiple dates separated by commas
-          const exdates = value.split(',').map(v => parseDate(v.trim(), params));
-          currentComponent.exdate.push(...exdates);
-          break;
-        case 'RECURRENCE-ID':
-          currentComponent.recurrenceid = parseDate(value, params);
-          break;
-        default:
-          // Store custom properties (X-* fields)
-          if (name.startsWith('X-')) {
-            currentComponent[name.toLowerCase()] = cleanValue;
-          }
-          break;
-      }
+  // Parse the iCal data
+  const jcalData = ICAL.parse(icsContent);
+  const vcalendar = new ICAL.Component(jcalData);
+
+  // Extract calendar metadata
+  const prodId = vcalendar.getFirstPropertyValue('prodid')?.toString();
+  const calendarName = vcalendar.getFirstPropertyValue('x-wr-calname')?.toString();
+  const calendarTimezone = extractCalendarTimezone(vcalendar);
+
+  // Register any VTIMEZONE components with ical.js
+  const vtimezones = vcalendar.getAllSubcomponents('vtimezone');
+  for (const vtz of vtimezones) {
+    try {
+      const timezone = new ICAL.Timezone(vtz);
+      ICAL.TimezoneService.register(timezone);
+    } catch (e) {
+      logger.warn('Failed to register timezone:', e);
     }
   }
-  
+
   // Extract events
   const events: CalendarEvent[] = [];
-  
-  for (const key in components) {
-    const component = components[key];
-    if (component.type === 'VEVENT' && component.start && component.end) {
+  const vevents = vcalendar.getAllSubcomponents('vevent');
+
+  for (const vevent of vevents) {
+    try {
+      const event = new ICAL.Event(vevent);
+      
+      // Get start and end times
+      const startTime = event.startDate;
+      const endTime = event.endDate;
+
+      // Skip events without proper start/end times
+      if (!startTime || !endTime) {
+        logger.warn(`Skipping event without start/end: ${event.summary}`);
+        continue;
+      }
+
+      const start = icalTimeToDate(startTime, calendarTimezone);
+      const end = icalTimeToDate(endTime, calendarTimezone);
+
+      // Check for recurrence
+      const rruleProp = vevent.getFirstPropertyValue('rrule');
+      const isRecurring = !!rruleProp;
+
+      // Get recurrence-id if this is a recurrence exception
+      const recurrenceIdProp = vevent.getFirstProperty('recurrence-id');
+      let recurrenceId: string | undefined;
+      if (recurrenceIdProp) {
+        const recIdTime = recurrenceIdProp.getFirstValue() as ICAL.Time;
+        if (recIdTime) {
+          recurrenceId = icalTimeToDate(recIdTime, calendarTimezone).toISOString();
+        }
+      }
+
       events.push({
-        uid: component.uid || key,
-        summary: component.summary || '(No title)',
-        description: component.description,
-        start: component.start,
-        end: component.end,
-        location: component.location,
-        status: component.status,
-        isRecurring: !!component.rrule,
-        recurrenceId: component.recurrenceid?.toISOString()
+        uid: event.uid || `generated-${Math.random().toString(36)}`,
+        summary: event.summary || '(No title)',
+        description: event.description || undefined,
+        start,
+        end,
+        location: event.location || undefined,
+        status: vevent.getFirstPropertyValue('status')?.toString(),
+        isRecurring,
+        recurrenceId
       });
+    } catch (e) {
+      logger.error('Failed to parse event:', e);
     }
   }
-  
+
   return {
     events,
     timezone: calendarTimezone || 'UTC',
     provider: detectProvider(prodId),
-    calendarName: undefined
+    calendarName
   };
 }
 
@@ -312,7 +210,7 @@ export function parseICS(icsContent: string): ParsedCalendar {
  */
 export async function parseICalFeed(icsContent: string): Promise<ParsedCalendar> {
   try {
-    logger.debug('Parsing iCal feed...');
+    logger.debug('Parsing iCal feed with ical.js...');
     const parsed = parseICS(icsContent);
     logger.debug(`Parsed ${parsed.events.length} events from ${parsed.provider} calendar`);
     return parsed;
