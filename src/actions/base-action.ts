@@ -101,7 +101,7 @@ export abstract class BaseAction extends SingletonAction {
    * Called when key is pressed down
    */
   async onKeyDown(ev: KeyDownEvent<any>): Promise<void> {
-    // Override in subclasses
+    // Override in subclasses if needed
   }
   
   /**

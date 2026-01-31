@@ -6,7 +6,7 @@
  * @license MIT
  */
 
-import { action } from '@elgato/streamdeck';
+import { action, KeyDownEvent, KeyUpEvent } from '@elgato/streamdeck';
 import { BaseAction } from './base-action.js';
 import { calendarCache, getStatusText } from '../services/calendar-service.js';
 import { findActiveEvents } from '../utils/event-utils.js';
@@ -30,6 +30,13 @@ export class TimeLeftAction extends BaseAction {
   }
   
   /**
+   * Override onKeyUp to handle button press - required for SDK event routing
+   */
+  async onKeyUp(ev: KeyUpEvent<any>): Promise<void> {
+    await super.onKeyUp(ev);
+  }
+  
+  /**
    * Handle single key press - cycle through concurrent meetings
    */
   protected async handleSinglePress(action: any): Promise<void> {
@@ -38,7 +45,7 @@ export class TimeLeftAction extends BaseAction {
     if (activeEvents.length > 1) {
       // Cycle to next meeting
       this.currentMeetingIndex = (this.currentMeetingIndex + 1) % activeEvents.length;
-      logger.debug(`Switched to meeting ${this.currentMeetingIndex + 1} of ${activeEvents.length}`);
+      logger.info(`[TimeLeft] Switched to meeting ${this.currentMeetingIndex + 1}/${activeEvents.length}: "${activeEvents[this.currentMeetingIndex].summary}"`);
       await this.updateDisplay(action);
     } else if (this.meetingEnded) {
       // Meeting ended, try to show next meeting

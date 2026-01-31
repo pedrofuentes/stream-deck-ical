@@ -6,7 +6,7 @@
  * @license MIT
  */
 
-import { action, SingletonAction, KeyUpEvent, WillAppearEvent } from '@elgato/streamdeck';
+import { action, KeyUpEvent } from '@elgato/streamdeck';
 import { BaseAction } from './base-action.js';
 import { calendarCache, getStatusText } from '../services/calendar-service.js';
 import { findNextEvent } from '../utils/event-utils.js';
@@ -28,6 +28,13 @@ export class NextMeetingAction extends BaseAction {
    */
   protected async setInitialImage(action: any): Promise<void> {
     await this.setImage(action, 'nextMeeting');
+  }
+  
+  /**
+   * Override onKeyUp to handle button press - required for SDK event routing
+   */
+  async onKeyUp(ev: KeyUpEvent<any>): Promise<void> {
+    await super.onKeyUp(ev);
   }
   
   /**
