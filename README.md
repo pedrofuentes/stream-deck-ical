@@ -6,6 +6,13 @@ iCal Plugin for [elgato Stream Deck](https://www.elgato.com/en/gaming/stream-dec
 
 This plugin is available on the Stream Deck store, you can also download [the last release](https://github.com/pedrofuentes/stream-deck-ical/releases) or build it yourself using the code on this repo.
 
+## ✨ New in v2.1
+
+- ✅ **Configurable Title Display**: Choose how long meeting titles show (5, 10, 15, or 30 seconds)
+- ✅ **Meeting Start Flash**: Optional visual alert when meetings begin
+- ✅ **Improved Startup**: Faster button initialization with better status messages
+- ✅ **Better UX**: Shows "Please Setup" for unconfigured plugins
+
 ## ✨ New in v2.0
 
 - ✅ **Recurring Events Support**: Daily, weekly, monthly recurring events with RRULE
@@ -36,8 +43,10 @@ This plugin is available on the Stream Deck store, you can also download [the la
 ### Next Meeting ###
 * Shows time left until next meeting starts
 * If the button is pushed it will show the title of the next meeting (scrolling marquee)
+  * **Configurable duration**: Choose 5, 10, 15, or 30 seconds for title display
   * If the button is pushed while the text is showing it will go back to show the time left until the next meeting
   * At the end of the title animation, the button will go back to show the time left until the next meeting
+* **Optional flash alert** when meetings are about to start (disabled by default)
 * Changes icon color to orange when there are 5 minutes left for the next meeting to start
 * Changes icon color to red when there are 30 seconds left for the next meeting to start
 
@@ -106,8 +115,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup instructions.
 3. Click "Settings" button
 4. Enter your iCal URL
 5. Choose time window (1, 3, 5, or 7 days)
-6. Optionally uncheck "Exclude All-Day Events" to show all-day events
-7. Click "Save Settings"
+6. Set title display duration (5, 10, 15, or 30 seconds)
+7. Optionally enable "Flash when meeting starts" for visual alerts
+8. Optionally uncheck "Exclude All-Day Events" to show all-day events
+9. Click "Save Settings"
 
 ## Troubleshooting
 
@@ -154,6 +165,14 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - **Type Safety**: Full TypeScript coverage with strict mode
 
 ## Changelog
+
+### v2.1.0 (2026)
+- ✨ **Configurable Title Display Duration**: Choose 5, 10, 15, or 30 seconds (#20)
+- ✨ **Flash on Meeting Start**: Optional visual alert when meetings begin (#11)
+- 🐛 Fixed title display duration bug (was showing for minutes instead of seconds)
+- 🐛 Fixed startup race condition causing buttons to get stuck on "Loading"
+- 🐛 Improved status messages: Shows "Please Setup" for unconfigured plugins
+- ✅ Added 18 new regression tests for v2.1.0 features
 
 ### v2.0.0 (2026)
 - ✨ **Major Update**: Migrated to Node.js SDK v2

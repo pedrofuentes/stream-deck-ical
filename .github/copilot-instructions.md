@@ -145,8 +145,11 @@ Checkboxes require specific HTML structure for SDPI styling:
 When checking boolean settings, handle `undefined` for backwards compatibility:
 
 ```typescript
-// undefined = true (default), false = false, true = true
-const setting = value === undefined ? true : Boolean(value);
+// excludeAllDay: undefined = true (default on), false = false, true = true
+const excludeAllDay = value === undefined ? true : Boolean(value);
+
+// flashOnMeetingStart: undefined = false (default off), must explicitly be true
+const flashEnabled = settings.flashOnMeetingStart === true;
 ```
 
 ## Common Issues
@@ -158,6 +161,8 @@ const setting = value === undefined ? true : Boolean(value);
 | Checkbox not visible | Wrong SDPI HTML structure | Use `type="checkbox"` on parent div, label with span |
 | Debug panel always showing | `display: block` hardcoded | Set `display: none`, show only when `isDebugMode` |
 | Outlook times wrong | Windows timezone not mapped | Check `timezone-service.ts` mapping |
+| Buttons stuck on "Loading" | Startup race condition | `waitForCacheAndStart` uses 500ms polling with `actionRef` fallback |
+| Title shows for too long | Duration multiplied twice | `getTitleDisplayDuration()` returns seconds, caller multiplies by 1000 |
 
 ## File Locations
 
