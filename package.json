@@ -1,14 +1,27 @@
 {
   "name": "stream-deck-ical",
-  "version": "1.1.0",
+  "version": "2.0.0",
   "description": "An elgato Stream Deck plugin that displays information from your calendar using an iCal URL. Visual cues and a countdown will help you end meetings on time and be ready for the next one.",
   "private": true,
+  "type": "module",
   "scripts": {
-    "test": "jest",
-    "dev": "cross-env NODE_ENV=development webpack --progress --config=webpack.config.js",
-    "watch": "cross-env NODE_ENV=development webpack --watch --progress --config=webpack.config.js",
-    "hot": "cross-env NODE_ENV=development webpack-dev-server --inline --hot --config=webpack.config.js",
-    "production": "cross-env NODE_ENV=production webpack --progress --config=webpack.config.js"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "build": "cross-env NODE_ENV=development rollup -c",
+    "build:debug": "cross-env NODE_ENV=development STREAMDECK_DEBUG=1 rollup -c",
+    "build:production": "cross-env NODE_ENV=production rollup -c",
+    "watch": "cross-env NODE_ENV=development rollup -c -w",
+    "dev": "npm run build && streamdeck link dist/com.pedrofuentes.ical.sdPlugin",
+    "clean": "rimraf dist release",
+    "streamdeck:link": "streamdeck link dist/com.pedrofuentes.ical.sdPlugin",
+    "streamdeck:unlink": "streamdeck unlink dist/com.pedrofuentes.ical.sdPlugin",
+    "streamdeck:restart": "streamdeck restart com.pedrofuentes.ical",
+    "streamdeck:stop": "streamdeck stop com.pedrofuentes.ical",
+    "streamdeck:validate": "streamdeck validate dist/com.pedrofuentes.ical.sdPlugin",
+    "streamdeck:pack": "npm run build:production && streamdeck pack release/com.pedrofuentes.ical.sdPlugin --output release",
+    "streamdeck:dev": "streamdeck dev",
+    "streamdeck:dev:disable": "streamdeck dev --disable"
   },
   "repository": {
     "type": "git",
@@ -32,16 +45,26 @@
   },
   "homepage": "https://github.com/pedrofuentes/stream-deck-ical#readme",
   "devDependencies": {
-    "@babel/preset-env": "^7.12.13",
-    "babel-jest": "^26.6.3",
-    "copy-webpack-plugin": "^7.0.0",
+    "@rollup/plugin-commonjs": "^25.0.0",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^15.2.0",
+    "@rollup/plugin-replace": "^6.0.3",
+    "@rollup/plugin-typescript": "^11.1.0",
+    "@types/luxon": "^3.4.0",
+    "@types/node": "^20.0.0",
     "cross-env": "^7.0.3",
-    "jest": "^26.6.3",
-    "standard": "^16.0.3",
-    "webpack": "^5.20.2",
-    "webpack-cli": "^4.5.0"
+    "rimraf": "^5.0.0",
+    "rollup": "^4.9.0",
+    "rollup-plugin-copy": "^3.5.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
   },
   "dependencies": {
-    "fast-equals": "^2.0.0"
+    "@elgato/streamdeck": "^1.0.0",
+    "ical.js": "^2.2.1",
+    "luxon": "^3.4.0",
+    "rrule": "^2.8.1",
+    "tslib": "^2.8.1",
+    "windows-iana": "^5.0.0"
   }
 }

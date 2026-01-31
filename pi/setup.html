@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,minimal-ui,viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <title>iCal Setup</title>
+    <link rel="stylesheet" href="css/sdpi.css">
+</head>
+<body>
+    <div class="sdpi-wrapper">
+        <div id="alerts" class="content" style="display: none;"></div>
+        
+        <div class="sdpi-heading">iCal Settings</div>
+
+        <div class="sdpi-item full-row">
+            <div class="sdpi-item-label">iCal URL</div>
+            <input id="url" class="sdpi-item-value" type="text" value="" placeholder="https://calendar.google.com/calendar/ical/..." />
+        </div>
+
+        <div class="sdpi-item">
+            <div class="sdpi-item-label">Time Window</div>
+            <select id="timeWindow" class="sdpi-item-value select">
+                <option value="1">1 Day</option>
+                <option value="3" selected>3 Days</option>
+                <option value="5">5 Days</option>
+                <option value="7">7 Days</option>
+            </select>
+        </div>
+
+        <div class="sdpi-item" type="checkbox">
+            <div class="sdpi-item-label">All-Day Events</div>
+            <div class="sdpi-item-value">
+                <input type="checkbox" id="excludeAllDay" checked>
+                <label for="excludeAllDay"><span></span>Hide all-day events</label>
+            </div>
+        </div>
+
+        <div class="sdpi-item">
+            <button class="sdpi-item-value" id="save">Save Settings</button>
+            <button class="sdpi-item-value" id="refresh">Force Refresh &#128472;</button>
+        </div>
+
+        <div class="sdpi-heading">Features</div>
+        <div class="content">
+            <ul>
+                <li><strong>New:</strong> Support for recurring events (daily, weekly, monthly, etc.)</li>
+                <li><strong>New:</strong> Configurable time window (1, 3, 5, or 7 days)</li>
+                <li><strong>New:</strong> Improved timezone handling for Outlook, Google, and Apple calendars</li>
+                <li>Checks for updates every 10 minutes</li>
+                <li>When a new URL is saved, an immediate update is triggered</li>
+                <li>"Force Refresh" can be used to manually trigger an update</li>
+            </ul>
+
+            <h4>Time Left</h4>
+            <ul>
+                <li>Shows time left until the current meeting ends</li>
+                <li>Changes icon color to orange when 5 minutes are left</li>
+                <li>Changes icon color to red when 30 seconds are left (stays red for 5 minutes after meeting ends)</li>
+                <li>Supports multiple concurrent meetings - push the button to cycle through them</li>
+                <li>Shows meeting indicator (e.g., "1/3") when multiple meetings are active</li>
+            </ul>
+
+            <h4>Next Meeting</h4>
+            <ul>
+                <li>Shows countdown to next meeting start time</li>
+                <li>Push the button to display the meeting title (scrolling marquee)</li>
+                <li>Push again to return to countdown display</li>
+                <li>Changes icon color to orange with 5 minutes remaining</li>
+                <li>Changes icon color to red with 30 seconds remaining</li>
+            </ul>
+        </div>
+
+        <div class="sdpi-heading">Calendar Compatibility</div>
+        <div class="content">
+            <p>This plugin supports iCal feeds from:</p>
+            <ul>
+                <li><strong>Google Calendar:</strong> Export your calendar and use the secret iCal URL</li>
+                <li><strong>Microsoft Outlook / Office 365:</strong> Automatic timezone conversion for Windows timezones</li>
+                <li><strong>Apple Calendar:</strong> Full support for iCloud calendar feeds</li>
+                <li>Any other calendar application that provides an iCal (.ics) feed</li>
+            </ul>
+        </div>
+
+        <div class="sdpi-heading">More Information</div>
+        <div class="content">
+            <p>
+                Source code, bug reports, and feature requests:<br>
+                <a href="https://github.com/pedrofuentes/stream-deck-ical" target="_blank">
+                    https://github.com/pedrofuentes/stream-deck-ical
+                </a>
+            </p>
+        </div>
+
+        <!-- Debug Panel (only shown in dev mode) -->
+        <div id="debug-panel" style="display: none;">
+            <div class="sdpi-heading">Debug Information</div>
+            <div class="content">
+                <p id="debug-status" style="color: #888;">Requesting debug info from plugin...</p>
+                <button class="sdpi-item-value" id="refresh-debug">Refresh Debug Info</button>
+                
+                <h4>Cache Status</h4>
+                <pre id="cache-status" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 100px; overflow-y: auto;">Waiting for data...</pre>
+                
+                <h4>Upcoming Events (first 10)</h4>
+                <pre id="events-list" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 150px; overflow-y: auto;">Waiting for data...</pre>
+                
+                <h4>Recent Logs</h4>
+                <pre id="debug-logs" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 200px; overflow-y: auto;">Waiting for data...</pre>
+            </div>
+        </div>
+    </div>
+
+    <div class="sdpi-info-label hidden" style="top: -1000;" value=""></div>
+    
+    <script src="pi/setup.js"></script>
+</body>
+</html>
