@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,minimal-ui,viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <title>iCal Property Inspector</title>
+    <link rel="stylesheet" href="css/sdpi.css">
+</head>
+<body>
+    <div class="sdpi-wrapper">
+        <div class="sdpi-item">
+            <div class="sdpi-item-label">iCal URL</div>
+            <input id="url" class="next-to-settings sdpi-item-value" type="text" value="" readonly />
+            <button class="settings" id="settings" value="Settings"><span>Settings</span></button>
+        </div>
+
+        <div class="sdpi-item">
+            <div class="sdpi-item-label">Time Window</div>
+            <select id="timeWindow" class="sdpi-item-value select">
+                <option value="1">1 Day</option>
+                <option value="3" selected>3 Days</option>
+                <option value="5">5 Days</option>
+                <option value="7">7 Days</option>
+            </select>
+        </div>
+
+        <div class="sdpi-item" id="statusContainer" style="display: none;">
+            <div class="sdpi-item-label">Status</div>
+            <div class="sdpi-item-value" id="status">Loading...</div>
+        </div>
+
+        <div class="sdpi-item" id="lastRefreshContainer" style="display: none;">
+            <div class="sdpi-item-label">Last Refresh</div>
+            <div class="sdpi-item-value" id="lastRefresh">Never</div>
+        </div>
+    </div>
+
+    <div class="sdpi-info-label hidden" style="top: -1000;" value=""></div>
+
+    <script src="pi/pi.js"></script>
+</body>
+</html>

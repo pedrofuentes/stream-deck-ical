@@ -2,7 +2,7 @@
  * Timezone service for handling Windows and IANA timezone conversions
  */
 
-import { findOneIana } from 'windows-iana';
+import * as windowsiana from 'windows-iana';
 import { TimezoneInfo } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -34,7 +34,7 @@ export function parseTimezone(tzid: string): TimezoneInfo {
   if (isWindowsTimezone) {
     // Convert Windows timezone to IANA
     windowsName = cleanTzid;
-    const ianaTimezones = findOneIana(cleanTzid);
+    const ianaTimezones = windowsiana.findIana(cleanTzid);
     
     if (ianaTimezones && ianaTimezones.length > 0) {
       ianaName = ianaTimezones[0];
