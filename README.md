@@ -19,7 +19,9 @@ This plugin is available on the Stream Deck store, you can also download [the la
 * ✅ **Configurable time window** (1, 3, 5, or 7 days)
 * ✅ Checks for updates every 10 minutes
 * ✅ When a new URL is saved, an immediate update is triggered
-* ✅ "Force 🔄" button to manually refresh calendar data
+* ✅ **Force Refresh** - Two ways to manually refresh:
+  * **Double-press** any action button on the Stream Deck
+  * **"Force 🔄" button** in the Settings window
 * ✅ **Improved timezone support** for international calendars
 
 ### Time Left ###
@@ -157,8 +159,10 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - ✨ Added configurable time window (1/3/5/7 days)
 - ✨ Improved timezone handling with windows-iana
 - ✨ Enhanced error states and messaging
+- ✨ **Force Refresh**: Double-press button or use Settings button
 - 🐛 Fixed timezone offset issues (#1, #12)
 - 🐛 Fixed recurring events not showing (#2)
+- 🐛 Fixed force refresh not fetching new data
 - ✅ Closes #9: Ability to increase number of days
 
 ### v1.1.0
