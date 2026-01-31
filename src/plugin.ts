@@ -10,12 +10,13 @@
 import streamDeck, { LogLevel } from '@elgato/streamdeck';
 import { NextMeetingAction } from './actions/next-meeting.js';
 import { TimeLeftAction } from './actions/time-left.js';
-import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo } from './services/calendar-service.js';
+import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo, setFeedConfig } from './services/calendar-service.js';
 import { logger, isDebugMode } from './utils/logger.js';
 
 // Global settings
 let currentUrl: string = '';
 let currentTimeWindow: number = 3; // Default 3 days
+let currentUrlVersion: number = 0; // Track force refresh requests
 let updateIntervalId: NodeJS.Timeout | null = null;
 
 /**
@@ -40,13 +41,24 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
   
   const newUrl = (settings.url as string) || '';
   const newTimeWindow = (settings.timeWindow as number) || 3;
+  const newUrlVersion = (settings.urlVersion as number) || 0;
   
-  // Check if URL or time window changed
-  if (newUrl !== currentUrl || newTimeWindow !== currentTimeWindow) {
+  // Check if force refresh was requested (urlVersion changed)
+  const forceRefreshRequested = newUrlVersion !== currentUrlVersion && currentUrlVersion !== 0;
+  if (forceRefreshRequested) {
+    logger.info(`🔄 Force refresh requested from Property Inspector (urlVersion: ${currentUrlVersion} -> ${newUrlVersion})`);
+  }
+  
+  // Check if URL or time window changed, or force refresh requested
+  if (newUrl !== currentUrl || newTimeWindow !== currentTimeWindow || forceRefreshRequested) {
     logger.info(`Settings changed: URL=${newUrl ? '[set]' : '[empty]'}, timeWindow=${newTimeWindow} days`);
     
     currentUrl = newUrl;
     currentTimeWindow = newTimeWindow;
+    currentUrlVersion = newUrlVersion;
+    
+    // Update the feed config for force refresh
+    setFeedConfig(newUrl, newTimeWindow);
     
     // Stop existing updates
     if (updateIntervalId) {
@@ -58,6 +70,9 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
     if (newUrl) {
       updateIntervalId = startPeriodicUpdates(newUrl, newTimeWindow, 10);
     }
+  } else {
+    // Just update the urlVersion tracker
+    currentUrlVersion = newUrlVersion;
   }
 });
 
