@@ -19,7 +19,7 @@ let currentTimeWindow: number = 3; // Default 3 days
 let currentUrlVersion: number = 0; // Track force refresh requests
 let currentExcludeAllDay: boolean = true; // Default: exclude all-day events
 let currentTitleDisplayDuration: number = 15; // Default: 15 seconds
-let currentFlashOnMeetingStart: boolean = true; // Default: enabled
+let currentFlashOnMeetingStart: boolean = false; // Default: disabled
 let updateIntervalId: NodeJS.Timeout | null = null;
 
 /**
@@ -53,7 +53,7 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
   // Handle explicit false vs undefined: undefined = true (default), false = false, true = true
   const newExcludeAllDay = settings.excludeAllDay === undefined ? true : Boolean(settings.excludeAllDay);
   const newTitleDisplayDuration = (settings.titleDisplayDuration as number) || 15;
-  const newFlashOnMeetingStart = settings.flashOnMeetingStart === undefined ? true : Boolean(settings.flashOnMeetingStart);
+  const newFlashOnMeetingStart = settings.flashOnMeetingStart === undefined ? false : Boolean(settings.flashOnMeetingStart);
   
   // Check if force refresh was requested (urlVersion changed)
   const forceRefreshRequested = newUrlVersion !== currentUrlVersion && currentUrlVersion !== 0;
@@ -122,7 +122,7 @@ streamDeck.settings.getGlobalSettings().then((settings: any) => {
   // Handle explicit false vs undefined: undefined = true (default), false = false, true = true
   currentExcludeAllDay = actualSettings?.excludeAllDay === undefined ? true : Boolean(actualSettings?.excludeAllDay);
   currentTitleDisplayDuration = (actualSettings?.titleDisplayDuration as number) || 15;
-  currentFlashOnMeetingStart = actualSettings?.flashOnMeetingStart === undefined ? true : Boolean(actualSettings?.flashOnMeetingStart);
+  currentFlashOnMeetingStart = actualSettings?.flashOnMeetingStart === undefined ? false : Boolean(actualSettings?.flashOnMeetingStart);
   
   // Set action settings
   setActionSettings({

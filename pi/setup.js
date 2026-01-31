@@ -167,7 +167,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const flashOnMeetingStartCheckbox = document.getElementById('flashOnMeetingStart');
         if (flashOnMeetingStartCheckbox) {
             // Default to true if not set
-            flashOnMeetingStartCheckbox.checked = opener.globalSettings.flashOnMeetingStart !== false;
+            flashOnMeetingStartCheckbox.checked = opener.globalSettings.flashOnMeetingStart === true;
         }
     }
     
