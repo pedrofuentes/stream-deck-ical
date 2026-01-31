@@ -51,6 +51,7 @@
   },
   "dependencies": {
     "@elgato/streamdeck": "^1.0.0",
+    "ical.js": "^2.2.1",
     "luxon": "^3.4.0",
     "rrule": "^2.8.1",
     "tslib": "^2.8.1",
