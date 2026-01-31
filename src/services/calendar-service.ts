@@ -1,0 +1,189 @@
+/**
+ * Calendar service for fetching and caching iCal feeds
+ */
+
+import { parseICalFeed } from './ical-parser.js';
+import { processRecurringEvents } from './recurrence-expander.js';
+import { CalendarCache, CalendarEvent, ErrorState } from '../types/index.js';
+import { logger } from '../utils/logger.js';
+import { sortEventsByStartTime, filterEventsInWindow } from '../utils/event-utils.js';
+
+/**
+ * Global calendar cache
+ */
+export const calendarCache: CalendarCache = {
+  version: 0,
+  status: 'INIT',
+  events: [],
+  lastFetch: undefined,
+  provider: undefined
+};
+
+/**
+ * Validate URL format
+ */
+export function isValidURL(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Fetch iCal feed from URL
+ * @param url - iCal feed URL
+ * @returns iCal feed content as string
+ */
+async function fetchICalFeed(url: string): Promise<string> {
+  logger.debug(`Fetching iCal feed from: ${url}`);
+  
+  const response = await fetch(url, {
+    headers: {
+      'Accept': 'text/calendar, text/plain, */*'
+    }
+  });
+  
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  }
+  
+  const content = await response.text();
+  logger.debug(`Fetched ${content.length} bytes`);
+  
+  return content;
+}
+
+/**
+ * Update calendar cache with new events
+ * @param url - iCal feed URL
+ * @param timeWindowDays - Number of days to look ahead/behind (default 3)
+ */
+export async function updateCalendarCache(
+  url: string,
+  timeWindowDays: number = 3
+): Promise<void> {
+  if (!url || url.trim() === '') {
+    logger.warn('No URL provided, skipping cache update');
+    calendarCache.status = 'INVALID_URL';
+    calendarCache.events = [];
+    return;
+  }
+  
+  if (!isValidURL(url)) {
+    logger.error('Invalid URL format:', url);
+    calendarCache.status = 'INVALID_URL';
+    calendarCache.events = [];
+    return;
+  }
+  
+  try {
+    calendarCache.status = 'LOADING';
+    logger.info(`Updating calendar cache (${timeWindowDays} day window)...`);
+    
+    // Fetch the feed
+    const icsContent = await fetchICalFeed(url);
+    
+    // Parse the feed
+    const parsed = await parseICalFeed(icsContent);
+    calendarCache.provider = parsed.provider;
+    
+    // Calculate time window
+    const now = new Date();
+    const hoursWindow = timeWindowDays * 24;
+    const startWindow = new Date(now.getTime() - (hoursWindow * 60 * 60 * 1000 / 2));
+    const endWindow = new Date(now.getTime() + (hoursWindow * 60 * 60 * 1000 / 2));
+    
+    logger.debug(`Time window: ${startWindow.toISOString()} to ${endWindow.toISOString()}`);
+    
+    // Process recurring events and filter to time window
+    const allEvents = processRecurringEvents(parsed.events, startWindow, endWindow);
+    
+    // Sort by start time
+    const sortedEvents = sortEventsByStartTime(allEvents);
+    
+    // Update cache
+    calendarCache.events = sortedEvents;
+    calendarCache.status = sortedEvents.length > 0 ? 'LOADED' : 'NO_EVENTS';
+    calendarCache.version++;
+    calendarCache.lastFetch = Date.now();
+    
+    logger.info(`Cache updated: ${sortedEvents.length} events loaded (version ${calendarCache.version})`);
+    
+  } catch (error) {
+    logger.error('Failed to update calendar cache:', error);
+    
+    // Determine error type
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      calendarCache.status = 'NETWORK_ERROR';
+    } else if (error instanceof Error && error.message.includes('parse')) {
+      calendarCache.status = 'PARSE_ERROR';
+    } else {
+      calendarCache.status = 'NETWORK_ERROR';
+    }
+    
+    calendarCache.events = [];
+  }
+}
+
+/**
+ * Get status text for display on Stream Deck button
+ * @param status - Current error state
+ * @returns Display text
+ */
+export function getStatusText(status: ErrorState): string {
+  switch (status) {
+    case 'INIT':
+      return 'Loading\niCal';
+    case 'LOADING':
+      return 'Loading\niCal';
+    case 'INVALID_URL':
+      return 'Please\nSetup';
+    case 'NETWORK_ERROR':
+      return 'Network\nError';
+    case 'PARSE_ERROR':
+      return 'Parse\nError';
+    case 'NO_EVENTS':
+      return 'No\nMeetings\nFound';
+    case 'LOADED':
+      return '';
+    default:
+      return 'Error';
+  }
+}
+
+/**
+ * Start periodic calendar updates
+ * @param url - iCal feed URL
+ * @param timeWindowDays - Number of days to look ahead/behind
+ * @param updateIntervalMinutes - Update frequency in minutes (default 10)
+ * @returns Interval ID for cleanup
+ */
+export function startPeriodicUpdates(
+  url: string,
+  timeWindowDays: number = 3,
+  updateIntervalMinutes: number = 10
+): NodeJS.Timeout {
+  // Initial update
+  updateCalendarCache(url, timeWindowDays);
+  
+  // Set up periodic updates
+  const intervalMs = updateIntervalMinutes * 60 * 1000;
+  const intervalId = setInterval(() => {
+    updateCalendarCache(url, timeWindowDays);
+  }, intervalMs);
+  
+  logger.info(`Started periodic updates every ${updateIntervalMinutes} minutes`);
+  
+  return intervalId;
+}
+
+/**
+ * Stop periodic updates
+ * @param intervalId - Interval ID returned by startPeriodicUpdates
+ */
+export function stopPeriodicUpdates(intervalId: NodeJS.Timeout): void {
+  clearInterval(intervalId);
+  logger.info('Stopped periodic updates');
+}
