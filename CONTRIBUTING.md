@@ -214,27 +214,41 @@ npm run streamdeck:pack
 
 ### Enable Debug Mode
 
-Set the `STREAMDECK_DEBUG` environment variable to enable detailed logging and the debug panel:
+Set the `STREAMDECK_DEBUG` environment variable before building to enable detailed logging and the debug panel:
 
 **Windows (PowerShell):**
 ```powershell
 $env:STREAMDECK_DEBUG = "1"
-npm run streamdeck:dev
+npm run build
+streamdeck restart com.pedrofuentes.ical
 ```
 
 **macOS/Linux:**
 ```bash
-STREAMDECK_DEBUG=1 npm run streamdeck:dev
+STREAMDECK_DEBUG=1 npm run build
 ```
 
+**Debug Mode Behavior:**
+| Feature | Debug Mode OFF | Debug Mode ON |
+|---------|----------------|---------------|
+| Log Level | INFO (minimal) | TRACE (verbose) |
+| Debug Panel | Hidden | Visible |
+| DEBUG/TRACE logs | Suppressed | Written to log file |
+| Performance | Optimized | More overhead |
+
 When debug mode is enabled:
-- Additional logging is captured in memory (last 50 entries)
+- Log level is set to TRACE (all DEBUG and TRACE messages logged)
 - A **Debug Panel** appears in the Settings popup showing:
   - Cache status (INIT/LOADING/OK/ERROR)
   - Event count and last fetch time
   - List of upcoming events (first 10)
   - Recent debug logs with timestamps
 - Actions log state changes for troubleshooting
+
+When debug mode is disabled:
+- Log level is set to INFO (cleaner, less verbose logs)
+- Debug Panel is hidden from the Settings popup
+- Only important messages (INFO, WARN, ERROR) are logged
 
 ### Manual Plugin Linking
 
