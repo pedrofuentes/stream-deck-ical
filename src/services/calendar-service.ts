@@ -157,7 +157,7 @@ export async function updateCalendarCache(
 export function getStatusText(status: ErrorState): string {
   switch (status) {
     case 'INIT':
-      return 'Loading\niCal';
+      return 'Please\nSetup';
     case 'LOADING':
       return 'Loading\niCal';
     case 'INVALID_URL':
