@@ -244,9 +244,9 @@ function handlePluginMessage(message) {
         const data = message.data;
         console.log('[DEBUG] Debug info data:', data);
         
-        // Always show data when received
+        // Only show debug panel if debug mode is enabled
         const debugPanel = document.getElementById('debug-panel');
-        if (debugPanel) {
+        if (debugPanel && data.isDebugMode) {
             debugPanel.style.display = 'block';
         }
         

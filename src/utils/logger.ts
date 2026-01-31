@@ -9,7 +9,9 @@
 
 import streamDeck from '@elgato/streamdeck';
 
-const DEBUG = process.env.DEBUG === 'true' || process.env.NODE_ENV === 'development';
+// Debug mode is controlled ONLY by STREAMDECK_DEBUG environment variable
+// This is replaced at build time by rollup
+const DEBUG_MODE = process.env.STREAMDECK_DEBUG === '1' || process.env.STREAMDECK_DEBUG === 'true';
 
 /**
  * Debug log entry for UI display
@@ -46,13 +48,10 @@ function addDebugLog(level: DebugLogEntry['level'], ...args: any[]): void {
 
 /**
  * Check if debug mode is enabled
- * Checks multiple environment variables at runtime
+ * Only returns true when STREAMDECK_DEBUG=1 or STREAMDECK_DEBUG=true
  */
 export function isDebugMode(): boolean {
-  return DEBUG || 
-         process.env.STREAMDECK_DEBUG === '1' || 
-         process.env.STREAMDECK_DEBUG === 'true' ||
-         process.env.NODE_ENV === 'development';
+  return DEBUG_MODE;
 }
 
 export const logger = {

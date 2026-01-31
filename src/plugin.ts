@@ -21,9 +21,11 @@ let currentExcludeAllDay: boolean = true; // Default: exclude all-day events
 let updateIntervalId: NodeJS.Timeout | null = null;
 
 /**
- * Initialize plugin - Set log level first
+ * Initialize plugin - Set log level based on debug mode
+ * In production: only INFO and above
+ * In debug mode: TRACE (everything)
  */
-streamDeck.logger.setLevel(LogLevel.TRACE);
+streamDeck.logger.setLevel(isDebugMode() ? LogLevel.TRACE : LogLevel.INFO);
 
 /**
  * Register actions - MUST be done before connect()
@@ -32,6 +34,9 @@ streamDeck.actions.registerAction(new NextMeetingAction());
 streamDeck.actions.registerAction(new TimeLeftAction());
 
 logger.info('Stream Deck iCal Plugin starting...');
+if (isDebugMode()) {
+  logger.info('Debug mode is ENABLED');
+}
 
 /**
  * Handle global settings received
@@ -143,9 +148,6 @@ streamDeck.ui.onSendToPlugin((ev) => {
 streamDeck.connect();
 
 logger.info('Stream Deck iCal Plugin initialized');
-if (isDebugMode()) {
-  logger.info('Debug mode is ENABLED');
-}
 
 /**
  * Handle process termination
