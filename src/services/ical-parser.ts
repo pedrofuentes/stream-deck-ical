@@ -167,9 +167,31 @@ export function parseICS(icsContent: string): ParsedCalendar {
       const start = icalTimeToDate(startTime, calendarTimezone);
       const end = icalTimeToDate(endTime, calendarTimezone);
 
+      // Debug logging for time parsing
+      logger.info(`📅 Parsing event: "${event.summary}"`);
+      logger.info(`   Raw DTSTART: ${startTime.toString()}, zone: ${startTime.zone?.tzid || 'none'}`);
+      logger.info(`   Parsed start: ${start.toISOString()} (local: ${start.toLocaleString()})`);
+
       // Check for recurrence
       const rruleProp = vevent.getFirstPropertyValue('rrule');
       const isRecurring = !!rruleProp;
+      
+      // Extract RRULE string for recurring events
+      let rruleString: string | undefined;
+      if (rruleProp) {
+        rruleString = rruleProp.toString();
+        logger.info(`   RRULE: ${rruleString}`);
+      }
+
+      // Get EXDATE exclusions
+      const exdates: Date[] = [];
+      const exdateProps = vevent.getAllProperties('exdate');
+      for (const exdateProp of exdateProps) {
+        const exdateValue = exdateProp.getFirstValue() as ICAL.Time;
+        if (exdateValue) {
+          exdates.push(icalTimeToDate(exdateValue, calendarTimezone));
+        }
+      }
 
       // Get recurrence-id if this is a recurrence exception
       const recurrenceIdProp = vevent.getFirstProperty('recurrence-id');
@@ -190,6 +212,8 @@ export function parseICS(icsContent: string): ParsedCalendar {
         location: event.location || undefined,
         status: vevent.getFirstPropertyValue('status')?.toString(),
         isRecurring,
+        rrule: rruleString,
+        exdate: exdates,
         recurrenceId
       });
     } catch (e) {

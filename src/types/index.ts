@@ -18,6 +18,8 @@ export interface CalendarEvent {
   location?: string;
   status?: string;
   isRecurring?: boolean;
+  rrule?: string;
+  exdate?: Date[];
   recurrenceId?: string;
 }
 
