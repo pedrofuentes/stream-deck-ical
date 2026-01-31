@@ -5,7 +5,7 @@ import json from '@rollup/plugin-json';
 import copy from 'rollup-plugin-copy';
 
 const isProduction = process.env.NODE_ENV === 'production';
-const outputDir = isProduction ? 'release/com.pedrofuentes.ical.sdPlugin' : 'dist';
+const outputDir = isProduction ? 'release/com.pedrofuentes.ical.sdPlugin' : 'dist/com.pedrofuentes.ical.sdPlugin';
 
 // Main plugin build (Node.js runtime)
 const pluginConfig = {
