@@ -194,35 +194,78 @@ When adding fixtures:
 
 ## Debugging with Stream Deck
 
-### 1. Link Plugin for Development
+### Using Stream Deck CLI (Recommended)
 
-After building, create a symlink to the Stream Deck plugins directory:
+The project includes npm scripts for the Stream Deck CLI:
+
+```bash
+# Link plugin for development (run once)
+npm run streamdeck:link
+
+# Start Stream Deck with plugin in debug mode
+npm run streamdeck:dev
+
+# Restart the plugin without restarting Stream Deck
+npm run streamdeck:restart
+
+# Package plugin for distribution
+npm run streamdeck:pack
+```
+
+### Enable Debug Mode
+
+Set the `STREAMDECK_DEBUG` environment variable to enable detailed logging and the debug panel:
+
+**Windows (PowerShell):**
+```powershell
+$env:STREAMDECK_DEBUG = "1"
+npm run streamdeck:dev
+```
+
+**macOS/Linux:**
+```bash
+STREAMDECK_DEBUG=1 npm run streamdeck:dev
+```
+
+When debug mode is enabled:
+- Additional logging is captured in memory (last 50 entries)
+- A **Debug Panel** appears in the Settings popup showing:
+  - Cache status (INIT/LOADING/OK/ERROR)
+  - Event count and last fetch time
+  - List of upcoming events (first 10)
+  - Recent debug logs with timestamps
+- Actions log state changes for troubleshooting
+
+### Manual Plugin Linking
+
+If not using the CLI, create a symlink to the Stream Deck plugins directory:
 
 **macOS:**
 ```bash
-ln -s "$(pwd)/dist" "$HOME/Library/Application Support/com.elgato.StreamDeck/Plugins/com.pedrofuentes.ical.sdPlugin"
+ln -s "$(pwd)/dist/com.pedrofuentes.ical.sdPlugin" "$HOME/Library/Application Support/com.elgato.StreamDeck/Plugins/com.pedrofuentes.ical.sdPlugin"
 ```
 
 **Windows (PowerShell as Administrator):**
 ```powershell
-New-Item -ItemType SymbolicLink -Path "$env:APPDATA\Elgato\StreamDeck\Plugins\com.pedrofuentes.ical.sdPlugin" -Target "$(pwd)\dist"
+New-Item -ItemType SymbolicLink -Path "$env:APPDATA\Elgato\StreamDeck\Plugins\com.pedrofuentes.ical.sdPlugin" -Target "$(pwd)\dist\com.pedrofuentes.ical.sdPlugin"
 ```
 
-### 2. Restart Stream Deck Software
+### Restart Stream Deck Software
 
 The plugin will now appear in the Stream Deck software.
 
-### 3. View Logs
+### View Logs
 
 **Plugin Logs (Node.js):**
 - The plugin uses `@elgato/streamdeck` logger
-- Set `DEBUG=true` in environment or check Stream Deck logs
+- Set `STREAMDECK_DEBUG=1` for verbose debug logging
+- Logs visible in Stream Deck CLI output or log files
 
 **Stream Deck Logs Location:**
 - **macOS**: `~/Library/Logs/ElgatoStreamDeck/`
 - **Windows**: `%APPDATA%\Elgato\StreamDeck\logs\`
 
-### 4. Debug with Chrome DevTools
+### Debug with Chrome DevTools
 
 Property Inspector can be debugged:
 1. Right-click on action in Stream Deck software
