@@ -42,7 +42,8 @@ export function isValidURL(url: string): boolean {
  */
 async function fetchICalFeed(url: string): Promise<string> {
   const startTime = Date.now();
-  logger.debug(`Fetching iCal feed from: ${url.substring(0, 50)}...`);
+  const urlPreview = url.length > 60 ? url.substring(0, 60) + '...' : url;
+  logger.info(`📥 Fetching iCal feed: ${urlPreview}`);
   
   const response = await fetch(url, {
     headers: {
@@ -51,13 +52,13 @@ async function fetchICalFeed(url: string): Promise<string> {
   });
   
   if (!response.ok) {
-    logger.error(`Fetch failed: HTTP ${response.status} ${response.statusText}`);
+    logger.error(`❌ Fetch failed: HTTP ${response.status} ${response.statusText}`);
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   }
   
   const content = await response.text();
   const elapsed = Date.now() - startTime;
-  logger.debug(`Fetched ${content.length} bytes in ${elapsed}ms`);
+  logger.info(`✅ Fetch successful: ${content.length} bytes in ${elapsed}ms`);
   
   return content;
 }
@@ -87,7 +88,7 @@ export async function updateCalendarCache(
   
   try {
     calendarCache.status = 'LOADING';
-    logger.info(`Updating calendar cache (${timeWindowDays} day window)...`);
+    logger.info(`🔄 Updating calendar cache (${timeWindowDays} day window)...`);
     
     // Fetch the feed
     const icsContent = await fetchICalFeed(url);
@@ -95,6 +96,7 @@ export async function updateCalendarCache(
     // Parse the feed
     const parsed = await parseICalFeed(icsContent);
     calendarCache.provider = parsed.provider;
+    logger.info(`📅 Provider detected: ${parsed.provider || 'unknown'}, parsed ${parsed.events.length} raw events`);
     
     // Calculate time window
     const now = new Date();
@@ -116,10 +118,11 @@ export async function updateCalendarCache(
     calendarCache.version++;
     calendarCache.lastFetch = Date.now();
     
-    logger.info(`Cache updated: ${sortedEvents.length} events loaded (version ${calendarCache.version})`);
+    logger.info(`✅ Cache updated successfully: ${sortedEvents.length} events in window (version ${calendarCache.version})`);
     
   } catch (error) {
-    logger.error('Failed to update calendar cache:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logger.error(`❌ Failed to update calendar cache: ${errorMessage}`);
     
     // Determine error type
     if (error instanceof TypeError && error.message.includes('fetch')) {

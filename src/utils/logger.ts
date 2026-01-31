@@ -43,37 +43,39 @@ function addDebugLog(level: DebugLogEntry['level'], ...args: any[]): void {
 
 /**
  * Check if debug mode is enabled
+ * Checks multiple environment variables at runtime
  */
 export function isDebugMode(): boolean {
-  return DEBUG;
+  return DEBUG || 
+         process.env.STREAMDECK_DEBUG === '1' || 
+         process.env.STREAMDECK_DEBUG === 'true' ||
+         process.env.NODE_ENV === 'development';
 }
 
 export const logger = {
   debug: (...args: any[]): void => {
     if (DEBUG) {
       console.log('[DEBUG]', ...args);
-      addDebugLog('debug', ...args);
     }
+    // Always add to debug logs for the debug panel
+    addDebugLog('debug', ...args);
   },
 
   info: (...args: any[]): void => {
     console.log('[INFO]', ...args);
-    if (DEBUG) {
-      addDebugLog('info', ...args);
-    }
+    // Always add to debug logs for the debug panel
+    addDebugLog('info', ...args);
   },
 
   warn: (...args: any[]): void => {
     console.warn('[WARN]', ...args);
-    if (DEBUG) {
-      addDebugLog('warn', ...args);
-    }
+    // Always add to debug logs for the debug panel
+    addDebugLog('warn', ...args);
   },
 
   error: (...args: any[]): void => {
     console.error('[ERROR]', ...args);
-    if (DEBUG) {
-      addDebugLog('error', ...args);
-    }
+    // Always add to debug logs for the debug panel
+    addDebugLog('error', ...args);
   }
 };
