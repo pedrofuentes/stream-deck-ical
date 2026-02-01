@@ -6,6 +6,13 @@ iCal Plugin for [elgato Stream Deck](https://www.elgato.com/en/gaming/stream-dec
 
 This plugin is available on the Stream Deck store, you can also download [the last release](https://github.com/pedrofuentes/stream-deck-ical/releases) or build it yourself using the code on this repo.
 
+## ✨ New in v2.2
+
+- ✅ **Smart Calendar Action**: New all-in-one action that automatically switches between modes (#10)
+  - Shows "Time Left" when a meeting is active
+  - Shows "Next Meeting" when no meeting is active
+  - Supports all features from both actions (marquee titles, concurrent meetings, flash alerts)
+
 ## ✨ New in v2.1
 
 - ✅ **Configurable Title Display**: Choose how long meeting titles show (5, 10, 15, or 30 seconds)
@@ -39,6 +46,18 @@ This plugin is available on the Stream Deck store, you can also download [the la
 * When the meeting ends the counter will keep going and stay red for 5 minutes, if the user pushes the button it will show the next meeting if one is available
 * Supports multiple concurrent meetings, to switch between meeting just push the button
 * Shows meeting indicator (e.g., "1/3") when multiple meetings are active
+
+### Smart Calendar (NEW in v2.2) ###
+* **All-in-one action** that intelligently combines Time Left and Next Meeting
+* **Auto-switches modes** based on your current meeting status:
+  * When a meeting is active → Shows Time Left countdown
+  * When no meeting is active → Shows countdown to Next Meeting
+* Includes all features from both actions:
+  * Scrolling marquee for meeting titles (tap to show/hide)
+  * Concurrent meeting support (tap to cycle through active meetings)
+  * Flash alert when meetings start
+  * Color-coded countdown (orange at 5 min, red at 30 sec)
+* **Perfect for limited Stream Deck space** - one button does it all!
 
 ### Next Meeting ###
 * Shows time left until next meeting starts
@@ -165,6 +184,10 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - **Type Safety**: Full TypeScript coverage with strict mode
 
 ## Changelog
+
+### v2.2.0 (2026)
+- ✨ **Smart Calendar Action**: New combined action that auto-switches between Time Left and Next Meeting (#10)
+- ✅ Added 22 tests for combined action behavior
 
 ### v2.1.0 (2026)
 - ✨ **Configurable Title Display Duration**: Choose 5, 10, 15, or 30 seconds (#20)

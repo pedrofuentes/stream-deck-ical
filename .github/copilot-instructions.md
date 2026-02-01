@@ -190,13 +190,38 @@ git status
 git log --oneline -5
 ```
 
-#### 2. Update Version Numbers
+#### 2. Verify Documentation Is Updated
+
+**CRITICAL**: Before any release, verify and update documentation:
+
+**README.md** must include:
+- [ ] "New in vX.Y" section at the top (if major features)
+- [ ] Feature documentation in the Features section
+- [ ] Changelog entry with issue numbers
+
+**Documentation checklist:**
+1. Check if new features are documented in README.md
+2. Check if Changelog has the new version entry
+3. Add/update any new action types in Features section
+4. Update any changed behavior or settings
+5. Commit documentation changes before merging to main
+
+```powershell
+# Review README for completeness
+git diff HEAD -- README.md
+
+# If documentation needs updates, commit them first
+git add README.md
+git commit -m "docs: update README for vX.Y.Z"
+```
+
+#### 3. Update Version Numbers
 
 Update version in both files (must match):
 - `manifest.json`: 4-part version `"Version": "X.Y.Z.0"`
 - `package.json`: 3-part version `"version": "X.Y.Z"`
 
-#### 3. Merge Feature Branch to Main
+#### 4. Merge Feature Branch to Main
 
 ```powershell
 # Switch to main and pull latest
@@ -213,7 +238,7 @@ Closes #XX, Closes #YY"
 git push origin main
 ```
 
-#### 4. Create Release Package
+#### 5. Create Release Package
 
 **CRITICAL**: Always use the Stream Deck CLI to create packages. Manual zipping will create invalid packages.
 
@@ -228,7 +253,7 @@ streamdeck pack "release/com.pedrofuentes.ical.sdPlugin" --output release
 Get-Item "release/com.pedrofuentes.ical.streamDeckPlugin"
 ```
 
-#### 5. Test the Package (Optional but Recommended)
+#### 6. Test the Package (Optional but Recommended)
 
 ```powershell
 # Remove dev plugin and test the package
@@ -238,7 +263,7 @@ Start-Process "$env:ProgramFiles\Elgato\StreamDeck\StreamDeck.exe"
 # Then double-click the .streamDeckPlugin file to install and verify it works
 ```
 
-#### 6. Create Git Tag
+#### 7. Create Git Tag
 
 ```powershell
 # Create annotated tag on main branch
@@ -248,7 +273,7 @@ git tag -a vX.Y.Z -m "vX.Y.Z - Brief description of release"
 git push origin vX.Y.Z
 ```
 
-#### 7. Create GitHub Release
+#### 8. Create GitHub Release
 
 **IMPORTANT**: Use GitHub keywords to automatically close related issues. Include `Closes #X`, `Fixes #X`, or `Resolves #X` in the release notes for each issue addressed.
 
@@ -289,7 +314,7 @@ GitHub automatically closes issues when these keywords are used in:
 
 **Multiple issues**: `Closes #11, Closes #20` or `Fixes #11, #20`
 
-#### 8. Post-Release Cleanup
+#### 9. Post-Release Cleanup
 
 ```powershell
 # Delete merged feature branch (optional)
