@@ -91,9 +91,25 @@ export abstract class BaseAction extends SingletonAction {
   // Per-button state storage (SingletonAction = one instance for all buttons)
   protected buttonStates: Map<string, ButtonState> = new Map();
   
-  // Color zones (in seconds)
-  protected readonly RED_ZONE = 30;
-  protected readonly ORANGE_ZONE = 300; // 5 minutes
+  // Color zone defaults (in seconds) - can be overridden via settings
+  protected readonly DEFAULT_RED_ZONE = 30;
+  protected readonly DEFAULT_ORANGE_ZONE = 300; // 5 minutes
+  
+  /**
+   * Get the red zone threshold (in seconds)
+   */
+  protected getRedZone(): number {
+    const globalSettings = calendarManager.getGlobalSettings();
+    return globalSettings?.redThreshold ?? this.DEFAULT_RED_ZONE;
+  }
+  
+  /**
+   * Get the orange zone threshold (in seconds)
+   */
+  protected getOrangeZone(): number {
+    const globalSettings = calendarManager.getGlobalSettings();
+    return globalSettings?.orangeThreshold ?? this.DEFAULT_ORANGE_ZONE;
+  }
   
   /**
    * Get or create button state for an action ID

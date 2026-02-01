@@ -194,10 +194,10 @@ export class NextMeetingAction extends BaseAction {
     
     // Update image based on time remaining
     let imageState = 'normal';
-    if (secondsRemaining <= this.RED_ZONE) {
+    if (secondsRemaining <= this.getRedZone()) {
       imageState = 'red';
       await this.setImage(actionId, action, 'nextMeetingRed');
-    } else if (secondsRemaining <= this.ORANGE_ZONE) {
+    } else if (secondsRemaining <= this.getOrangeZone()) {
       imageState = 'orange';
       await this.setImage(actionId, action, 'nextMeetingOrange');
     } else {

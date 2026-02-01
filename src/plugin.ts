@@ -54,6 +54,9 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
   const settings = ev.settings as any;
   logger.debug('Global settings received:', JSON.stringify(settings));
   
+  // Store global settings in CalendarManager for threshold access
+  calendarManager.setGlobalSettings(settings);
+  
   // Named calendars (new approach)
   const newCalendars = (settings.calendars as NamedCalendar[]) || [];
   const newDefaultCalendarId = settings.defaultCalendarId as string | undefined;
@@ -151,6 +154,9 @@ streamDeck.settings.getGlobalSettings().then((settings: any) => {
   
   // Handle both old format (ev.settings) and direct settings object
   const actualSettings = settings?.settings ?? settings;
+  
+  // Store global settings in CalendarManager for threshold access
+  calendarManager.setGlobalSettings(actualSettings || {});
   
   // Named calendars (new approach)
   currentCalendars = (actualSettings?.calendars as NamedCalendar[]) || [];

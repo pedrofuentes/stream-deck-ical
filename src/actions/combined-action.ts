@@ -235,9 +235,9 @@ export class CombinedAction extends BaseAction {
     // Update image based on time remaining
     if (secondsRemaining < 0) {
       await this.setImage(actionId, action, 'activeMeetingRed');
-    } else if (secondsRemaining <= this.RED_ZONE) {
+    } else if (secondsRemaining <= this.getRedZone()) {
       await this.setImage(actionId, action, 'activeMeetingRed');
-    } else if (secondsRemaining <= this.ORANGE_ZONE) {
+    } else if (secondsRemaining <= this.getOrangeZone()) {
       await this.setImage(actionId, action, 'activeMeetingOrange');
     } else {
       await this.setImage(actionId, action, 'activeMeeting');
@@ -270,9 +270,9 @@ export class CombinedAction extends BaseAction {
     }
     
     // Update image based on time remaining
-    if (secondsRemaining <= this.RED_ZONE) {
+    if (secondsRemaining <= this.getRedZone()) {
       await this.setImage(actionId, action, 'nextMeetingRed');
-    } else if (secondsRemaining <= this.ORANGE_ZONE) {
+    } else if (secondsRemaining <= this.getOrangeZone()) {
       await this.setImage(actionId, action, 'nextMeetingOrange');
     } else {
       await this.setImage(actionId, action, 'nextMeeting');

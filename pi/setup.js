@@ -72,14 +72,18 @@ function renderCalendarList() {
         const isFirst = index === 0;
         return `
             <div class="calendar-item ${isFirst ? 'default' : ''}" data-id="${cal.id}">
-                <div class="calendar-name">
-                    ${escapeHtml(cal.name)}
-                    ${isFirst ? '<span class="default-badge">Default</span>' : ''}
-                </div>
-                <div class="calendar-url" title="${escapeHtml(cal.url)}">${escapeHtml(cal.url)}</div>
-                <div class="calendar-actions">
-                    <button class="btn-small btn-edit" data-id="${cal.id}">Edit</button>
-                    ${!isFirst ? `<button class="btn-small btn-delete" data-id="${cal.id}">🗑</button>` : ''}
+                <div class="calendar-header">
+                    <div class="calendar-info">
+                        <div class="calendar-name">
+                            ${escapeHtml(cal.name)}
+                            ${isFirst ? '<span class="default-badge">Default</span>' : ''}
+                        </div>
+                        <div class="calendar-url" title="${escapeHtml(cal.url)}">${escapeHtml(cal.url)}</div>
+                    </div>
+                    <div class="calendar-actions">
+                        <button class="btn-small btn-edit" data-id="${cal.id}">Edit</button>
+                        ${!isFirst ? `<button class="btn-small btn-delete" data-id="${cal.id}">🗑</button>` : ''}
+                    </div>
                 </div>
             </div>
         `;
@@ -247,6 +251,10 @@ function autoSaveCalendars(message) {
     const titleDisplayDuration = titleDisplayDurationEl ? parseInt(titleDisplayDurationEl.value, 10) : 15;
     const flashOnMeetingStartEl = document.getElementById('flashOnMeetingStart');
     const flashOnMeetingStart = flashOnMeetingStartEl ? flashOnMeetingStartEl.checked : false;
+    const orangeThresholdEl = document.getElementById('orangeThreshold');
+    const orangeThreshold = orangeThresholdEl ? parseInt(orangeThresholdEl.value, 10) : 300;
+    const redThresholdEl = document.getElementById('redThreshold');
+    const redThreshold = redThresholdEl ? parseInt(redThresholdEl.value, 10) : 30;
     
     const globalSettings = {
         calendars: calendars,
@@ -256,7 +264,9 @@ function autoSaveCalendars(message) {
         timeWindow: timeWindow,
         excludeAllDay: excludeAllDay,
         titleDisplayDuration: titleDisplayDuration,
-        flashOnMeetingStart: flashOnMeetingStart
+        flashOnMeetingStart: flashOnMeetingStart,
+        orangeThreshold: orangeThreshold,
+        redThreshold: redThreshold
     };
     
     const globalJson = {
@@ -283,6 +293,10 @@ function saveUrl() {
     const titleDisplayDuration = titleDisplayDurationEl ? parseInt(titleDisplayDurationEl.value, 10) : 15;
     const flashOnMeetingStartEl = document.getElementById('flashOnMeetingStart');
     const flashOnMeetingStart = flashOnMeetingStartEl ? flashOnMeetingStartEl.checked : false;
+    const orangeThresholdEl = document.getElementById('orangeThreshold');
+    const orangeThreshold = orangeThresholdEl ? parseInt(orangeThresholdEl.value, 10) : 300;
+    const redThresholdEl = document.getElementById('redThreshold');
+    const redThreshold = redThresholdEl ? parseInt(redThresholdEl.value, 10) : 30;
     
     // Validate: need at least one calendar
     if (calendars.length === 0) {
@@ -307,7 +321,9 @@ function saveUrl() {
             timeWindow: timeWindow,
             excludeAllDay: excludeAllDay,
             titleDisplayDuration: titleDisplayDuration,
-            flashOnMeetingStart: flashOnMeetingStart
+            flashOnMeetingStart: flashOnMeetingStart,
+            orangeThreshold: orangeThreshold,
+            redThreshold: redThreshold
         };
         
         const globalJson = {
@@ -429,6 +445,16 @@ document.addEventListener('DOMContentLoaded', function() {
         if (flashOnMeetingStartCheckbox) {
             flashOnMeetingStartCheckbox.checked = settings.flashOnMeetingStart === true;
         }
+        
+        const orangeThresholdSelect = document.getElementById('orangeThreshold');
+        if (orangeThresholdSelect) {
+            orangeThresholdSelect.value = settings.orangeThreshold || 300;
+        }
+        
+        const redThresholdSelect = document.getElementById('redThreshold');
+        if (redThresholdSelect) {
+            redThresholdSelect.value = settings.redThreshold || 30;
+        }
     } else {
         renderCalendarList();
     }
@@ -440,6 +466,18 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('save')?.addEventListener('click', saveUrl);
     document.getElementById('refresh')?.addEventListener('click', refreshIcal);
     document.getElementById('refresh-debug')?.addEventListener('click', requestDebugInfo);
+    
+    // Auto-save on settings changes
+    const settingsInputs = ['timeWindow', 'excludeAllDay', 'titleDisplayDuration', 'flashOnMeetingStart', 'orangeThreshold', 'redThreshold'];
+    settingsInputs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', () => {
+                // Use autoSaveCalendars to save all settings
+                autoSaveCalendars('Settings updated');
+            });
+        }
+    });
     
     // Hide alerts initially
     const alerts = document.getElementById('alerts');

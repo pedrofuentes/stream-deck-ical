@@ -10,7 +10,7 @@
  * @license MIT
  */
 
-import { CalendarCache, CalendarEvent, CalendarInstance, ErrorState } from '../types/index.js';
+import { CalendarCache, CalendarEvent, CalendarInstance, ErrorState, GlobalSettings } from '../types/index.js';
 import { parseICalFeed } from './ical-parser.js';
 import { processRecurringEvents } from './recurrence-expander.js';
 import { sortEventsByStartTime } from '../utils/event-utils.js';
@@ -95,6 +95,23 @@ class CalendarManager {
   
   /** Update interval in minutes */
   private readonly UPDATE_INTERVAL_MINUTES = 10;
+  
+  /** Cached global settings for threshold access */
+  private cachedGlobalSettings: GlobalSettings | null = null;
+  
+  /**
+   * Set the global settings (called from plugin.ts when settings are received)
+   */
+  setGlobalSettings(settings: GlobalSettings): void {
+    this.cachedGlobalSettings = settings;
+  }
+  
+  /**
+   * Get the cached global settings
+   */
+  getGlobalSettings(): GlobalSettings | null {
+    return this.cachedGlobalSettings;
+  }
 
   /**
    * Get or create a calendar instance for a URL

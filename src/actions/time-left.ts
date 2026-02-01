@@ -159,10 +159,10 @@ export class TimeLeftAction extends BaseAction {
       // Meeting has ended but within 5 minute grace period
       imageState = 'red (grace period)';
       await this.setImage(actionId, action, 'activeMeetingRed');
-    } else if (secondsRemaining <= this.RED_ZONE) {
+    } else if (secondsRemaining <= this.getRedZone()) {
       imageState = 'red';
       await this.setImage(actionId, action, 'activeMeetingRed');
-    } else if (secondsRemaining <= this.ORANGE_ZONE) {
+    } else if (secondsRemaining <= this.getOrangeZone()) {
       imageState = 'orange';
       await this.setImage(actionId, action, 'activeMeetingOrange');
     } else {

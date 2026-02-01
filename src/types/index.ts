@@ -103,6 +103,10 @@ export interface GlobalSettings {
   excludeAllDay?: boolean; // default true
   titleDisplayDuration?: 5 | 10 | 15 | 30; // seconds, default 15
   flashOnMeetingStart?: boolean; // default false
+  
+  // Color thresholds (in seconds)
+  orangeThreshold?: number; // default 300 (5 minutes)
+  redThreshold?: number; // default 30 (30 seconds)
 }
 
 /**
