@@ -858,3 +858,166 @@ describe('Setup - Calendar CRUD Operations', () => {
     expect(result.calendars.map(c => c.id)).toEqual(['cal-1', 'cal-2']);
   });
 });
+
+describe('Calendar Registration Retry on Startup', () => {
+  /**
+   * Tests for the retry mechanism that handles the race condition
+   * where onWillAppear fires before global settings (named calendars) are loaded
+   */
+  
+  interface MockButtonState {
+    calendarId?: string;
+    pendingCalendarId?: string;
+    actionRef?: any;
+    calendarRetryInterval?: NodeJS.Timeout;
+  }
+  
+  /**
+   * Simulate the calendar registration logic from base-action.ts
+   */
+  function registerCalendarForButton(
+    actionId: string,
+    settings: ActionSettings | undefined,
+    namedCalendars: NamedCalendar[],
+    globalUrl: string,
+    state: MockButtonState
+  ): { url?: string; needsRetry: boolean; source: string } {
+    let calendarUrl: string | undefined;
+    let needsRetry = false;
+    let source = '';
+    
+    if (settings?.calendarId) {
+      // Look for named calendar by ID
+      const namedCal = namedCalendars.find(c => c.id === settings.calendarId);
+      if (namedCal) {
+        calendarUrl = namedCal.url;
+        source = 'named-calendar';
+      } else if (namedCalendars.length === 0) {
+        // Named calendars not loaded yet - retry needed
+        needsRetry = true;
+        source = 'pending-retry';
+      } else {
+        // Named calendars loaded but ID not found
+        source = 'not-found';
+      }
+    }
+    
+    // If no specific calendar and not waiting for retry, use default
+    if (!calendarUrl && !needsRetry) {
+      if (namedCalendars.length > 0) {
+        calendarUrl = namedCalendars[0].url;
+        source = 'default-named';
+      } else if (globalUrl) {
+        calendarUrl = globalUrl;
+        source = 'legacy-global';
+      }
+    }
+    
+    return { url: calendarUrl, needsRetry, source };
+  }
+  
+  it('should find named calendar when calendars are loaded', () => {
+    const namedCalendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+      { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
+    ];
+    const settings: ActionSettings = { calendarId: 'cal-2' };
+    const state: MockButtonState = {};
+    
+    const result = registerCalendarForButton('action1', settings, namedCalendars, '', state);
+    
+    expect(result.url).toBe('https://personal.ics');
+    expect(result.needsRetry).toBe(false);
+    expect(result.source).toBe('named-calendar');
+  });
+  
+  it('should request retry when calendars not loaded yet', () => {
+    const namedCalendars: NamedCalendar[] = []; // Empty - not loaded yet
+    const settings: ActionSettings = { calendarId: 'cal-2' };
+    const state: MockButtonState = {};
+    
+    const result = registerCalendarForButton('action1', settings, namedCalendars, '', state);
+    
+    expect(result.url).toBeUndefined();
+    expect(result.needsRetry).toBe(true);
+    expect(result.source).toBe('pending-retry');
+  });
+  
+  it('should fall back to default when calendar ID not found', () => {
+    const namedCalendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' }
+    ];
+    const settings: ActionSettings = { calendarId: 'deleted-calendar' };
+    const state: MockButtonState = {};
+    
+    const result = registerCalendarForButton('action1', settings, namedCalendars, '', state);
+    
+    // Falls back to default (first) calendar
+    expect(result.url).toBe('https://work.ics');
+    expect(result.needsRetry).toBe(false);
+    expect(result.source).toBe('default-named');
+  });
+  
+  it('should use default calendar when no calendarId in settings', () => {
+    const namedCalendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+      { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
+    ];
+    const settings: ActionSettings = {}; // No calendarId
+    const state: MockButtonState = {};
+    
+    const result = registerCalendarForButton('action1', settings, namedCalendars, '', state);
+    
+    expect(result.url).toBe('https://work.ics'); // First is default
+    expect(result.needsRetry).toBe(false);
+    expect(result.source).toBe('default-named');
+  });
+  
+  it('should use legacy global URL when no calendars exist', () => {
+    const namedCalendars: NamedCalendar[] = [];
+    const settings: ActionSettings = {}; // No calendarId
+    const state: MockButtonState = {};
+    
+    const result = registerCalendarForButton('action1', settings, namedCalendars, 'https://legacy.ics', state);
+    
+    expect(result.url).toBe('https://legacy.ics');
+    expect(result.needsRetry).toBe(false);
+    expect(result.source).toBe('legacy-global');
+  });
+  
+  it('should not retry when no calendarId and no calendars', () => {
+    const namedCalendars: NamedCalendar[] = [];
+    const settings: ActionSettings = {}; // No calendarId specified
+    const state: MockButtonState = {};
+    
+    const result = registerCalendarForButton('action1', settings, namedCalendars, '', state);
+    
+    // Should not retry - user didn't select a specific calendar
+    expect(result.needsRetry).toBe(false);
+    expect(result.url).toBeUndefined();
+  });
+  
+  /**
+   * Simulate the retry flow
+   */
+  it('should successfully register after retry when calendars become available', () => {
+    const settings: ActionSettings = { calendarId: 'cal-2' };
+    const state: MockButtonState = { pendingCalendarId: 'cal-2' };
+    
+    // First attempt - calendars not loaded
+    const result1 = registerCalendarForButton('action1', settings, [], '', state);
+    expect(result1.needsRetry).toBe(true);
+    expect(result1.url).toBeUndefined();
+    
+    // Second attempt - calendars now loaded
+    const namedCalendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+      { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
+    ];
+    
+    const result2 = registerCalendarForButton('action1', settings, namedCalendars, '', state);
+    expect(result2.needsRetry).toBe(false);
+    expect(result2.url).toBe('https://personal.ics');
+    expect(result2.source).toBe('named-calendar');
+  });
+});
