@@ -1,6 +1,22 @@
 /**
- * Setup page for iCal plugin
+ * Setup page for iCal plugin - Named Calendars Management
+ * 
+ * This popup allows users to:
+ * - Manage named calendars (add, edit, delete)
+ * - Set a default calendar
+ * - Configure global defaults
  */
+
+// Store for calendars
+let calendars = [];
+let defaultCalendarId = null;
+
+/**
+ * Generate a unique ID for calendars
+ */
+function generateId() {
+    return 'cal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
 
 /**
  * Validate URL format
@@ -37,67 +53,181 @@ function getOpener() {
 }
 
 /**
- * Toggle custom calendar section visibility
+ * Render the calendar list
  */
-function toggleCustomCalendarSection() {
-    const checkbox = document.getElementById('useCustomCalendar');
-    const section = document.getElementById('customCalendarSection');
-    if (checkbox && section) {
-        section.style.display = checkbox.checked ? 'block' : 'none';
-    }
-}
-
-/**
- * Save per-action settings (custom calendar for this button)
- */
-function saveActionSettings() {
-    const opener = getOpener();
-    if (!opener || !opener.websocket) {
-        console.log('[SETUP] Cannot save action settings - no opener/websocket');
+function renderCalendarList() {
+    const listEl = document.getElementById('calendar-list');
+    if (!listEl) return;
+    
+    if (calendars.length === 0) {
+        listEl.innerHTML = '<div class="empty-calendars">No calendars configured. Add one below.</div>';
         return;
     }
     
-    const useCustomCalendar = document.getElementById('useCustomCalendar')?.checked || false;
-    const customLabel = document.getElementById('customLabel')?.value.trim() || '';
-    const customUrl = document.getElementById('customUrl')?.value.trim() || '';
-    const customTimeWindow = parseInt(document.getElementById('customTimeWindow')?.value || '3', 10);
-    const customExcludeAllDay = document.getElementById('customExcludeAllDay')?.checked !== false;
-    
-    // Validate custom URL if custom calendar is enabled
-    if (useCustomCalendar && customUrl && !isValidURL(customUrl)) {
-        showAlert('Custom calendar URL is not valid. Please enter a valid URL.');
-        return false;
-    }
-    
-    const actionSettings = {
-        useCustomCalendar: useCustomCalendar,
-        customLabel: customLabel,
-        customUrl: customUrl,
-        customTimeWindow: customTimeWindow,
-        customExcludeAllDay: customExcludeAllDay
-    };
-    
-    // Save using setSettings (per-action)
-    const json = {
-        event: 'setSettings',
-        context: opener.uuid,
-        payload: actionSettings
-    };
-    
-    console.log('[SETUP] Saving action settings:', actionSettings);
-    opener.websocket.send(JSON.stringify(json));
-    
-    // Store in opener for reference
-    opener.actionSettings = actionSettings;
-    
-    return true;
+    listEl.innerHTML = calendars.map(cal => {
+        const isDefault = cal.id === defaultCalendarId;
+        return `
+            <div class="calendar-item ${isDefault ? 'default' : ''}" data-id="${cal.id}">
+                <div class="calendar-name">
+                    ${escapeHtml(cal.name)}
+                    ${isDefault ? '<span class="default-badge">Default</span>' : ''}
+                </div>
+                <div class="calendar-url" title="${escapeHtml(cal.url)}">${escapeHtml(cal.url)}</div>
+                <div class="calendar-actions">
+                    ${!isDefault ? `<button class="btn-small btn-default" onclick="setDefaultCalendar('${cal.id}')">★</button>` : ''}
+                    <button class="btn-small btn-edit" onclick="editCalendar('${cal.id}')">Edit</button>
+                    <button class="btn-small btn-delete" onclick="deleteCalendar('${cal.id}')">🗑</button>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 /**
- * Save URL and settings
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * Show the calendar form for adding
+ */
+function showAddForm() {
+    document.getElementById('edit-calendar-id').value = '';
+    document.getElementById('calendar-name').value = '';
+    document.getElementById('calendar-url').value = '';
+    document.getElementById('calendar-time-window').value = '';
+    document.getElementById('calendar-exclude-allday').value = '';
+    document.getElementById('calendar-form').classList.remove('hidden');
+    document.getElementById('add-calendar-btn').style.display = 'none';
+    document.getElementById('calendar-name').focus();
+}
+
+/**
+ * Hide the calendar form
+ */
+function hideForm() {
+    document.getElementById('calendar-form').classList.add('hidden');
+    document.getElementById('add-calendar-btn').style.display = 'block';
+}
+
+/**
+ * Edit an existing calendar
+ */
+function editCalendar(id) {
+    const cal = calendars.find(c => c.id === id);
+    if (!cal) return;
+    
+    document.getElementById('edit-calendar-id').value = id;
+    document.getElementById('calendar-name').value = cal.name;
+    document.getElementById('calendar-url').value = cal.url;
+    document.getElementById('calendar-time-window').value = cal.timeWindow || '';
+    document.getElementById('calendar-exclude-allday').value = cal.excludeAllDay !== undefined ? String(cal.excludeAllDay) : '';
+    document.getElementById('calendar-form').classList.remove('hidden');
+    document.getElementById('add-calendar-btn').style.display = 'none';
+    document.getElementById('calendar-name').focus();
+}
+
+/**
+ * Save the current calendar (add or edit)
+ */
+function saveCalendar() {
+    const id = document.getElementById('edit-calendar-id').value;
+    const name = document.getElementById('calendar-name').value.trim();
+    const url = document.getElementById('calendar-url').value.trim();
+    const timeWindowVal = document.getElementById('calendar-time-window').value;
+    const excludeAllDayVal = document.getElementById('calendar-exclude-allday').value;
+    
+    // Validate
+    if (!name) {
+        showAlert('Please enter a calendar name');
+        return;
+    }
+    if (!url) {
+        showAlert('Please enter an iCal URL');
+        return;
+    }
+    if (!isValidURL(url)) {
+        showAlert('Please enter a valid iCal URL (must start with http:// or https://)');
+        return;
+    }
+    
+    // Check for duplicate names (excluding current if editing)
+    const duplicate = calendars.find(c => c.name.toLowerCase() === name.toLowerCase() && c.id !== id);
+    if (duplicate) {
+        showAlert('A calendar with this name already exists');
+        return;
+    }
+    
+    const calData = {
+        id: id || generateId(),
+        name: name,
+        url: url,
+        timeWindow: timeWindowVal ? parseInt(timeWindowVal, 10) : undefined,
+        excludeAllDay: excludeAllDayVal !== '' ? excludeAllDayVal === 'true' : undefined
+    };
+    
+    if (id) {
+        // Edit existing
+        const index = calendars.findIndex(c => c.id === id);
+        if (index !== -1) {
+            calendars[index] = calData;
+        }
+    } else {
+        // Add new
+        calendars.push(calData);
+        
+        // If this is the first calendar, make it the default
+        if (calendars.length === 1) {
+            defaultCalendarId = calData.id;
+        }
+    }
+    
+    hideForm();
+    renderCalendarList();
+    
+    // Don't auto-save - user needs to click Save Settings
+    showAlert('Calendar updated. Click "Save Settings" to apply changes.', 'notice', 5);
+}
+
+/**
+ * Delete a calendar
+ */
+function deleteCalendar(id) {
+    const cal = calendars.find(c => c.id === id);
+    if (!cal) return;
+    
+    if (!confirm(`Delete calendar "${cal.name}"?`)) {
+        return;
+    }
+    
+    calendars = calendars.filter(c => c.id !== id);
+    
+    // If deleted calendar was default, set new default
+    if (defaultCalendarId === id) {
+        defaultCalendarId = calendars.length > 0 ? calendars[0].id : null;
+    }
+    
+    renderCalendarList();
+    showAlert('Calendar deleted. Click "Save Settings" to apply changes.', 'notice', 5);
+}
+
+/**
+ * Set a calendar as the default
+ */
+function setDefaultCalendar(id) {
+    defaultCalendarId = id;
+    renderCalendarList();
+    showAlert('Default calendar changed. Click "Save Settings" to apply changes.', 'notice', 5);
+}
+
+/**
+ * Save all settings to Stream Deck
  */
 function saveUrl() {
-    const url = document.getElementById('url').value.trim();
     const timeWindow = parseInt(document.getElementById('timeWindow').value, 10);
     const excludeAllDayEl = document.getElementById('excludeAllDay');
     const excludeAllDay = excludeAllDayEl ? excludeAllDayEl.checked : true;
@@ -106,42 +236,30 @@ function saveUrl() {
     const flashOnMeetingStartEl = document.getElementById('flashOnMeetingStart');
     const flashOnMeetingStart = flashOnMeetingStartEl ? flashOnMeetingStartEl.checked : false;
     
-    // Check if using custom calendar - only validate global URL if not using custom
-    const useCustomCalendar = document.getElementById('useCustomCalendar')?.checked || false;
-    const customUrl = document.getElementById('customUrl')?.value.trim() || '';
-    
-    // Validate: need either a global URL or a custom URL
-    if (!useCustomCalendar && !url) {
-        showAlert('Please enter an iCal URL');
-        return;
-    }
-    
-    if (!useCustomCalendar && url && !isValidURL(url)) {
-        showAlert('Please enter a valid iCal URL (must start with http:// or https://)');
-        return;
-    }
-    
-    if (useCustomCalendar && customUrl && !isValidURL(customUrl)) {
-        showAlert('Please enter a valid custom iCal URL (must start with http:// or https://)');
-        return;
-    }
-    
-    if (useCustomCalendar && !customUrl) {
-        showAlert('Please enter a custom calendar URL or disable custom calendar');
+    // Validate: need at least one calendar
+    if (calendars.length === 0) {
+        showAlert('Please add at least one calendar');
         return;
     }
     
     // Get parent window's websocket connection
     const opener = getOpener();
     if (opener && opener.websocket) {
-        // Save global settings
+        // Build global settings with named calendars
         const globalSettings = {
-            url: url,
+            // Named calendars (new approach)
+            calendars: calendars,
+            defaultCalendarId: defaultCalendarId,
+            
+            // Legacy field - populate from first/default calendar for backwards compat
+            url: calendars.find(c => c.id === defaultCalendarId)?.url || calendars[0]?.url || '',
+            urlVersion: (opener.globalSettings?.urlVersion || 0) + 1,
+            
+            // Global defaults
             timeWindow: timeWindow,
             excludeAllDay: excludeAllDay,
             titleDisplayDuration: titleDisplayDuration,
-            flashOnMeetingStart: flashOnMeetingStart,
-            urlVersion: (opener.globalSettings?.urlVersion || 0) + 1
+            flashOnMeetingStart: flashOnMeetingStart
         };
         
         const globalJson = {
@@ -150,19 +268,9 @@ function saveUrl() {
             payload: globalSettings
         };
         
+        console.log('[SETUP] Saving global settings:', globalSettings);
         opener.websocket.send(JSON.stringify(globalJson));
         opener.globalSettings = globalSettings;
-        
-        // Also save per-action settings
-        saveActionSettings();
-        
-        // Update parent window UI
-        if (opener.document.getElementById('url')) {
-            opener.document.getElementById('url').value = url;
-        }
-        if (opener.document.getElementById('timeWindow')) {
-            opener.document.getElementById('timeWindow').value = timeWindow;
-        }
         
         showAlert('Settings saved successfully! Refreshing calendar data...', 'notice', 5);
         
@@ -176,18 +284,11 @@ function saveUrl() {
 }
 
 /**
- * Force refresh
+ * Force refresh all calendars
  */
 function refreshIcal() {
-    const url = document.getElementById('url').value.trim();
-    
-    if (!url) {
-        showAlert('Please enter an iCal URL first');
-        return;
-    }
-    
-    if (!isValidURL(url)) {
-        showAlert('Current iCal URL is not valid. Please enter a valid URL before refreshing.');
+    if (calendars.length === 0) {
+        showAlert('Please add at least one calendar first');
         return;
     }
     
@@ -195,7 +296,7 @@ function refreshIcal() {
     const opener = getOpener();
     if (opener && opener.websocket) {
         const settings = Object.assign({}, opener.globalSettings, {
-            urlVersion: (opener.globalSettings.urlVersion || 0) + 1
+            urlVersion: (opener.globalSettings?.urlVersion || 0) + 1
         });
         
         const json = {
@@ -214,6 +315,34 @@ function refreshIcal() {
 }
 
 /**
+ * Migrate from old settings format (single URL) to named calendars
+ */
+function migrateOldSettings(globalSettings) {
+    if (globalSettings.calendars && globalSettings.calendars.length > 0) {
+        // Already using named calendars
+        return globalSettings;
+    }
+    
+    if (globalSettings.url) {
+        // Create a default calendar from the old URL
+        const defaultCal = {
+            id: generateId(),
+            name: 'Default',
+            url: globalSettings.url,
+            timeWindow: globalSettings.timeWindow,
+            excludeAllDay: globalSettings.excludeAllDay
+        };
+        
+        globalSettings.calendars = [defaultCal];
+        globalSettings.defaultCalendarId = defaultCal.id;
+        
+        console.log('[SETUP] Migrated old settings to named calendars:', defaultCal);
+    }
+    
+    return globalSettings;
+}
+
+/**
  * Initialize when DOM is loaded
  */
 document.addEventListener('DOMContentLoaded', function() {
@@ -222,77 +351,47 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Load global settings
     if (opener && opener.globalSettings) {
-        const urlInput = document.getElementById('url');
+        // Migrate old format if needed
+        const settings = migrateOldSettings(opener.globalSettings);
+        
+        // Load calendars
+        calendars = settings.calendars || [];
+        defaultCalendarId = settings.defaultCalendarId || (calendars.length > 0 ? calendars[0].id : null);
+        
+        // Render the calendar list
+        renderCalendarList();
+        
+        // Load global defaults
         const timeWindowSelect = document.getElementById('timeWindow');
-        const excludeAllDayCheckbox = document.getElementById('excludeAllDay');
-        
-        if (urlInput) {
-            urlInput.value = opener.globalSettings.url || '';
-        }
         if (timeWindowSelect) {
-            timeWindowSelect.value = opener.globalSettings.timeWindow || 3;
-        }
-        if (excludeAllDayCheckbox) {
-            // Default to true if not set
-            excludeAllDayCheckbox.checked = opener.globalSettings.excludeAllDay !== false;
+            timeWindowSelect.value = settings.timeWindow || 3;
         }
         
-        // New settings
+        const excludeAllDayCheckbox = document.getElementById('excludeAllDay');
+        if (excludeAllDayCheckbox) {
+            excludeAllDayCheckbox.checked = settings.excludeAllDay !== false;
+        }
+        
         const titleDisplayDurationSelect = document.getElementById('titleDisplayDuration');
         if (titleDisplayDurationSelect) {
-            titleDisplayDurationSelect.value = opener.globalSettings.titleDisplayDuration || 15;
+            titleDisplayDurationSelect.value = settings.titleDisplayDuration || 15;
         }
+        
         const flashOnMeetingStartCheckbox = document.getElementById('flashOnMeetingStart');
         if (flashOnMeetingStartCheckbox) {
-            // Default to false if not set
-            flashOnMeetingStartCheckbox.checked = opener.globalSettings.flashOnMeetingStart === true;
+            flashOnMeetingStartCheckbox.checked = settings.flashOnMeetingStart === true;
         }
+    } else {
+        renderCalendarList();
     }
     
-    // Load per-action settings (custom calendar)
-    if (opener && opener.actionSettings) {
-        const useCustomCalendar = document.getElementById('useCustomCalendar');
-        const customLabel = document.getElementById('customLabel');
-        const customUrl = document.getElementById('customUrl');
-        const customTimeWindow = document.getElementById('customTimeWindow');
-        const customExcludeAllDay = document.getElementById('customExcludeAllDay');
-        
-        if (useCustomCalendar) {
-            useCustomCalendar.checked = opener.actionSettings.useCustomCalendar === true;
-        }
-        if (customLabel) {
-            customLabel.value = opener.actionSettings.customLabel || '';
-        }
-        if (customUrl) {
-            customUrl.value = opener.actionSettings.customUrl || '';
-        }
-        if (customTimeWindow) {
-            customTimeWindow.value = opener.actionSettings.customTimeWindow || 3;
-        }
-        if (customExcludeAllDay) {
-            customExcludeAllDay.checked = opener.actionSettings.customExcludeAllDay !== false;
-        }
-        
-        // Update UI based on checkbox state
-        toggleCustomCalendarSection();
-    }
-    
-    // Add event listener for custom calendar toggle
-    const useCustomCalendarCheckbox = document.getElementById('useCustomCalendar');
-    if (useCustomCalendarCheckbox) {
-        useCustomCalendarCheckbox.addEventListener('change', toggleCustomCalendarSection);
-    }
-    
-    // Add event listeners for save/refresh buttons
-    const saveButton = document.getElementById('save');
-    if (saveButton) {
-        saveButton.addEventListener('click', saveUrl);
-    }
-    
-    const refreshButton = document.getElementById('refresh');
-    if (refreshButton) {
-        refreshButton.addEventListener('click', refreshIcal);
-    }
+    // Add event listeners
+    document.getElementById('add-calendar-btn')?.addEventListener('click', showAddForm);
+    document.getElementById('save-calendar-btn')?.addEventListener('click', saveCalendar);
+    document.getElementById('cancel-calendar-btn')?.addEventListener('click', hideForm);
+    document.getElementById('save')?.addEventListener('click', saveUrl);
+    document.getElementById('refresh')?.addEventListener('click', refreshIcal);
+    document.getElementById('refresh-debug')?.addEventListener('click', requestDebugInfo);
     
     // Hide alerts initially
     const alerts = document.getElementById('alerts');
@@ -300,13 +399,7 @@ document.addEventListener('DOMContentLoaded', function() {
         alerts.style.display = 'none';
     }
     
-    // Debug panel functionality
-    const refreshDebugButton = document.getElementById('refresh-debug');
-    if (refreshDebugButton) {
-        refreshDebugButton.addEventListener('click', requestDebugInfo);
-    }
-    
-    // Request debug info on load to check if debug mode is enabled
+    // Request debug info on load
     requestDebugInfo();
 });
 
@@ -317,33 +410,27 @@ function requestDebugInfo() {
     const opener = getOpener();
     console.log('[SETUP] requestDebugInfo called, opener:', !!opener);
     
-    // Update status
     const debugStatus = document.getElementById('debug-status');
     if (debugStatus) {
         debugStatus.textContent = 'Requesting debug info...';
     }
     
     if (opener) {
-        // Check if there's already cached debug info
         if (opener.lastDebugInfo) {
             console.log('[SETUP] Using cached debug info');
             handlePluginMessage(opener.lastDebugInfo);
         }
         
-        // Request fresh debug info via PI's function
         if (opener.requestDebugInfo) {
             console.log('[SETUP] Calling opener.requestDebugInfo()');
             opener.requestDebugInfo();
         } else if (opener.websocket) {
-            // Fallback: send directly
             console.log('[SETUP] Fallback: sending directly via websocket');
             const json = {
                 event: 'sendToPlugin',
-                action: opener.actionInfo?.action || 'com.pedrofuentes.ical.time-left',
+                action: opener.actionInfo?.action || 'com.pedrofuentes.ical.combined',
                 context: opener.uuid,
-                payload: {
-                    action: 'getDebugInfo'
-                }
+                payload: { action: 'getDebugInfo' }
             };
             opener.websocket.send(JSON.stringify(json));
         }
@@ -362,7 +449,6 @@ function requestDebugInfo() {
 function handlePluginMessage(message) {
     console.log('[DEBUG] handlePluginMessage received:', message);
     
-    // Update status
     const debugStatus = document.getElementById('debug-status');
     if (debugStatus) {
         debugStatus.textContent = 'Received response from plugin';
@@ -373,19 +459,16 @@ function handlePluginMessage(message) {
         const data = message.data;
         console.log('[DEBUG] Debug info data:', data);
         
-        // Only show debug panel if debug mode is enabled
         const debugPanel = document.getElementById('debug-panel');
         if (debugPanel && data.isDebugMode) {
             debugPanel.style.display = 'block';
         }
         
-        // Update cache status
         const cacheStatus = document.getElementById('cache-status');
         if (cacheStatus && data.cache) {
             cacheStatus.textContent = JSON.stringify(data.cache, null, 2);
         }
         
-        // Update events list
         const eventsList = document.getElementById('events-list');
         if (eventsList && data.events) {
             if (data.events.length > 0) {
@@ -397,14 +480,12 @@ function handlePluginMessage(message) {
             }
         }
         
-        // Update logs
         const debugLogs = document.getElementById('debug-logs');
         if (debugLogs && data.logs) {
             if (data.logs.length > 0) {
                 debugLogs.textContent = data.logs.map(log => 
                     `[${log.timestamp}] [${log.level}] ${log.message}${log.data ? '\n  ' + JSON.stringify(log.data) : ''}`
                 ).join('\n');
-                // Auto-scroll to bottom
                 debugLogs.scrollTop = debugLogs.scrollHeight;
             } else {
                 debugLogs.textContent = 'No logs available';
@@ -413,7 +494,7 @@ function handlePluginMessage(message) {
     }
 }
 
-// Listen for messages from opener window (set up by pi.js)
+// Listen for messages from opener window
 window.addEventListener('message', function(event) {
     console.log('[DEBUG] Window message received:', event.data);
     if (event.data && event.data.type === 'sendToPropertyInspector') {

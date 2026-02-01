@@ -59,14 +59,29 @@ export interface PluginSettings {
 }
 
 /**
+ * Named calendar definition stored in global settings
+ * Users define calendars once with friendly names, then select by name per button
+ */
+export interface NamedCalendar {
+  id: string;           // UUID for this calendar
+  name: string;         // User-friendly name ("Work", "Personal", etc.)
+  url: string;          // The iCal URL
+  timeWindow?: 1 | 3 | 5 | 7;  // Override global time window
+  excludeAllDay?: boolean;     // Override global exclude all-day
+}
+
+/**
  * Per-action settings that can override global calendar settings
  * Stored via setSettings() for each action instance
  */
 export interface ActionSettings {
-  // Custom calendar override (if not set or false, uses global)
+  // New: Select calendar by ID (if not set, uses default calendar)
+  calendarId?: string;
+  
+  // Legacy fields - kept for backwards compatibility migration
   useCustomCalendar?: boolean;
   customUrl?: string;
-  customLabel?: string; // User-friendly name for PI organization
+  customLabel?: string;
   customTimeWindow?: 1 | 3 | 5 | 7;
   customExcludeAllDay?: boolean;
 }
@@ -75,9 +90,16 @@ export interface ActionSettings {
  * Global settings shared across all actions
  */
 export interface GlobalSettings {
-  url: string;
-  urlVersion: number;
-  timeWindow: 1 | 3 | 5 | 7; // days
+  // Legacy single URL (kept for backwards compatibility)
+  url?: string;
+  urlVersion?: number;
+  
+  // Named calendars (new approach)
+  calendars?: NamedCalendar[];
+  defaultCalendarId?: string;  // Which calendar to use by default
+  
+  // Global defaults
+  timeWindow?: 1 | 3 | 5 | 7; // days, default 3
   excludeAllDay?: boolean; // default true
   titleDisplayDuration?: 5 | 10 | 15 | 30; // seconds, default 15
   flashOnMeetingStart?: boolean; // default false

@@ -7,60 +7,157 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <title>iCal Setup</title>
     <link rel="stylesheet" href="css/sdpi.css">
+    <style>
+        .calendar-item {
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            margin: 4px 0;
+            background: #2a2a2a;
+            border-radius: 4px;
+            gap: 8px;
+        }
+        .calendar-item.default {
+            border-left: 3px solid #4CAF50;
+        }
+        .calendar-name {
+            flex: 1;
+            font-weight: bold;
+            color: #fff;
+        }
+        .calendar-url {
+            flex: 2;
+            color: #888;
+            font-size: 11px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .calendar-actions {
+            display: flex;
+            gap: 4px;
+        }
+        .calendar-actions button {
+            padding: 4px 8px;
+            font-size: 11px;
+            min-width: auto;
+        }
+        .btn-small {
+            padding: 4px 8px !important;
+            font-size: 11px !important;
+            min-width: auto !important;
+        }
+        .btn-default {
+            background: #4CAF50 !important;
+        }
+        .btn-edit {
+            background: #2196F3 !important;
+        }
+        .btn-delete {
+            background: #f44336 !important;
+        }
+        .empty-calendars {
+            color: #888;
+            font-style: italic;
+            padding: 10px;
+            text-align: center;
+        }
+        #calendar-form {
+            background: #1a1a1a;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        #calendar-form.hidden {
+            display: none;
+        }
+        .form-row {
+            margin-bottom: 8px;
+        }
+        .form-row label {
+            display: block;
+            color: #888;
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+        .form-row input, .form-row select {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .form-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        .default-badge {
+            background: #4CAF50;
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 10px;
+            margin-left: 8px;
+        }
+    </style>
 </head>
 <body>
     <div class="sdpi-wrapper">
         <div id="alerts" class="content" style="display: none;"></div>
         
-        <!-- Per-Button Custom Calendar Section -->
-        <div class="sdpi-heading">Button Settings</div>
+        <!-- Named Calendars Section -->
+        <div class="sdpi-heading">My Calendars</div>
         
-        <div class="sdpi-item" type="checkbox">
-            <div class="sdpi-item-label">Calendar Source</div>
-            <div class="sdpi-item-value">
-                <input type="checkbox" id="useCustomCalendar">
-                <label for="useCustomCalendar"><span></span>Use custom calendar for this button</label>
-            </div>
-        </div>
-        
-        <div id="customCalendarSection" style="display: none; padding-left: 10px; border-left: 2px solid #3a3a3a;">
-            <div class="sdpi-item full-row">
-                <div class="sdpi-item-label">Calendar Label</div>
-                <input id="customLabel" class="sdpi-item-value" type="text" value="" placeholder="e.g., Work, Personal, Family..." />
+        <div class="content">
+            <div id="calendar-list">
+                <div class="empty-calendars">No calendars configured. Add one below.</div>
             </div>
             
-            <div class="sdpi-item full-row">
-                <div class="sdpi-item-label">Custom URL</div>
-                <input id="customUrl" class="sdpi-item-value" type="text" value="" placeholder="https://calendar.google.com/calendar/ical/..." />
-            </div>
-
-            <div class="sdpi-item">
-                <div class="sdpi-item-label">Time Window</div>
-                <select id="customTimeWindow" class="sdpi-item-value select">
-                    <option value="1">1 Day</option>
-                    <option value="3" selected>3 Days</option>
-                    <option value="5">5 Days</option>
-                    <option value="7">7 Days</option>
-                </select>
-            </div>
-
-            <div class="sdpi-item" type="checkbox">
-                <div class="sdpi-item-label">All-Day Events</div>
-                <div class="sdpi-item-value">
-                    <input type="checkbox" id="customExcludeAllDay" checked>
-                    <label for="customExcludeAllDay"><span></span>Hide all-day events</label>
+            <button class="sdpi-item-value" id="add-calendar-btn" style="margin-top: 10px;">+ Add Calendar</button>
+            
+            <!-- Add/Edit Calendar Form (hidden by default) -->
+            <div id="calendar-form" class="hidden">
+                <input type="hidden" id="edit-calendar-id" value="">
+                
+                <div class="form-row">
+                    <label for="calendar-name">Calendar Name</label>
+                    <input type="text" id="calendar-name" placeholder="e.g., Work, Personal, Team..." />
+                </div>
+                
+                <div class="form-row">
+                    <label for="calendar-url">iCal URL</label>
+                    <input type="text" id="calendar-url" placeholder="https://calendar.google.com/calendar/ical/..." />
+                </div>
+                
+                <div class="form-row">
+                    <label for="calendar-time-window">Time Window (days)</label>
+                    <select id="calendar-time-window">
+                        <option value="">Use global default</option>
+                        <option value="1">1 Day</option>
+                        <option value="3">3 Days</option>
+                        <option value="5">5 Days</option>
+                        <option value="7">7 Days</option>
+                    </select>
+                </div>
+                
+                <div class="form-row">
+                    <label for="calendar-exclude-allday">All-Day Events</label>
+                    <select id="calendar-exclude-allday">
+                        <option value="">Use global default</option>
+                        <option value="true">Hide all-day events</option>
+                        <option value="false">Show all-day events</option>
+                    </select>
+                </div>
+                
+                <div class="form-buttons">
+                    <button class="sdpi-item-value" id="save-calendar-btn">Save Calendar</button>
+                    <button class="sdpi-item-value" id="cancel-calendar-btn" style="background: #666;">Cancel</button>
                 </div>
             </div>
         </div>
         
         <hr class="sdpi-separator" style="margin: 15px 0; border-color: #3a3a3a;" />
         
-        <div class="sdpi-heading">Global Settings (Default Calendar)</div>
-
-        <div class="sdpi-item full-row">
-            <div class="sdpi-item-label">iCal URL</div>
-            <input id="url" class="sdpi-item-value" type="text" value="" placeholder="https://calendar.google.com/calendar/ical/..." />
-        </div>
+        <!-- Global Defaults Section -->
+        <div class="sdpi-heading">Global Defaults</div>
 
         <div class="sdpi-item">
             <div class="sdpi-item-label">Time Window</div>
@@ -106,8 +203,8 @@
         <div class="sdpi-heading">Features</div>
         <div class="content">
             <ul>
-                <li><strong>New:</strong> Per-button custom calendars - use different calendars on different buttons!</li>
-                <li><strong>New:</strong> Configurable title display duration (5, 10, 15, or 30 seconds)</li>
+                <li><strong>New:</strong> Named calendars - define once, select per button!</li>
+                <li><strong>New:</strong> Per-button calendar selection via dropdown</li>
                 <li><strong>New:</strong> Flash button when meeting starts (can be disabled)</li>
                 <li><strong>New:</strong> Support for recurring events (daily, weekly, monthly, etc.)</li>
                 <li><strong>New:</strong> Configurable time window (1, 3, 5, or 7 days)</li>

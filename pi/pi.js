@@ -1,5 +1,8 @@
 /**
- * Property Inspector for iCal plugin
+ * Property Inspector for iCal plugin - Named Calendars Support
+ * 
+ * This PI allows users to select which calendar to use for each button
+ * via a dropdown populated from global settings.
  */
 
 // Global websocket connection - exposed on window for popup access
@@ -7,10 +10,10 @@ window.websocket = null;
 window.uuid = null;
 window.actionInfo = {};
 window.globalSettings = {};
-window.actionSettings = {};  // Per-action settings (custom calendar)
-window.setupPopup = null;  // Reference to setup popup window
+window.actionSettings = {};
+window.setupPopup = null;
 
-// Local references for convenience
+// Local references
 let websocket = null;
 let uuid = null;
 let actionInfo = {};
@@ -42,10 +45,10 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, 
         };
         websocket.send(JSON.stringify(json));
         
-        // Request global settings
+        // Request global settings (to get calendar list)
         requestGlobalSettings();
         
-        // Request action settings (per-action)
+        // Request action settings (to get selected calendar)
         requestSettings();
     };
     
@@ -59,20 +62,21 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, 
         if (event === 'didReceiveGlobalSettings') {
             globalSettings = jsonPayload.settings || {};
             window.globalSettings = globalSettings;
+            updateCalendarDropdown();
             updateUI();
         }
         
-        // Handle per-action settings
         if (event === 'didReceiveSettings') {
             actionSettings = jsonPayload.settings || {};
             window.actionSettings = actionSettings;
             console.log('[PI] Action settings received:', actionSettings);
+            updateSelectedCalendar();
         }
         
         // Forward sendToPropertyInspector messages to popup window
         if (event === 'sendToPropertyInspector') {
             console.log('[PI] sendToPropertyInspector received:', jsonPayload);
-            window.lastDebugInfo = jsonPayload;  // Store for popup access
+            window.lastDebugInfo = jsonPayload;
             if (window.setupPopup && !window.setupPopup.closed) {
                 console.log('[PI] Forwarding to popup');
                 window.setupPopup.postMessage({
@@ -92,21 +96,18 @@ function requestDebugInfo() {
         console.log('[PI] Requesting debug info, uuid:', uuid);
         const json = {
             event: 'sendToPlugin',
-            action: actionInfo.action,  // Use actual action from actionInfo
+            action: actionInfo.action,
             context: uuid,
-            payload: {
-                action: 'getDebugInfo'
-            }
+            payload: { action: 'getDebugInfo' }
         };
         websocket.send(JSON.stringify(json));
     }
 }
 
-// Expose for popup access
 window.requestDebugInfo = requestDebugInfo;
 
 /**
- * Request global settings from plugin
+ * Request global settings
  */
 function requestGlobalSettings() {
     if (websocket) {
@@ -132,40 +133,132 @@ function requestSettings() {
 }
 
 /**
- * Save global settings to plugin
+ * Save per-action settings (selected calendar)
  */
-function saveGlobalSettings(settings) {
+function saveActionSettings(settings) {
     if (websocket) {
         const json = {
-            event: 'setGlobalSettings',
+            event: 'setSettings',
             context: uuid,
             payload: settings
         };
         websocket.send(JSON.stringify(json));
-        globalSettings = settings;
+        actionSettings = settings;
+        window.actionSettings = settings;
     }
 }
 
 /**
- * Update UI with current settings
+ * Update the calendar dropdown with available calendars
+ */
+function updateCalendarDropdown() {
+    const select = document.getElementById('calendarSelect');
+    const noCalendarsContainer = document.getElementById('noCalendarsContainer');
+    const calendarInfoContainer = document.getElementById('calendarInfoContainer');
+    
+    if (!select) return;
+    
+    const calendars = globalSettings.calendars || [];
+    const defaultCalendarId = globalSettings.defaultCalendarId;
+    
+    // Clear existing options (except the first default option)
+    select.innerHTML = '';
+    
+    if (calendars.length === 0) {
+        // No calendars configured
+        select.innerHTML = '<option value="">No calendars available</option>';
+        select.disabled = true;
+        if (noCalendarsContainer) noCalendarsContainer.style.display = 'flex';
+        if (calendarInfoContainer) calendarInfoContainer.style.display = 'none';
+        return;
+    }
+    
+    select.disabled = false;
+    if (noCalendarsContainer) noCalendarsContainer.style.display = 'none';
+    if (calendarInfoContainer) calendarInfoContainer.style.display = 'flex';
+    
+    // Add "Default" option
+    const defaultCal = calendars.find(c => c.id === defaultCalendarId);
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = defaultCal 
+        ? `Default (${defaultCal.name})`
+        : 'Default Calendar';
+    select.appendChild(defaultOption);
+    
+    // Add separator if there are multiple calendars
+    if (calendars.length > 1) {
+        const separator = document.createElement('option');
+        separator.disabled = true;
+        separator.textContent = '───────────────';
+        select.appendChild(separator);
+    }
+    
+    // Add all calendars
+    calendars.forEach(cal => {
+        const option = document.createElement('option');
+        option.value = cal.id;
+        option.textContent = cal.name + (cal.id === defaultCalendarId ? ' ★' : '');
+        select.appendChild(option);
+    });
+    
+    // Set selected value based on action settings
+    updateSelectedCalendar();
+}
+
+/**
+ * Update the selected calendar in the dropdown
+ */
+function updateSelectedCalendar() {
+    const select = document.getElementById('calendarSelect');
+    if (!select) return;
+    
+    const selectedId = actionSettings.calendarId || '';
+    select.value = selectedId;
+    
+    // Update calendar info display
+    updateCalendarInfo(selectedId);
+}
+
+/**
+ * Update the calendar info display
+ */
+function updateCalendarInfo(calendarId) {
+    const infoEl = document.getElementById('calendarInfo');
+    if (!infoEl) return;
+    
+    const calendars = globalSettings.calendars || [];
+    const defaultCalendarId = globalSettings.defaultCalendarId;
+    
+    let calendar;
+    if (calendarId) {
+        calendar = calendars.find(c => c.id === calendarId);
+    } else {
+        // Using default
+        calendar = calendars.find(c => c.id === defaultCalendarId);
+    }
+    
+    if (calendar) {
+        // Truncate URL for display
+        const urlDisplay = calendar.url.length > 40 
+            ? calendar.url.substring(0, 40) + '...' 
+            : calendar.url;
+        infoEl.textContent = urlDisplay;
+        infoEl.title = calendar.url;
+    } else {
+        infoEl.textContent = 'No calendar selected';
+        infoEl.title = '';
+    }
+}
+
+/**
+ * Update general UI elements
  */
 function updateUI() {
-    // Update URL display
-    const urlInput = document.getElementById('url');
-    if (urlInput) {
-        urlInput.value = globalSettings.url || '';
-    }
-    
-    // Update time window selector
-    const timeWindowSelect = document.getElementById('timeWindow');
-    if (timeWindowSelect) {
-        timeWindowSelect.value = globalSettings.timeWindow || 3;
-    }
-    
     // Show status if available
     const statusContainer = document.getElementById('statusContainer');
     const statusDiv = document.getElementById('status');
-    if (globalSettings.status) {
+    if (statusContainer && statusDiv && globalSettings.status) {
         statusContainer.style.display = 'flex';
         statusDiv.textContent = globalSettings.status;
     }
@@ -173,7 +266,7 @@ function updateUI() {
     // Show last refresh if available
     const lastRefreshContainer = document.getElementById('lastRefreshContainer');
     const lastRefreshDiv = document.getElementById('lastRefresh');
-    if (globalSettings.lastRefresh) {
+    if (lastRefreshContainer && lastRefreshDiv && globalSettings.lastRefresh) {
         lastRefreshContainer.style.display = 'flex';
         const date = new Date(globalSettings.lastRefresh);
         lastRefreshDiv.textContent = date.toLocaleString();
@@ -181,25 +274,37 @@ function updateUI() {
 }
 
 /**
+ * Handle calendar selection change
+ */
+function onCalendarChange(event) {
+    const selectedId = event.target.value;
+    
+    // Save the selection as action settings
+    const newSettings = {
+        calendarId: selectedId || undefined  // undefined means use default
+    };
+    
+    saveActionSettings(newSettings);
+    updateCalendarInfo(selectedId);
+    
+    console.log('[PI] Calendar changed to:', selectedId || '(default)');
+}
+
+/**
  * Initialize when DOM is loaded
  */
 document.addEventListener('DOMContentLoaded', function() {
+    // Calendar dropdown change handler
+    const calendarSelect = document.getElementById('calendarSelect');
+    if (calendarSelect) {
+        calendarSelect.addEventListener('change', onCalendarChange);
+    }
+    
     // Settings button
     const settingsButton = document.getElementById('settings');
     if (settingsButton) {
         settingsButton.addEventListener('click', function() {
             window.setupPopup = window.open('setup.html', 'iCal Settings', 'width=600,height=700');
-        });
-    }
-    
-    // Time window selector
-    const timeWindowSelect = document.getElementById('timeWindow');
-    if (timeWindowSelect) {
-        timeWindowSelect.addEventListener('change', function() {
-            const newSettings = Object.assign({}, globalSettings, {
-                timeWindow: parseInt(this.value, 10)
-            });
-            saveGlobalSettings(newSettings);
         });
     }
 });

@@ -10,7 +10,7 @@
 import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent, KeyDownEvent, KeyUpEvent, DidReceiveSettingsEvent } from '@elgato/streamdeck';
 import { calendarCache, getStatusText, forceRefreshCache, getSettings } from '../services/calendar-service.js';
 import { calendarManager } from '../services/calendar-manager.js';
-import { CalendarEvent, ActionSettings, ErrorState } from '../types/index.js';
+import { CalendarEvent, ActionSettings, ErrorState, NamedCalendar } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 
 // Global settings (set by plugin.ts)
@@ -18,13 +18,51 @@ let globalUrl: string = '';
 let globalTimeWindow: number = 3;
 let globalExcludeAllDay: boolean = true;
 
+// Named calendars (set by plugin.ts)
+let namedCalendars: NamedCalendar[] = [];
+let defaultCalendarId: string | undefined;
+
 /**
  * Set global calendar settings (called from plugin.ts)
+ * This is used as the default when no named calendars are configured
  */
 export function setGlobalCalendarConfig(url: string, timeWindow: number, excludeAllDay: boolean): void {
   globalUrl = url;
   globalTimeWindow = timeWindow;
   globalExcludeAllDay = excludeAllDay;
+}
+
+/**
+ * Set named calendars (called from plugin.ts)
+ */
+export function setNamedCalendars(calendars: NamedCalendar[], defaultId?: string): void {
+  namedCalendars = calendars;
+  defaultCalendarId = defaultId;
+  logger.info(`[BaseAction] Named calendars set: ${calendars.length} calendars, default=${defaultId}`);
+}
+
+/**
+ * Get a named calendar by ID
+ */
+export function getNamedCalendar(id: string): NamedCalendar | undefined {
+  return namedCalendars.find(c => c.id === id);
+}
+
+/**
+ * Get the default calendar
+ */
+export function getDefaultCalendar(): NamedCalendar | undefined {
+  if (defaultCalendarId) {
+    return namedCalendars.find(c => c.id === defaultCalendarId);
+  }
+  return namedCalendars[0]; // Fallback to first calendar
+}
+
+/**
+ * Get all named calendars
+ */
+export function getNamedCalendars(): NamedCalendar[] {
+  return namedCalendars;
 }
 
 /**
@@ -87,26 +125,52 @@ export abstract class BaseAction extends SingletonAction {
     
     // Check for per-action settings
     const settings = ev.payload.settings as ActionSettings | undefined;
-    state.useCustomCalendar = settings?.useCustomCalendar ?? false;
     
-    if (state.useCustomCalendar && settings?.customUrl) {
-      // Register with custom calendar
+    // Determine which calendar to use
+    let calendarUrl: string | undefined;
+    let calendarTimeWindow = globalTimeWindow;
+    let calendarExcludeAllDay = globalExcludeAllDay;
+    
+    if (settings?.calendarId) {
+      // New approach: Use named calendar by ID
+      const namedCal = getNamedCalendar(settings.calendarId);
+      if (namedCal) {
+        calendarUrl = namedCal.url;
+        calendarTimeWindow = namedCal.timeWindow ?? globalTimeWindow;
+        calendarExcludeAllDay = namedCal.excludeAllDay ?? globalExcludeAllDay;
+        logger.info(`[${this.constructor.name}] ${actionId} using named calendar: ${namedCal.name}`);
+      }
+    } else if (settings?.useCustomCalendar && settings?.customUrl) {
+      // Legacy approach: Direct custom URL
+      calendarUrl = settings.customUrl;
+      calendarTimeWindow = settings.customTimeWindow ?? globalTimeWindow;
+      calendarExcludeAllDay = settings.customExcludeAllDay ?? globalExcludeAllDay;
+      logger.info(`[${this.constructor.name}] ${actionId} using legacy custom calendar: ${settings.customLabel || settings.customUrl.substring(0, 30)}...`);
+    }
+    
+    // If no specific calendar, use default from named calendars or global URL
+    if (!calendarUrl) {
+      const defaultCal = getDefaultCalendar();
+      if (defaultCal) {
+        calendarUrl = defaultCal.url;
+        calendarTimeWindow = defaultCal.timeWindow ?? globalTimeWindow;
+        calendarExcludeAllDay = defaultCal.excludeAllDay ?? globalExcludeAllDay;
+        logger.debug(`[${this.constructor.name}] ${actionId} using default calendar: ${defaultCal.name}`);
+      } else if (globalUrl) {
+        // Fallback to legacy global URL
+        calendarUrl = globalUrl;
+        logger.debug(`[${this.constructor.name}] ${actionId} using legacy global URL`);
+      }
+    }
+    
+    // Register with CalendarManager if we have a URL
+    if (calendarUrl) {
       state.calendarId = calendarManager.registerAction(
         actionId,
-        settings.customUrl,
-        settings.customTimeWindow ?? globalTimeWindow,
-        settings.customExcludeAllDay ?? globalExcludeAllDay
+        calendarUrl,
+        calendarTimeWindow,
+        calendarExcludeAllDay
       );
-      logger.info(`[${this.constructor.name}] ${actionId} using custom calendar: ${settings.customLabel || settings.customUrl.substring(0, 30)}...`);
-    } else if (globalUrl) {
-      // Register with global calendar
-      state.calendarId = calendarManager.registerAction(
-        actionId,
-        globalUrl,
-        globalTimeWindow,
-        globalExcludeAllDay
-      );
-      logger.debug(`[${this.constructor.name}] ${actionId} using global calendar`);
     }
     
     // Set initial image
@@ -248,32 +312,51 @@ export abstract class BaseAction extends SingletonAction {
       return;
     }
     
-    const newUseCustomCalendar = settings?.useCustomCalendar ?? false;
+    // Determine the new calendar URL
+    let newCalendarUrl: string | undefined;
+    let newCalendarTimeWindow = globalTimeWindow;
+    let newCalendarExcludeAllDay = globalExcludeAllDay;
+    let calendarChanged = false;
     
-    // Check if calendar settings changed
-    if (newUseCustomCalendar !== state.useCustomCalendar || 
-        (newUseCustomCalendar && settings?.customUrl)) {
-      
-      state.useCustomCalendar = newUseCustomCalendar;
-      
-      // Re-register with the appropriate calendar
-      if (newUseCustomCalendar && settings?.customUrl) {
-        state.calendarId = calendarManager.registerAction(
-          actionId,
-          settings.customUrl,
-          settings.customTimeWindow ?? globalTimeWindow,
-          settings.customExcludeAllDay ?? globalExcludeAllDay
-        );
-        logger.info(`[${this.constructor.name}] Switched ${actionId} to custom calendar: ${settings.customLabel || settings.customUrl.substring(0, 30)}...`);
-      } else if (globalUrl) {
-        state.calendarId = calendarManager.registerAction(
-          actionId,
-          globalUrl,
-          globalTimeWindow,
-          globalExcludeAllDay
-        );
-        logger.info(`[${this.constructor.name}] Switched ${actionId} to global calendar`);
+    if (settings?.calendarId) {
+      // New approach: Use named calendar by ID
+      const namedCal = getNamedCalendar(settings.calendarId);
+      if (namedCal) {
+        newCalendarUrl = namedCal.url;
+        newCalendarTimeWindow = namedCal.timeWindow ?? globalTimeWindow;
+        newCalendarExcludeAllDay = namedCal.excludeAllDay ?? globalExcludeAllDay;
+        calendarChanged = true;
+        logger.info(`[${this.constructor.name}] ${actionId} switched to named calendar: ${namedCal.name}`);
       }
+    } else if (settings?.useCustomCalendar && settings?.customUrl) {
+      // Legacy approach: Direct custom URL
+      newCalendarUrl = settings.customUrl;
+      newCalendarTimeWindow = settings.customTimeWindow ?? globalTimeWindow;
+      newCalendarExcludeAllDay = settings.customExcludeAllDay ?? globalExcludeAllDay;
+      calendarChanged = true;
+      logger.info(`[${this.constructor.name}] ${actionId} switched to legacy custom calendar`);
+    } else {
+      // Use default calendar
+      const defaultCal = getDefaultCalendar();
+      if (defaultCal) {
+        newCalendarUrl = defaultCal.url;
+        newCalendarTimeWindow = defaultCal.timeWindow ?? globalTimeWindow;
+        newCalendarExcludeAllDay = defaultCal.excludeAllDay ?? globalExcludeAllDay;
+      } else if (globalUrl) {
+        newCalendarUrl = globalUrl;
+      }
+      calendarChanged = true;
+      logger.info(`[${this.constructor.name}] ${actionId} switched to default calendar`);
+    }
+    
+    if (calendarChanged && newCalendarUrl) {
+      // Re-register with the new calendar
+      state.calendarId = calendarManager.registerAction(
+        actionId,
+        newCalendarUrl,
+        newCalendarTimeWindow,
+        newCalendarExcludeAllDay
+      );
       
       // Restart the display with new calendar
       this.stopTimerForButton(actionId);
