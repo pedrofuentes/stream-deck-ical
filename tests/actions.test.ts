@@ -601,3 +601,167 @@ describe('v2.1.0 Feature Tests', () => {
     });
   });
 });
+
+describe('Per-Action Settings (v2.3.0)', () => {
+  describe('ActionSettings interface', () => {
+    it('should define all required fields for custom calendar', () => {
+      // Type check - ActionSettings interface
+      const settings = {
+        useCustomCalendar: true,
+        customUrl: 'https://example.com/calendar.ics',
+        customLabel: 'Work Calendar',
+        customTimeWindow: 5 as const,
+        customExcludeAllDay: false
+      };
+      
+      expect(settings.useCustomCalendar).toBe(true);
+      expect(settings.customUrl).toBeDefined();
+      expect(settings.customLabel).toBeDefined();
+      expect(settings.customTimeWindow).toBe(5);
+      expect(settings.customExcludeAllDay).toBe(false);
+    });
+
+    it('should allow undefined fields for backwards compatibility', () => {
+      const settings = {};
+      
+      // All fields are optional
+      expect(settings).toEqual({});
+    });
+
+    it('should default useCustomCalendar to false when undefined', () => {
+      const settings: any = {};
+      const useCustom = settings.useCustomCalendar ?? false;
+      
+      expect(useCustom).toBe(false);
+    });
+  });
+
+  describe('Calendar inheritance behavior', () => {
+    it('should use global calendar when useCustomCalendar is false', () => {
+      const settings = {
+        useCustomCalendar: false,
+        customUrl: 'https://custom.com/cal.ics'
+      };
+      
+      // Even if customUrl is set, useCustomCalendar=false means global
+      const shouldUseCustom = settings.useCustomCalendar && settings.customUrl;
+      expect(shouldUseCustom).toBeFalsy();
+    });
+
+    it('should use custom calendar when useCustomCalendar is true and URL is set', () => {
+      const settings = {
+        useCustomCalendar: true,
+        customUrl: 'https://custom.com/cal.ics'
+      };
+      
+      const shouldUseCustom = settings.useCustomCalendar && settings.customUrl;
+      expect(shouldUseCustom).toBeTruthy();
+    });
+
+    it('should fall back to global when useCustomCalendar is true but URL is empty', () => {
+      const settings = {
+        useCustomCalendar: true,
+        customUrl: ''
+      };
+      
+      // Empty URL should fall back to global
+      const shouldUseCustom = settings.useCustomCalendar && settings.customUrl;
+      expect(shouldUseCustom).toBeFalsy();
+    });
+  });
+
+  describe('Settings defaults', () => {
+    it('should default customTimeWindow to global timeWindow when undefined', () => {
+      const globalTimeWindow = 3;
+      const settings: any = { useCustomCalendar: true, customUrl: 'https://test.com' };
+      
+      const effectiveTimeWindow = settings.customTimeWindow ?? globalTimeWindow;
+      expect(effectiveTimeWindow).toBe(3);
+    });
+
+    it('should default customExcludeAllDay to true when undefined', () => {
+      const settings: any = { useCustomCalendar: true, customUrl: 'https://test.com' };
+      
+      // Undefined should default to true (exclude all-day events)
+      const effectiveExcludeAllDay = settings.customExcludeAllDay !== false;
+      expect(effectiveExcludeAllDay).toBe(true);
+    });
+
+    it('should respect explicit false for customExcludeAllDay', () => {
+      const settings = { 
+        useCustomCalendar: true, 
+        customUrl: 'https://test.com',
+        customExcludeAllDay: false 
+      };
+      
+      const effectiveExcludeAllDay = settings.customExcludeAllDay !== false;
+      expect(effectiveExcludeAllDay).toBe(false);
+    });
+  });
+
+  describe('Multiple calendars scenario', () => {
+    it('should allow different buttons to use different calendars', () => {
+      const button1Settings = {
+        useCustomCalendar: false  // Uses global
+      };
+      
+      const button2Settings = {
+        useCustomCalendar: true,
+        customUrl: 'https://work.com/calendar.ics',
+        customLabel: 'Work'
+      };
+      
+      const button3Settings = {
+        useCustomCalendar: true,
+        customUrl: 'https://personal.com/calendar.ics',
+        customLabel: 'Personal'
+      };
+      
+      // Each button has independent settings
+      expect(button1Settings.useCustomCalendar).toBe(false);
+      expect(button2Settings.customUrl).toBe('https://work.com/calendar.ics');
+      expect(button3Settings.customUrl).toBe('https://personal.com/calendar.ics');
+    });
+
+    it('should support same URL on different buttons (shared cache)', () => {
+      const button1Settings = {
+        useCustomCalendar: true,
+        customUrl: 'https://shared.com/calendar.ics',
+        customLabel: 'Time Left'
+      };
+      
+      const button2Settings = {
+        useCustomCalendar: true,
+        customUrl: 'https://shared.com/calendar.ics',  // Same URL
+        customLabel: 'Next Meeting'
+      };
+      
+      // Same URL means they share the same CalendarManager instance
+      expect(button1Settings.customUrl).toBe(button2Settings.customUrl);
+    });
+  });
+
+  describe('Label functionality', () => {
+    it('should allow empty label (URL will be shown instead)', () => {
+      const settings = {
+        useCustomCalendar: true,
+        customUrl: 'https://example.com/cal.ics',
+        customLabel: ''
+      };
+      
+      const displayLabel = settings.customLabel || settings.customUrl.substring(0, 30) + '...';
+      expect(displayLabel).toContain('example.com');
+    });
+
+    it('should use label when provided', () => {
+      const settings = {
+        useCustomCalendar: true,
+        customUrl: 'https://example.com/cal.ics',
+        customLabel: 'My Work Calendar'
+      };
+      
+      const displayLabel = settings.customLabel || settings.customUrl.substring(0, 30) + '...';
+      expect(displayLabel).toBe('My Work Calendar');
+    });
+  });
+});

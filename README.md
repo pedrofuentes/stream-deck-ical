@@ -6,6 +6,14 @@ iCal Plugin for [elgato Stream Deck](https://www.elgato.com/en/gaming/stream-dec
 
 This plugin is available on the Stream Deck store, you can also download [the last release](https://github.com/pedrofuentes/stream-deck-ical/releases) or build it yourself using the code on this repo.
 
+## ✨ New in v2.3
+
+- ✅ **Multiple Calendars Support**: Use different calendars on different buttons! (#5)
+  - Enable "Use custom calendar" in the button settings
+  - Configure separate URL, time window, and all-day event options per button
+  - Label your calendars for easy identification (e.g., "Work", "Personal", "Family")
+  - Buttons using the same URL share a single cache (efficient!)
+
 ## ✨ New in v2.2
 
 - ✅ **Smart Calendar Action**: New all-in-one action that automatically switches between modes (#10)
@@ -29,6 +37,7 @@ This plugin is available on the Stream Deck store, you can also download [the la
 - ✅ **Provider Compatibility**: Optimized for Google Calendar, Microsoft Outlook/Office 365, and Apple Calendar
 
 ## Features ##
+* ✅ **Multiple calendars** - Different buttons can show different calendars
 * ✅ **Recurring events** with RRULE expansion and EXDATE handling
 * ✅ **Configurable time window** (1, 3, 5, or 7 days)
 * ✅ **Exclude all-day events** option (enabled by default)
@@ -184,6 +193,14 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 - **Type Safety**: Full TypeScript coverage with strict mode
 
 ## Changelog
+
+### v2.3.0 (2026)
+- ✨ **Multiple Calendars Support**: Each button can use a different calendar (#5)
+- ✨ Per-button custom URL, time window, and all-day event settings
+- ✨ Calendar labels for easy identification in settings
+- ✨ URL-level caching: buttons sharing the same URL share a single cache
+- ✅ Added CalendarManager service with 28 tests
+- ✅ Added 13 per-action settings tests
 
 ### v2.2.0 (2026)
 - ✨ **Smart Calendar Action**: New combined action that auto-switches between Time Left and Next Meeting (#10)

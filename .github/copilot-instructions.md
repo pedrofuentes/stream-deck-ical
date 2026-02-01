@@ -39,9 +39,34 @@ streamDeck.connect(); // Must come AFTER registration
 ### Property Inspector Communication
 
 PI uses WebSocket, not direct imports. Settings flow:
-1. PI calls `setGlobalSettings` via WebSocket
-2. Plugin receives via `onDidReceiveGlobalSettings`
-3. Plugin processes and updates cache
+1. PI calls `setGlobalSettings` via WebSocket for global settings
+2. PI calls `setSettings` via WebSocket for per-action settings
+3. Plugin receives via `onDidReceiveGlobalSettings` and `onDidReceiveSettings`
+4. Plugin processes and updates cache
+
+### Per-Action Settings (v2.3.0)
+
+Each button can have its own calendar via `ActionSettings`:
+
+```typescript
+interface ActionSettings {
+  useCustomCalendar?: boolean;  // false = use global
+  customUrl?: string;
+  customLabel?: string;         // For PI organization only
+  customTimeWindow?: 1 | 3 | 5 | 7;
+  customExcludeAllDay?: boolean;
+}
+```
+
+**CalendarManager** handles multi-calendar support:
+- Calendars are deduplicated by URL (same URL = shared cache)
+- Reference counting for automatic cleanup
+- Each action registers via `calendarManager.registerAction(actionId, url, ...)`
+
+**BaseAction** provides:
+- `getEvents()` - Returns events from the action's registered calendar
+- `getCacheStatus()` - Returns status of the action's calendar
+- `onDidReceiveSettings()` - Handles settings changes, re-registers calendar
 
 ## Build System
 
@@ -163,13 +188,15 @@ const flashEnabled = settings.flashOnMeetingStart === true;
 | Outlook times wrong | Windows timezone not mapped | Check `timezone-service.ts` mapping |
 | Buttons stuck on "Loading" | Startup race condition | `waitForCacheAndStart` uses 500ms polling with `actionRef` fallback |
 | Title shows for too long | Duration multiplied twice | `getTitleDisplayDuration()` returns seconds, caller multiplies by 1000 |
+| Custom calendar not loading | Missing action ID | Ensure `onWillAppear` sets `this.actionId = ev.action.id` |
+| Settings not persisting | Using wrong settings event | Global = `setGlobalSettings`, Per-action = `setSettings` |
 
 ## File Locations
 
 - **Actions**: `src/actions/` - Extend `BaseAction`
-- **Services**: `src/services/` - Business logic
-- **Types**: `src/types/index.ts` - All interfaces
-- **PI HTML**: `pi/setup.html` - Settings popup
+- **Services**: `src/services/` - Business logic (`calendar-manager.ts` for multi-calendar)
+- **Types**: `src/types/index.ts` - All interfaces (`ActionSettings`, `CalendarInstance`)
+- **PI HTML**: `pi/setup.html` - Settings popup (includes custom calendar section)
 - **PI JS**: `pi/setup.js` - Settings logic (not TypeScript)
 - **Tests**: `tests/` - Vitest test files
 
