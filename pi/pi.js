@@ -158,14 +158,25 @@ function updateCalendarDropdown() {
     
     if (!select) return;
     
-    const calendars = globalSettings.calendars || [];
-    const defaultCalendarId = globalSettings.defaultCalendarId;
+    let calendars = globalSettings.calendars || [];
+    let defaultCalendarId = globalSettings.defaultCalendarId;
+    
+    // Handle legacy settings: if no calendars but we have a URL, create a synthetic entry
+    if (calendars.length === 0 && globalSettings.url) {
+        calendars = [{
+            id: '__legacy__',
+            name: 'Default Calendar',
+            url: globalSettings.url
+        }];
+        defaultCalendarId = '__legacy__';
+        console.log('[PI] Using legacy URL as default calendar');
+    }
     
     // Clear existing options (except the first default option)
     select.innerHTML = '';
     
     if (calendars.length === 0) {
-        // No calendars configured
+        // No calendars configured at all
         select.innerHTML = '<option value="">No calendars available</option>';
         select.disabled = true;
         if (noCalendarsContainer) noCalendarsContainer.style.display = 'flex';
@@ -177,24 +188,10 @@ function updateCalendarDropdown() {
     if (noCalendarsContainer) noCalendarsContainer.style.display = 'none';
     if (calendarInfoContainer) calendarInfoContainer.style.display = 'flex';
     
-    // Add "Default" option
+    // Find default calendar
     const defaultCal = calendars.find(c => c.id === defaultCalendarId);
-    const defaultOption = document.createElement('option');
-    defaultOption.value = '';
-    defaultOption.textContent = defaultCal 
-        ? `Default (${defaultCal.name})`
-        : 'Default Calendar';
-    select.appendChild(defaultOption);
     
-    // Add separator if there are multiple calendars
-    if (calendars.length > 1) {
-        const separator = document.createElement('option');
-        separator.disabled = true;
-        separator.textContent = '───────────────';
-        select.appendChild(separator);
-    }
-    
-    // Add all calendars
+    // Simply list all calendars - mark default with ★
     calendars.forEach(cal => {
         const option = document.createElement('option');
         option.value = cal.id;
@@ -213,7 +210,16 @@ function updateSelectedCalendar() {
     const select = document.getElementById('calendarSelect');
     if (!select) return;
     
-    const selectedId = actionSettings.calendarId || '';
+    let calendars = globalSettings.calendars || [];
+    let defaultCalendarId = globalSettings.defaultCalendarId;
+    
+    // Handle legacy URL
+    if (calendars.length === 0 && globalSettings.url) {
+        defaultCalendarId = '__legacy__';
+    }
+    
+    // If no explicit selection, use the default calendar
+    const selectedId = actionSettings.calendarId || defaultCalendarId || '';
     select.value = selectedId;
     
     // Update calendar info display
@@ -227,8 +233,18 @@ function updateCalendarInfo(calendarId) {
     const infoEl = document.getElementById('calendarInfo');
     if (!infoEl) return;
     
-    const calendars = globalSettings.calendars || [];
-    const defaultCalendarId = globalSettings.defaultCalendarId;
+    let calendars = globalSettings.calendars || [];
+    let defaultCalendarId = globalSettings.defaultCalendarId;
+    
+    // Handle legacy URL
+    if (calendars.length === 0 && globalSettings.url) {
+        calendars = [{
+            id: '__legacy__',
+            name: 'Default Calendar',
+            url: globalSettings.url
+        }];
+        defaultCalendarId = '__legacy__';
+    }
     
     let calendar;
     if (calendarId) {
@@ -245,6 +261,13 @@ function updateCalendarInfo(calendarId) {
             : calendar.url;
         infoEl.textContent = urlDisplay;
         infoEl.title = calendar.url;
+    } else if (globalSettings.url) {
+        // Fallback to legacy URL display
+        const urlDisplay = globalSettings.url.length > 40 
+            ? globalSettings.url.substring(0, 40) + '...' 
+            : globalSettings.url;
+        infoEl.textContent = urlDisplay;
+        infoEl.title = globalSettings.url;
     } else {
         infoEl.textContent = 'No calendar selected';
         infoEl.title = '';

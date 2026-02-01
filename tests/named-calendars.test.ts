@@ -452,3 +452,425 @@ describe('Calendar Selection Priority', () => {
     expect(result?.source).toBe('default-named');
   });
 });
+
+describe('Property Inspector - Legacy URL Support', () => {
+  /**
+   * Test the PI logic that creates synthetic calendars from legacy URLs
+   * This is what updateCalendarDropdown does in pi.js
+   */
+  function createCalendarListForDropdown(globalSettings: any): { calendars: NamedCalendar[]; defaultCalendarId: string | undefined } {
+    let calendars = globalSettings.calendars || [];
+    let defaultCalendarId = globalSettings.defaultCalendarId;
+    
+    // Handle legacy settings: if no calendars but we have a URL, create a synthetic entry
+    if (calendars.length === 0 && globalSettings.url) {
+      calendars = [{
+        id: '__legacy__',
+        name: 'Default Calendar',
+        url: globalSettings.url
+      }];
+      defaultCalendarId = '__legacy__';
+    }
+    
+    return { calendars, defaultCalendarId };
+  }
+  
+  it('should create synthetic calendar from legacy URL', () => {
+    const globalSettings = {
+      url: 'https://legacy-calendar.ics',
+      timeWindow: 3
+    };
+    
+    const result = createCalendarListForDropdown(globalSettings);
+    
+    expect(result.calendars).toHaveLength(1);
+    expect(result.calendars[0].id).toBe('__legacy__');
+    expect(result.calendars[0].name).toBe('Default Calendar');
+    expect(result.calendars[0].url).toBe('https://legacy-calendar.ics');
+    expect(result.defaultCalendarId).toBe('__legacy__');
+  });
+  
+  it('should use existing calendars when available', () => {
+    const globalSettings = {
+      url: 'https://legacy-calendar.ics',
+      calendars: [
+        { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+        { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
+      ],
+      defaultCalendarId: 'cal-2'
+    };
+    
+    const result = createCalendarListForDropdown(globalSettings);
+    
+    expect(result.calendars).toHaveLength(2);
+    expect(result.calendars[0].id).toBe('cal-1');
+    expect(result.defaultCalendarId).toBe('cal-2');
+  });
+  
+  it('should return empty when no calendars and no URL', () => {
+    const globalSettings = {
+      timeWindow: 3
+    };
+    
+    const result = createCalendarListForDropdown(globalSettings);
+    
+    expect(result.calendars).toHaveLength(0);
+    expect(result.defaultCalendarId).toBeUndefined();
+  });
+});
+
+describe('Property Inspector - Calendar Selection', () => {
+  /**
+   * Test the PI logic for determining which calendar is selected
+   * This is what updateSelectedCalendar does in pi.js
+   */
+  function getSelectedCalendarId(
+    actionSettings: ActionSettings | undefined,
+    globalSettings: any
+  ): string {
+    let defaultCalendarId = globalSettings.defaultCalendarId;
+    
+    // Handle legacy URL
+    if ((!globalSettings.calendars || globalSettings.calendars.length === 0) && globalSettings.url) {
+      defaultCalendarId = '__legacy__';
+    }
+    
+    // If no explicit selection, use the default calendar
+    return actionSettings?.calendarId || defaultCalendarId || '';
+  }
+  
+  it('should use explicit calendarId when set', () => {
+    const actionSettings = { calendarId: 'cal-2' };
+    const globalSettings = {
+      calendars: [
+        { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+        { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
+      ],
+      defaultCalendarId: 'cal-1'
+    };
+    
+    const selected = getSelectedCalendarId(actionSettings, globalSettings);
+    
+    expect(selected).toBe('cal-2');
+  });
+  
+  it('should use default calendar when no explicit selection', () => {
+    const actionSettings = {};
+    const globalSettings = {
+      calendars: [
+        { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+        { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
+      ],
+      defaultCalendarId: 'cal-2'
+    };
+    
+    const selected = getSelectedCalendarId(actionSettings, globalSettings);
+    
+    expect(selected).toBe('cal-2');
+  });
+  
+  it('should use legacy calendar ID when only legacy URL exists', () => {
+    const actionSettings = {};
+    const globalSettings = {
+      url: 'https://legacy.ics'
+    };
+    
+    const selected = getSelectedCalendarId(actionSettings, globalSettings);
+    
+    expect(selected).toBe('__legacy__');
+  });
+  
+  it('should return empty string when no calendars at all', () => {
+    const actionSettings = {};
+    const globalSettings = {};
+    
+    const selected = getSelectedCalendarId(actionSettings, globalSettings);
+    
+    expect(selected).toBe('');
+  });
+});
+
+describe('Property Inspector - Dropdown Rendering', () => {
+  /**
+   * Test the dropdown rendering logic from pi.js
+   */
+  function renderDropdownOptions(
+    calendars: NamedCalendar[],
+    defaultCalendarId: string | undefined
+  ): { value: string; text: string }[] {
+    const options: { value: string; text: string }[] = [];
+    
+    // Simply list all calendars - mark default with ★
+    calendars.forEach(cal => {
+      options.push({
+        value: cal.id,
+        text: cal.name + (cal.id === defaultCalendarId ? ' ★' : '')
+      });
+    });
+    
+    return options;
+  }
+  
+  it('should render single calendar without duplication', () => {
+    const calendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Default', url: 'https://default.ics' }
+    ];
+    
+    const options = renderDropdownOptions(calendars, 'cal-1');
+    
+    expect(options).toHaveLength(1);
+    expect(options[0].value).toBe('cal-1');
+    expect(options[0].text).toBe('Default ★');
+  });
+  
+  it('should render multiple calendars with star on default', () => {
+    const calendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+      { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' },
+      { id: 'cal-3', name: 'Team', url: 'https://team.ics' }
+    ];
+    
+    const options = renderDropdownOptions(calendars, 'cal-2');
+    
+    expect(options).toHaveLength(3);
+    expect(options[0].text).toBe('Work');
+    expect(options[1].text).toBe('Personal ★');
+    expect(options[2].text).toBe('Team');
+  });
+  
+  it('should handle no default calendar', () => {
+    const calendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+      { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
+    ];
+    
+    const options = renderDropdownOptions(calendars, undefined);
+    
+    expect(options).toHaveLength(2);
+    expect(options[0].text).toBe('Work');
+    expect(options[1].text).toBe('Personal');
+    // No stars when no default set
+  });
+  
+  it('should render legacy synthetic calendar', () => {
+    const calendars: NamedCalendar[] = [
+      { id: '__legacy__', name: 'Default Calendar', url: 'https://legacy.ics' }
+    ];
+    
+    const options = renderDropdownOptions(calendars, '__legacy__');
+    
+    expect(options).toHaveLength(1);
+    expect(options[0].value).toBe('__legacy__');
+    expect(options[0].text).toBe('Default Calendar ★');
+  });
+});
+
+describe('Setup - Auto-Save Calendars', () => {
+  /**
+   * Test the auto-save logic from setup.js
+   */
+  function buildGlobalSettingsForAutoSave(
+    calendars: NamedCalendar[],
+    defaultCalendarId: string | undefined,
+    formValues: {
+      timeWindow: number;
+      excludeAllDay: boolean;
+      titleDisplayDuration: number;
+      flashOnMeetingStart: boolean;
+    },
+    currentUrlVersion: number
+  ): any {
+    return {
+      calendars: calendars,
+      defaultCalendarId: defaultCalendarId,
+      url: calendars.find(c => c.id === defaultCalendarId)?.url || calendars[0]?.url || '',
+      urlVersion: currentUrlVersion + 1,
+      timeWindow: formValues.timeWindow,
+      excludeAllDay: formValues.excludeAllDay,
+      titleDisplayDuration: formValues.titleDisplayDuration,
+      flashOnMeetingStart: formValues.flashOnMeetingStart
+    };
+  }
+  
+  it('should build settings with all calendars', () => {
+    const calendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+      { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
+    ];
+    
+    const settings = buildGlobalSettingsForAutoSave(
+      calendars,
+      'cal-1',
+      { timeWindow: 3, excludeAllDay: true, titleDisplayDuration: 15, flashOnMeetingStart: false },
+      5
+    );
+    
+    expect(settings.calendars).toHaveLength(2);
+    expect(settings.defaultCalendarId).toBe('cal-1');
+    expect(settings.url).toBe('https://work.ics'); // Legacy URL from default calendar
+    expect(settings.urlVersion).toBe(6); // Incremented
+  });
+  
+  it('should increment urlVersion to trigger refresh', () => {
+    const calendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' }
+    ];
+    
+    const settings = buildGlobalSettingsForAutoSave(
+      calendars,
+      'cal-1',
+      { timeWindow: 3, excludeAllDay: true, titleDisplayDuration: 15, flashOnMeetingStart: false },
+      10
+    );
+    
+    expect(settings.urlVersion).toBe(11);
+  });
+  
+  it('should use first calendar URL as legacy URL when no default set', () => {
+    const calendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+      { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
+    ];
+    
+    const settings = buildGlobalSettingsForAutoSave(
+      calendars,
+      undefined,
+      { timeWindow: 3, excludeAllDay: true, titleDisplayDuration: 15, flashOnMeetingStart: false },
+      0
+    );
+    
+    expect(settings.url).toBe('https://work.ics');
+  });
+  
+  it('should handle empty calendars', () => {
+    const settings = buildGlobalSettingsForAutoSave(
+      [],
+      undefined,
+      { timeWindow: 3, excludeAllDay: true, titleDisplayDuration: 15, flashOnMeetingStart: false },
+      0
+    );
+    
+    expect(settings.calendars).toHaveLength(0);
+    expect(settings.defaultCalendarId).toBeUndefined();
+    expect(settings.url).toBe('');
+  });
+  
+  it('should preserve form values in settings', () => {
+    const calendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' }
+    ];
+    
+    const settings = buildGlobalSettingsForAutoSave(
+      calendars,
+      'cal-1',
+      { timeWindow: 7, excludeAllDay: false, titleDisplayDuration: 30, flashOnMeetingStart: true },
+      0
+    );
+    
+    expect(settings.timeWindow).toBe(7);
+    expect(settings.excludeAllDay).toBe(false);
+    expect(settings.titleDisplayDuration).toBe(30);
+    expect(settings.flashOnMeetingStart).toBe(true);
+  });
+});
+
+describe('Setup - Calendar CRUD Operations', () => {
+  /**
+   * Test calendar add/edit/delete operations from setup.js
+   */
+  
+  function generateId(): string {
+    return 'cal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  }
+  
+  function addCalendar(
+    calendars: NamedCalendar[],
+    name: string,
+    url: string,
+    defaultCalendarId: string | undefined
+  ): { calendars: NamedCalendar[]; defaultCalendarId: string | undefined; newId: string } {
+    const newCal: NamedCalendar = {
+      id: generateId(),
+      name: name,
+      url: url
+    };
+    
+    const newCalendars = [...calendars, newCal];
+    
+    // If this is the first calendar, make it the default
+    const newDefaultId = calendars.length === 0 ? newCal.id : defaultCalendarId;
+    
+    return { calendars: newCalendars, defaultCalendarId: newDefaultId, newId: newCal.id };
+  }
+  
+  function deleteCalendar(
+    calendars: NamedCalendar[],
+    idToDelete: string,
+    defaultCalendarId: string | undefined
+  ): { calendars: NamedCalendar[]; defaultCalendarId: string | undefined } {
+    const newCalendars = calendars.filter(c => c.id !== idToDelete);
+    
+    // If deleted calendar was default, set new default
+    let newDefaultId = defaultCalendarId;
+    if (defaultCalendarId === idToDelete) {
+      newDefaultId = newCalendars.length > 0 ? newCalendars[0].id : undefined;
+    }
+    
+    return { calendars: newCalendars, defaultCalendarId: newDefaultId };
+  }
+  
+  it('should add calendar and set as default if first', () => {
+    const result = addCalendar([], 'Work', 'https://work.ics', undefined);
+    
+    expect(result.calendars).toHaveLength(1);
+    expect(result.calendars[0].name).toBe('Work');
+    expect(result.defaultCalendarId).toBe(result.newId);
+  });
+  
+  it('should add calendar without changing default if not first', () => {
+    const existing: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' }
+    ];
+    
+    const result = addCalendar(existing, 'Personal', 'https://personal.ics', 'cal-1');
+    
+    expect(result.calendars).toHaveLength(2);
+    expect(result.defaultCalendarId).toBe('cal-1'); // Unchanged
+  });
+  
+  it('should delete calendar and update default if needed', () => {
+    const calendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+      { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
+    ];
+    
+    const result = deleteCalendar(calendars, 'cal-1', 'cal-1');
+    
+    expect(result.calendars).toHaveLength(1);
+    expect(result.calendars[0].id).toBe('cal-2');
+    expect(result.defaultCalendarId).toBe('cal-2'); // Updated to next available
+  });
+  
+  it('should delete calendar without changing default if not default', () => {
+    const calendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+      { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
+    ];
+    
+    const result = deleteCalendar(calendars, 'cal-2', 'cal-1');
+    
+    expect(result.calendars).toHaveLength(1);
+    expect(result.defaultCalendarId).toBe('cal-1'); // Unchanged
+  });
+  
+  it('should set default to undefined when deleting last calendar', () => {
+    const calendars: NamedCalendar[] = [
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' }
+    ];
+    
+    const result = deleteCalendar(calendars, 'cal-1', 'cal-1');
+    
+    expect(result.calendars).toHaveLength(0);
+    expect(result.defaultCalendarId).toBeUndefined();
+  });
+});

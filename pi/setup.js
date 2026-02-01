@@ -189,8 +189,8 @@ function saveCalendar() {
     hideForm();
     renderCalendarList();
     
-    // Don't auto-save - user needs to click Save Settings
-    showAlert('Calendar updated. Click "Save Settings" to apply changes.', 'notice', 5);
+    // Auto-save after calendar changes
+    autoSaveCalendars('Calendar saved!');
 }
 
 /**
@@ -212,7 +212,9 @@ function deleteCalendar(id) {
     }
     
     renderCalendarList();
-    showAlert('Calendar deleted. Click "Save Settings" to apply changes.', 'notice', 5);
+    
+    // Auto-save after delete
+    autoSaveCalendars('Calendar deleted!');
 }
 
 /**
@@ -221,7 +223,52 @@ function deleteCalendar(id) {
 function setDefaultCalendar(id) {
     defaultCalendarId = id;
     renderCalendarList();
-    showAlert('Default calendar changed. Click "Save Settings" to apply changes.', 'notice', 5);
+    
+    // Auto-save after default change
+    autoSaveCalendars('Default calendar changed!');
+}
+
+/**
+ * Auto-save calendars to Stream Deck (without closing window)
+ */
+function autoSaveCalendars(message) {
+    const opener = getOpener();
+    if (!opener || !opener.websocket) {
+        showAlert('Changes saved locally. Click "Save Settings" to sync.', 'notice', 3);
+        return;
+    }
+    
+    // Get current form values for global defaults
+    const timeWindow = parseInt(document.getElementById('timeWindow').value, 10) || 3;
+    const excludeAllDayEl = document.getElementById('excludeAllDay');
+    const excludeAllDay = excludeAllDayEl ? excludeAllDayEl.checked : true;
+    const titleDisplayDurationEl = document.getElementById('titleDisplayDuration');
+    const titleDisplayDuration = titleDisplayDurationEl ? parseInt(titleDisplayDurationEl.value, 10) : 15;
+    const flashOnMeetingStartEl = document.getElementById('flashOnMeetingStart');
+    const flashOnMeetingStart = flashOnMeetingStartEl ? flashOnMeetingStartEl.checked : false;
+    
+    const globalSettings = {
+        calendars: calendars,
+        defaultCalendarId: defaultCalendarId,
+        url: calendars.find(c => c.id === defaultCalendarId)?.url || calendars[0]?.url || '',
+        urlVersion: (opener.globalSettings?.urlVersion || 0) + 1,
+        timeWindow: timeWindow,
+        excludeAllDay: excludeAllDay,
+        titleDisplayDuration: titleDisplayDuration,
+        flashOnMeetingStart: flashOnMeetingStart
+    };
+    
+    const globalJson = {
+        event: 'setGlobalSettings',
+        context: opener.uuid,
+        payload: globalSettings
+    };
+    
+    console.log('[SETUP] Auto-saving calendars:', globalSettings);
+    opener.websocket.send(JSON.stringify(globalJson));
+    opener.globalSettings = globalSettings;
+    
+    showAlert(message || 'Saved!', 'notice', 3);
 }
 
 /**
