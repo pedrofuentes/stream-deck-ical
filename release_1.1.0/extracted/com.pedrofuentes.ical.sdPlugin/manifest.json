@@ -1,5 +1,4 @@
 {
-  "UUID": "com.pedrofuentes.ical",
   "Actions": [
     {
       "Icon": "assets/activeMeetingIcon", 
@@ -8,7 +7,7 @@
         {
           "Image": "assets/activeMeeting",
           "TitleAlignment": "middle", 
-          "FontSize": 10
+          "FontSize": "10"
         }
       ], 
       "SupportedInMultiActions": false,
@@ -22,47 +21,29 @@
         {
           "Image": "assets/nextMeeting",
           "TitleAlignment": "middle", 
-          "FontSize": 10
+          "FontSize": "10"
         }
       ], 
       "SupportedInMultiActions": false,
       "Tooltip": "Countdown until next meeting starts", 
       "UUID": "com.pedrofuentes.ical.nextmeeting"
-    },
-    {
-      "Icon": "assets/icalIcon", 
-      "Name": "Smart Calendar", 
-      "States": [
-        {
-          "Image": "assets/nextMeeting",
-          "TitleAlignment": "middle", 
-          "FontSize": 10
-        }
-      ], 
-      "SupportedInMultiActions": false,
-      "Tooltip": "Shows Time Left when in meeting, Next Meeting otherwise", 
-      "UUID": "com.pedrofuentes.ical.combined"
     }
   ], 
   "SDKVersion": 2,
   "Author": "Pedro Fuentes", 
-  "CodePath": "bin/plugin.js",
-  "Description": "Display information from your calendar using an iCal URL. Visual cues and a countdown will help you end meetings on time and be ready for the next one. Supports recurring events and configurable time windows.", 
+  "CodePath": "app.html", 
+  "Description": "Display information from your calendar using an iCal URL. Visual cues and a countdown will help you end meetings on time and be ready for the next one.", 
   "Name": "iCal", 
   "Icon": "assets/icalIcon", 
   "Category": "iCal",
   "CategoryIcon": "assets/icalIcon",
   "URL": "https://github.com/pedrofuentes/stream-deck-ical#readme",
   "PropertyInspectorPath": "pi.html",
-  "Version": "2.3.0.0",
-  "Nodejs": {
-    "Version": "20",
-    "Debug": "enabled"
-  },
+  "Version": "1.1.0",
   "OS": [
     {
         "Platform": "mac", 
-        "MinimumVersion" : "10.15"
+        "MinimumVersion" : "10.11"
     },
     {
         "Platform": "windows", 
@@ -71,6 +52,6 @@
   ],
   "Software": 
     {
-        "MinimumVersion" : "6.4"
+        "MinimumVersion" : "4.1"
     }
 }

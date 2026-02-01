@@ -7,133 +7,382 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <title>iCal Setup</title>
     <link rel="stylesheet" href="css/sdpi.css">
+    <style>
+        /* Calendar List Styles */
+        .calendar-item {
+            padding: 10px;
+            margin: 6px 0;
+            background: #2a2a2a;
+            border-radius: 4px;
+            border-left: 3px solid transparent;
+        }
+        .calendar-item.default {
+            border-left-color: #4CAF50;
+        }
+        .calendar-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .calendar-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .calendar-name {
+            font-weight: bold;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .calendar-url {
+            color: #666;
+            font-size: 10px;
+            margin-top: 4px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .calendar-actions {
+            display: flex;
+            gap: 6px;
+        }
+        .btn-small {
+            padding: 4px 10px !important;
+            font-size: 11px !important;
+            min-width: auto !important;
+            border-radius: 3px !important;
+        }
+        .btn-edit {
+            background: #3a3a3a !important;
+            color: #fff !important;
+        }
+        .btn-edit:hover {
+            background: #4a4a4a !important;
+        }
+        .btn-delete {
+            background: #3a3a3a !important;
+            color: #f44336 !important;
+        }
+        .btn-delete:hover {
+            background: #4a4a4a !important;
+        }
+        .empty-calendars {
+            color: #888;
+            font-style: italic;
+            padding: 20px 10px;
+            text-align: center;
+            background: #1a1a1a;
+            border-radius: 4px;
+        }
+        .default-badge {
+            background: #4CAF50;
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 9px;
+            font-weight: normal;
+            text-transform: uppercase;
+        }
+        
+        /* Calendar Form Styles */
+        #calendar-form {
+            background: #1a1a1a;
+            padding: 14px;
+            border-radius: 4px;
+            margin: 10px 0;
+            border: 1px solid #3a3a3a;
+        }
+        #calendar-form.hidden {
+            display: none;
+        }
+        .form-row {
+            margin-bottom: 10px;
+        }
+        .form-row label {
+            display: block;
+            color: #999;
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+        .form-row input, .form-row select {
+            width: 100%;
+            box-sizing: border-box;
+        }
+        .form-row .hint {
+            color: #666;
+            font-size: 10px;
+            margin-top: 3px;
+        }
+        .form-buttons {
+            display: flex;
+            gap: 8px;
+            margin-top: 14px;
+        }
+        
+        /* Section Styles */
+        .section-description {
+            color: #888;
+            font-size: 11px;
+            padding: 0 10px 8px 10px;
+        }
+        
+        /* Settings Group */
+        .settings-group {
+            background: #1e1e1e;
+            border-radius: 4px;
+            padding: 2px 0;
+            margin-bottom: 10px;
+        }
+        
+        /* Collapsible Help */
+        .help-toggle {
+            color: #888;
+            font-size: 11px;
+            cursor: pointer;
+            padding: 8px 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .help-toggle:hover {
+            color: #fff;
+        }
+        .help-content {
+            display: none;
+            padding: 0 10px 10px 10px;
+        }
+        .help-content.expanded {
+            display: block;
+        }
+        .help-content ul {
+            margin: 8px 0;
+            padding-left: 20px;
+        }
+        .help-content li {
+            margin: 4px 0;
+            color: #888;
+            font-size: 11px;
+        }
+        
+        /* Alert styles */
+        #alerts {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        #alerts .notice {
+            color: #4CAF50;
+        }
+        #alerts .error {
+            color: #f44336;
+        }
+    </style>
 </head>
 <body>
     <div class="sdpi-wrapper">
         <div id="alerts" class="content" style="display: none;"></div>
         
-        <div class="sdpi-heading">iCal Settings</div>
-
-        <div class="sdpi-item full-row">
-            <div class="sdpi-item-label">iCal URL</div>
-            <input id="url" class="sdpi-item-value" type="text" value="" placeholder="https://calendar.google.com/calendar/ical/..." />
+        <!-- Calendars Section -->
+        <div class="sdpi-heading">Calendars</div>
+        <p class="section-description">Add your iCal calendar URLs. The first calendar is used as the default for new buttons.</p>
+        
+        <div class="content">
+            <div id="calendar-list">
+                <div class="empty-calendars">No calendars yet. Click "Add Calendar" to get started.</div>
+            </div>
+            
+            <button class="sdpi-item-value" id="add-calendar-btn" style="margin-top: 10px;">+ Add Calendar</button>
+            
+            <!-- Add/Edit Calendar Form -->
+            <div id="calendar-form" class="hidden">
+                <input type="hidden" id="edit-calendar-id" value="">
+                
+                <div class="form-row">
+                    <label for="calendar-name">Name</label>
+                    <input type="text" id="calendar-name" placeholder="e.g., Work, Personal, Team" />
+                    <div class="hint">A friendly name to identify this calendar</div>
+                </div>
+                
+                <div class="form-row">
+                    <label for="calendar-url">iCal URL</label>
+                    <input type="text" id="calendar-url" placeholder="https://calendar.google.com/calendar/ical/..." />
+                    <div class="hint">The secret iCal URL from your calendar provider</div>
+                </div>
+                
+                <div class="form-row">
+                    <label for="calendar-time-window">Look ahead (optional)</label>
+                    <select id="calendar-time-window">
+                        <option value="">Use default setting</option>
+                        <option value="1">1 Day</option>
+                        <option value="3">3 Days</option>
+                        <option value="5">5 Days</option>
+                        <option value="7">7 Days</option>
+                    </select>
+                    <div class="hint">Override how far ahead to fetch events</div>
+                </div>
+                
+                <div class="form-row">
+                    <label for="calendar-exclude-allday">All-day events (optional)</label>
+                    <select id="calendar-exclude-allday">
+                        <option value="">Use default setting</option>
+                        <option value="true">Hide all-day events</option>
+                        <option value="false">Show all-day events</option>
+                    </select>
+                </div>
+                
+                <div class="form-buttons">
+                    <button class="sdpi-item-value" id="save-calendar-btn">Save</button>
+                    <button class="sdpi-item-value" id="cancel-calendar-btn" style="background: #444;">Cancel</button>
+                </div>
+            </div>
         </div>
+        
+        <hr class="sdpi-separator" style="margin: 15px 0; border-color: #3a3a3a;" />
+        
+        <!-- Settings Section -->
+        <div class="sdpi-heading">Settings</div>
+        
+        <div class="settings-group">
+            <div class="sdpi-item">
+                <div class="sdpi-item-label">Look ahead</div>
+                <select id="timeWindow" class="sdpi-item-value select">
+                    <option value="1">1 Day</option>
+                    <option value="3" selected>3 Days</option>
+                    <option value="5">5 Days</option>
+                    <option value="7">7 Days</option>
+                </select>
+            </div>
 
-        <div class="sdpi-item">
-            <div class="sdpi-item-label">Time Window</div>
-            <select id="timeWindow" class="sdpi-item-value select">
-                <option value="1">1 Day</option>
-                <option value="3" selected>3 Days</option>
-                <option value="5">5 Days</option>
-                <option value="7">7 Days</option>
-            </select>
+            <div class="sdpi-item" type="checkbox">
+                <div class="sdpi-item-label">All-day events</div>
+                <div class="sdpi-item-value">
+                    <input type="checkbox" id="excludeAllDay" checked>
+                    <label for="excludeAllDay"><span></span>Hide all-day events</label>
+                </div>
+            </div>
         </div>
+        
+        <div class="settings-group">
+            <div class="sdpi-item">
+                <div class="sdpi-item-label">Show title for</div>
+                <select id="titleDisplayDuration" class="sdpi-item-value select">
+                    <option value="5">5 seconds</option>
+                    <option value="10">10 seconds</option>
+                    <option value="15" selected>15 seconds</option>
+                    <option value="30">30 seconds</option>
+                </select>
+            </div>
 
-        <div class="sdpi-item" type="checkbox">
-            <div class="sdpi-item-label">All-Day Events</div>
-            <div class="sdpi-item-value">
-                <input type="checkbox" id="excludeAllDay" checked>
-                <label for="excludeAllDay"><span></span>Hide all-day events</label>
+            <div class="sdpi-item" type="checkbox">
+                <div class="sdpi-item-label">Alerts</div>
+                <div class="sdpi-item-value">
+                    <input type="checkbox" id="flashOnMeetingStart">
+                    <label for="flashOnMeetingStart"><span></span>Flash when meeting starts</label>
+                </div>
+            </div>
+        </div>
+        
+        <div class="settings-group">
+            <div class="sdpi-item">
+                <div class="sdpi-item-label">Orange warning</div>
+                <select id="orangeThreshold" class="sdpi-item-value select">
+                    <option value="60">1 minute</option>
+                    <option value="120">2 minutes</option>
+                    <option value="180">3 minutes</option>
+                    <option value="300" selected>5 minutes</option>
+                    <option value="600">10 minutes</option>
+                    <option value="900">15 minutes</option>
+                </select>
+            </div>
+
+            <div class="sdpi-item">
+                <div class="sdpi-item-label">Red warning</div>
+                <select id="redThreshold" class="sdpi-item-value select">
+                    <option value="10">10 seconds</option>
+                    <option value="30" selected>30 seconds</option>
+                    <option value="60">1 minute</option>
+                    <option value="120">2 minutes</option>
+                    <option value="180">3 minutes</option>
+                </select>
             </div>
         </div>
 
-        <div class="sdpi-item">
-            <div class="sdpi-item-label">Title Display</div>
-            <select id="titleDisplayDuration" class="sdpi-item-value select">
-                <option value="5">5 seconds</option>
-                <option value="10">10 seconds</option>
-                <option value="15" selected>15 seconds</option>
-                <option value="30">30 seconds</option>
-            </select>
+        <div style="text-align: center; padding: 10px 0;">
+            <button id="refresh" style="background: #3a3a3a; color: #fff; border: none; border-radius: 4px; padding: 10px 24px; font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;">🔄 Force Refresh All Calendars</button>
         </div>
 
-        <div class="sdpi-item" type="checkbox">
-            <div class="sdpi-item-label">Meeting Alert</div>
-            <div class="sdpi-item-value">
-                <input type="checkbox" id="flashOnMeetingStart">
-                <label for="flashOnMeetingStart"><span></span>Flash when meeting starts</label>
-            </div>
+        <hr class="sdpi-separator" style="margin: 15px 0; border-color: #3a3a3a;" />
+        
+        <!-- Collapsible Help Section -->
+        <div class="help-toggle" onclick="toggleHelp()">
+            <span id="help-arrow">▶</span> Help & Information
         </div>
-
-        <div class="sdpi-item">
-            <button class="sdpi-item-value" id="save">Save Settings</button>
-            <button class="sdpi-item-value" id="refresh">Force Refresh &#128472;</button>
-        </div>
-
-        <div class="sdpi-heading">Features</div>
-        <div class="content">
+        <div id="help-content" class="help-content">
+            <h4 style="color: #fff; margin: 10px 0 5px 0; font-size: 12px;">Button Types</h4>
             <ul>
-                <li><strong>New:</strong> Configurable title display duration (5, 10, 15, or 30 seconds)</li>
-                <li><strong>New:</strong> Flash button when meeting starts (can be disabled)</li>
-                <li><strong>New:</strong> Support for recurring events (daily, weekly, monthly, etc.)</li>
-                <li><strong>New:</strong> Configurable time window (1, 3, 5, or 7 days)</li>
-                <li><strong>New:</strong> Improved timezone handling for Outlook, Google, and Apple calendars</li>
-                <li>Checks for updates every 10 minutes</li>
-                <li>When a new URL is saved, an immediate update is triggered</li>
-                <li>"Force Refresh" can be used to manually trigger an update</li>
+                <li><strong>Time Left:</strong> Shows time remaining in current meeting. Colors change based on warning thresholds.</li>
+                <li><strong>Next Meeting:</strong> Countdown to next meeting. Press to show meeting title.</li>
+                <li><strong>Smart Calendar:</strong> Automatically switches between the two modes.</li>
             </ul>
-
-            <h4>Time Left</h4>
+            
+            <h4 style="color: #fff; margin: 15px 0 5px 0; font-size: 12px;">Supported Calendars</h4>
             <ul>
-                <li>Shows time left until the current meeting ends</li>
-                <li>Changes icon color to orange when 5 minutes are left</li>
-                <li>Changes icon color to red when 30 seconds are left (stays red for 5 minutes after meeting ends)</li>
-                <li>Supports multiple concurrent meetings - push the button to cycle through them</li>
-                <li>Shows meeting indicator (e.g., "1/3") when multiple meetings are active</li>
+                <li><strong>Google Calendar:</strong> Settings → Integrate calendar → Secret iCal URL</li>
+                <li><strong>Outlook/Office 365:</strong> Publish calendar → Get ICS link</li>
+                <li><strong>Apple iCloud:</strong> Share calendar → Public calendar link</li>
             </ul>
-
-            <h4>Next Meeting</h4>
+            
+            <h4 style="color: #fff; margin: 15px 0 5px 0; font-size: 12px;">Tips</h4>
             <ul>
-                <li>Shows countdown to next meeting start time</li>
-                <li>Push the button to display the meeting title (scrolling marquee)</li>
-                <li>Push again to return to countdown display</li>
-                <li>Changes icon color to orange with 5 minutes remaining</li>
-                <li>Changes icon color to red with 30 seconds remaining</li>
+                <li>Calendars refresh automatically every 10 minutes - no manual refresh needed</li>
+                <li>Press a button to cycle through multiple meetings or show titles</li>
+                <li>Each button can use a different calendar</li>
             </ul>
-        </div>
-
-        <div class="sdpi-heading">Calendar Compatibility</div>
-        <div class="content">
-            <p>This plugin supports iCal feeds from:</p>
-            <ul>
-                <li><strong>Google Calendar:</strong> Export your calendar and use the secret iCal URL</li>
-                <li><strong>Microsoft Outlook / Office 365:</strong> Automatic timezone conversion for Windows timezones</li>
-                <li><strong>Apple Calendar:</strong> Full support for iCloud calendar feeds</li>
-                <li>Any other calendar application that provides an iCal (.ics) feed</li>
-            </ul>
-        </div>
-
-        <div class="sdpi-heading">More Information</div>
-        <div class="content">
-            <p>
-                Source code, bug reports, and feature requests:<br>
-                <a href="https://github.com/pedrofuentes/stream-deck-ical" target="_blank">
-                    https://github.com/pedrofuentes/stream-deck-ical
+            
+            <p style="margin-top: 15px; font-size: 10px; color: #666;">
+                <a href="https://github.com/pedrofuentes/stream-deck-ical" target="_blank" style="color: #4CAF50;">
+                    Documentation & Source Code →
                 </a>
             </p>
         </div>
 
         <!-- Debug Panel (only shown in dev mode) -->
         <div id="debug-panel" style="display: none;">
-            <div class="sdpi-heading">Debug Information</div>
+            <hr class="sdpi-separator" style="margin: 15px 0; border-color: #3a3a3a;" />
+            <div class="sdpi-heading">Debug</div>
             <div class="content">
-                <p id="debug-status" style="color: #888;">Requesting debug info from plugin...</p>
-                <button class="sdpi-item-value" id="refresh-debug">Refresh Debug Info</button>
+                <p id="debug-status" style="color: #888; font-size: 11px;">Requesting debug info...</p>
+                <button class="sdpi-item-value" id="refresh-debug" style="background: #3a3a3a;">Refresh Debug Info</button>
                 
-                <h4>Cache Status</h4>
-                <pre id="cache-status" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 100px; overflow-y: auto;">Waiting for data...</pre>
+                <h4 style="font-size: 11px; margin-top: 10px;">Cache</h4>
+                <pre id="cache-status" style="font-size: 9px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 80px; overflow-y: auto;">...</pre>
                 
-                <h4>Upcoming Events (first 10)</h4>
-                <pre id="events-list" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 150px; overflow-y: auto;">Waiting for data...</pre>
+                <h4 style="font-size: 11px;">Events</h4>
+                <pre id="events-list" style="font-size: 9px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 100px; overflow-y: auto;">...</pre>
                 
-                <h4>Recent Logs</h4>
-                <pre id="debug-logs" style="font-size: 10px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 200px; overflow-y: auto;">Waiting for data...</pre>
+                <h4 style="font-size: 11px;">Logs</h4>
+                <pre id="debug-logs" style="font-size: 9px; white-space: pre-wrap; background: #1a1a1a; padding: 8px; border-radius: 4px; max-height: 150px; overflow-y: auto;">...</pre>
             </div>
         </div>
     </div>
 
     <div class="sdpi-info-label hidden" style="top: -1000;" value=""></div>
     
+    <script>
+        function toggleHelp() {
+            const content = document.getElementById('help-content');
+            const arrow = document.getElementById('help-arrow');
+            if (content.classList.contains('expanded')) {
+                content.classList.remove('expanded');
+                arrow.textContent = '▶';
+            } else {
+                content.classList.add('expanded');
+                arrow.textContent = '▼';
+            }
+        }
+    </script>
     <script src="pi/setup.js"></script>
 </body>
 </html>

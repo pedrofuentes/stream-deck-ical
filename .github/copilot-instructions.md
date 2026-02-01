@@ -36,12 +36,92 @@ streamDeck.actions.registerAction(new TimeLeftAction());
 streamDeck.connect(); // Must come AFTER registration
 ```
 
+### SingletonAction Pattern (CRITICAL)
+
+**SingletonAction means ONE instance handles ALL buttons of that action type.**
+
+This is critical for state management:
+- Instance variables (`this.interval`, `this.actionRef`) would be shared/overwritten
+- Solution: Use `buttonStates: Map<string, ButtonState>` to track per-button state
+- Each method receives `actionId` to operate on the correct button's state
+- Subclasses maintain their own per-button state Maps for action-specific data
+
+```typescript
+// WRONG - shared state breaks with multiple buttons
+class MyAction extends SingletonAction {
+  private interval?: NodeJS.Timeout; // Overwrites when 2nd button appears!
+}
+
+// CORRECT - per-button state
+class MyAction extends SingletonAction {
+  private buttonStates: Map<string, ButtonState> = new Map();
+  
+  startTimerForButton(actionId: string, action: any) {
+    const state = this.buttonStates.get(actionId);
+    state.interval = setInterval(...);
+  }
+}
+```
+
 ### Property Inspector Communication
 
 PI uses WebSocket, not direct imports. Settings flow:
-1. PI calls `setGlobalSettings` via WebSocket
-2. Plugin receives via `onDidReceiveGlobalSettings`
-3. Plugin processes and updates cache
+1. PI calls `setGlobalSettings` via WebSocket for global settings
+2. PI calls `setSettings` via WebSocket for per-action settings
+3. Plugin receives via `onDidReceiveGlobalSettings` and `onDidReceiveSettings`
+4. Plugin processes and updates cache
+
+### Per-Action Settings (v2.3.0)
+
+Each button can select a calendar via `ActionSettings`:
+
+```typescript
+interface ActionSettings {
+  calendarId?: string;          // ID of named calendar to use (new in v2.3)
+  // Legacy fields (kept for backwards compatibility)
+  useCustomCalendar?: boolean;
+  customUrl?: string;
+  customLabel?: string;
+  customTimeWindow?: 1 | 3 | 5 | 7;
+  customExcludeAllDay?: boolean;
+}
+```
+
+**Named Calendars** in GlobalSettings:
+```typescript
+interface NamedCalendar {
+  id: string;           // Unique ID (e.g., "cal_abc123")
+  name: string;         // User-friendly name (e.g., "Work")
+  url: string;          // iCal URL
+  timeWindow?: number;  // Optional override (1, 3, 5, or 7 days)
+  excludeAllDay?: boolean;
+}
+
+interface GlobalSettings {
+  calendars?: NamedCalendar[];
+  defaultCalendarId?: string;
+  orangeThreshold?: number;   // Seconds for orange warning (default: 300 = 5 min)
+  redThreshold?: number;      // Seconds for red warning (default: 30)
+  // ... other settings
+}
+```
+
+**CalendarManager** handles multi-calendar support:
+- Calendars are deduplicated by URL (same URL = shared cache)
+- Reference counting for automatic cleanup
+- Each action registers via `calendarManager.registerAction(actionId, url, ...)`
+
+**BaseAction** provides:
+- `buttonStates: Map<string, ButtonState>` - Per-button state storage
+- `buttonSettings: Map<string, ActionSettings>` - Per-button settings for migration
+- `getEventsForButton(actionId)` - Returns events from the button's registered calendar
+- `getCacheStatusForButton(actionId)` - Returns status of the button's calendar
+- `startTimerForButton(actionId, action)` - Starts update timer for a specific button
+- `stopTimerForButton(actionId)` - Stops timer for a specific button
+- `setImage(actionId, action, imageName)` - Sets image for a specific button
+- `onDidReceiveSettings()` - Handles settings changes, re-registers calendar
+- `migrateButtonsWithDeletedCalendar(validIds)` - Migrates buttons when calendar deleted
+- `getRedZone()` / `getOrangeZone()` - Get configurable warning thresholds
 
 ## Build System
 
@@ -104,6 +184,21 @@ Excluded dates are parsed and passed to RRuleSet to skip specific occurrences.
 
 ## Testing Patterns
 
+### Testing Requirements (MANDATORY)
+
+**Every code change MUST include corresponding tests:**
+
+1. **New features** - Add unit tests covering happy path and edge cases
+2. **Bug fixes** - Add regression tests that would have caught the bug
+3. **Refactoring** - Ensure existing tests still pass, add tests for any new behavior
+
+**Before completing any task:**
+- Run `npm test` to verify all tests pass
+- Check test coverage for changed files
+- Add tests if coverage is insufficient
+
+**For agents:** Always verify tests are added/updated before marking a task complete.
+
 ### Test Fixtures
 
 Located in `__fixtures__/` organized by provider:
@@ -163,13 +258,16 @@ const flashEnabled = settings.flashOnMeetingStart === true;
 | Outlook times wrong | Windows timezone not mapped | Check `timezone-service.ts` mapping |
 | Buttons stuck on "Loading" | Startup race condition | `waitForCacheAndStart` uses 500ms polling with `actionRef` fallback |
 | Title shows for too long | Duration multiplied twice | `getTitleDisplayDuration()` returns seconds, caller multiplies by 1000 |
+| Calendar not loading | Named calendars not set up | Ensure at least one calendar is configured in Settings |
+| Button using deleted calendar | Calendar was removed | Buttons auto-migrate to default via `migrateDeletedCalendars()` |
+| Settings not persisting | Using wrong settings event | Global = `setGlobalSettings`, Per-action = `setSettings` |
 
 ## File Locations
 
 - **Actions**: `src/actions/` - Extend `BaseAction`
-- **Services**: `src/services/` - Business logic
-- **Types**: `src/types/index.ts` - All interfaces
-- **PI HTML**: `pi/setup.html` - Settings popup
+- **Services**: `src/services/` - Business logic (`calendar-manager.ts` for multi-calendar)
+- **Types**: `src/types/index.ts` - All interfaces (`ActionSettings`, `NamedCalendar`, `CalendarInstance`)
+- **PI HTML**: `pi/setup.html` - Settings popup (Named Calendars management)
 - **PI JS**: `pi/setup.js` - Settings logic (not TypeScript)
 - **Tests**: `tests/` - Vitest test files
 

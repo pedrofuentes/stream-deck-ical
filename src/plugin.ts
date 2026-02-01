@@ -12,7 +12,10 @@ import { NextMeetingAction } from './actions/next-meeting.js';
 import { TimeLeftAction } from './actions/time-left.js';
 import { CombinedAction } from './actions/combined-action.js';
 import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo, setFeedConfig, setActionSettings } from './services/calendar-service.js';
+import { calendarManager } from './services/calendar-manager.js';
+import { setGlobalCalendarConfig, setNamedCalendars, migrateDeletedCalendars } from './actions/base-action.js';
 import { logger, isDebugMode } from './utils/logger.js';
+import { NamedCalendar } from './types/index.js';
 
 // Global settings
 let currentUrl: string = '';
@@ -21,6 +24,8 @@ let currentUrlVersion: number = 0; // Track force refresh requests
 let currentExcludeAllDay: boolean = true; // Default: exclude all-day events
 let currentTitleDisplayDuration: number = 15; // Default: 15 seconds
 let currentFlashOnMeetingStart: boolean = false; // Default: disabled
+let currentCalendars: NamedCalendar[] = [];
+let currentDefaultCalendarId: string | undefined;
 let updateIntervalId: NodeJS.Timeout | null = null;
 
 /**
@@ -49,10 +54,17 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
   const settings = ev.settings as any;
   logger.debug('Global settings received:', JSON.stringify(settings));
   
+  // Store global settings in CalendarManager for threshold access
+  calendarManager.setGlobalSettings(settings);
+  
+  // Named calendars (new approach)
+  const newCalendars = (settings.calendars as NamedCalendar[]) || [];
+  const newDefaultCalendarId = settings.defaultCalendarId as string | undefined;
+  
+  // Legacy single URL (backwards compatibility)
   const newUrl = (settings.url as string) || '';
   const newTimeWindow = (settings.timeWindow as number) || 3;
   const newUrlVersion = (settings.urlVersion as number) || 0;
-  // Handle explicit false vs undefined: undefined = true (default), false = false, true = true
   const newExcludeAllDay = settings.excludeAllDay === undefined ? true : Boolean(settings.excludeAllDay);
   const newTitleDisplayDuration = (settings.titleDisplayDuration as number) || 15;
   const newFlashOnMeetingStart = settings.flashOnMeetingStart === undefined ? false : Boolean(settings.flashOnMeetingStart);
@@ -63,10 +75,15 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
     logger.info(`🔄 Force refresh requested from Property Inspector (urlVersion: ${currentUrlVersion} -> ${newUrlVersion})`);
   }
   
+  // Check if calendars changed
+  const calendarsChanged = JSON.stringify(newCalendars) !== JSON.stringify(currentCalendars) ||
+                           newDefaultCalendarId !== currentDefaultCalendarId;
+  
   // Check if any setting changed, or force refresh requested
   const settingsChanged = newUrl !== currentUrl || 
                           newTimeWindow !== currentTimeWindow || 
-                          newExcludeAllDay !== currentExcludeAllDay;
+                          newExcludeAllDay !== currentExcludeAllDay ||
+                          calendarsChanged;
   
   // Check if action settings changed
   const actionSettingsChanged = newTitleDisplayDuration !== currentTitleDisplayDuration ||
@@ -83,15 +100,33 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
   }
   
   if (settingsChanged || forceRefreshRequested) {
-    logger.info(`Settings changed: URL=${newUrl ? '[set]' : '[empty]'}, timeWindow=${newTimeWindow} days, excludeAllDay=${newExcludeAllDay}`);
+    logger.info(`Settings changed: calendars=${newCalendars.length}, defaultCalendarId=${newDefaultCalendarId}, timeWindow=${newTimeWindow} days, excludeAllDay=${newExcludeAllDay}`);
     
     currentUrl = newUrl;
     currentTimeWindow = newTimeWindow;
     currentUrlVersion = newUrlVersion;
     currentExcludeAllDay = newExcludeAllDay;
+    currentCalendars = newCalendars;
+    currentDefaultCalendarId = newDefaultCalendarId;
     
-    // Update the feed config for force refresh
-    setFeedConfig(newUrl, newTimeWindow, newExcludeAllDay);
+    // Update named calendars for BaseAction
+    setNamedCalendars(newCalendars, newDefaultCalendarId);
+    
+    // Migrate any buttons using deleted calendars to default
+    if (calendarsChanged) {
+      const validCalendarIds = newCalendars.map(c => c.id);
+      migrateDeletedCalendars(validCalendarIds);
+    }
+    
+    // Get URL for default/legacy calendar
+    const defaultCal = newCalendars.find(c => c.id === newDefaultCalendarId) || newCalendars[0];
+    const effectiveUrl = defaultCal?.url || newUrl;
+    
+    // Update global calendar config for BaseAction (legacy support)
+    setGlobalCalendarConfig(effectiveUrl, newTimeWindow, newExcludeAllDay);
+    
+    // Update the feed config for force refresh (legacy support)
+    setFeedConfig(effectiveUrl, newTimeWindow, newExcludeAllDay);
     
     // Stop existing updates
     if (updateIntervalId) {
@@ -99,9 +134,16 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
       updateIntervalId = null;
     }
     
-    // Start new updates if URL is set
-    if (newUrl) {
-      updateIntervalId = startPeriodicUpdates(newUrl, newTimeWindow, 10, newExcludeAllDay);
+    // Start new updates if we have a URL
+    if (effectiveUrl) {
+      updateIntervalId = startPeriodicUpdates(effectiveUrl, newTimeWindow, 10, newExcludeAllDay);
+    }
+    
+    // Force refresh ALL calendars in the calendar manager
+    if (forceRefreshRequested) {
+      calendarManager.refreshAllCalendars().catch(err => {
+        logger.error(`Error refreshing all calendars: ${err}`);
+      });
     }
   } else {
     // Just update the urlVersion tracker
@@ -119,12 +161,29 @@ streamDeck.settings.getGlobalSettings().then((settings: any) => {
   // Handle both old format (ev.settings) and direct settings object
   const actualSettings = settings?.settings ?? settings;
   
+  // Store global settings in CalendarManager for threshold access
+  calendarManager.setGlobalSettings(actualSettings || {});
+  
+  // Named calendars (new approach)
+  currentCalendars = (actualSettings?.calendars as NamedCalendar[]) || [];
+  currentDefaultCalendarId = actualSettings?.defaultCalendarId as string | undefined;
+  
+  // Legacy single URL (backwards compatibility)
   currentUrl = (actualSettings?.url as string) || '';
   currentTimeWindow = (actualSettings?.timeWindow as number) || 3;
-  // Handle explicit false vs undefined: undefined = true (default), false = false, true = true
   currentExcludeAllDay = actualSettings?.excludeAllDay === undefined ? true : Boolean(actualSettings?.excludeAllDay);
   currentTitleDisplayDuration = (actualSettings?.titleDisplayDuration as number) || 15;
   currentFlashOnMeetingStart = actualSettings?.flashOnMeetingStart === undefined ? false : Boolean(actualSettings?.flashOnMeetingStart);
+  
+  // Update named calendars for BaseAction
+  setNamedCalendars(currentCalendars, currentDefaultCalendarId);
+  
+  // Get URL for default/legacy calendar
+  const defaultCal = currentCalendars.find(c => c.id === currentDefaultCalendarId) || currentCalendars[0];
+  const effectiveUrl = defaultCal?.url || currentUrl;
+  
+  // Set global calendar config for BaseAction (legacy support)
+  setGlobalCalendarConfig(effectiveUrl, currentTimeWindow, currentExcludeAllDay);
   
   // Set action settings
   setActionSettings({
@@ -132,11 +191,11 @@ streamDeck.settings.getGlobalSettings().then((settings: any) => {
     flashOnMeetingStart: currentFlashOnMeetingStart
   });
   
-  logger.info(`📋 Loaded settings: url=${currentUrl ? '[set]' : '[empty]'}, timeWindow=${currentTimeWindow}, excludeAllDay=${currentExcludeAllDay}, titleDisplayDuration=${currentTitleDisplayDuration}s, flashOnMeetingStart=${currentFlashOnMeetingStart}`);
+  logger.info(`📋 Loaded settings: calendars=${currentCalendars.length}, effectiveUrl=${effectiveUrl ? '[set]' : '[empty]'}, timeWindow=${currentTimeWindow}, excludeAllDay=${currentExcludeAllDay}`);
   
   // Start periodic updates if URL is set
-  if (currentUrl) {
-    updateIntervalId = startPeriodicUpdates(currentUrl, currentTimeWindow, 10, currentExcludeAllDay);
+  if (effectiveUrl) {
+    updateIntervalId = startPeriodicUpdates(effectiveUrl, currentTimeWindow, 10, currentExcludeAllDay);
   } else {
     logger.warn('No iCal URL configured');
   }
