@@ -204,7 +204,10 @@ git checkout main
 git pull origin main
 
 # Merge feature branch (use --no-ff to preserve history)
-git merge --no-ff feature/vX.Y.Z-branch-name -m "Merge feature/vX.Y.Z-branch-name: Brief description"
+# Include issue references to auto-close them
+git merge --no-ff feature/vX.Y.Z-branch-name -m "Merge feature/vX.Y.Z-branch-name: Brief description
+
+Closes #XX, Closes #YY"
 
 # Push to main
 git push origin main
@@ -247,15 +250,17 @@ git push origin vX.Y.Z
 
 #### 7. Create GitHub Release
 
+**IMPORTANT**: Use GitHub keywords to automatically close related issues. Include `Closes #X`, `Fixes #X`, or `Resolves #X` in the release notes for each issue addressed.
+
 ```powershell
 # Create release with plugin package attached
 gh release create vX.Y.Z "release/com.pedrofuentes.ical.streamDeckPlugin" `
   --title "vX.Y.Z - Release Title" `
   --notes "## What's New
 
-- ✨ Feature 1
-- ✨ Feature 2
-- 🐛 Bug fix 1
+- ✨ Feature 1 (Closes #XX)
+- ✨ Feature 2 (Closes #YY)
+- 🐛 Bug fix 1 (Fixes #ZZ)
 
 ## Installation
 
@@ -266,9 +271,23 @@ Or create manually on GitHub:
 1. Go to https://github.com/pedrofuentes/stream-deck-ical/releases/new
 2. Choose the tag `vX.Y.Z`
 3. Set release title
-4. Add release notes
+4. Add release notes with `Closes #X` or `Fixes #X` for each issue
 5. Attach `release/com.pedrofuentes.ical.streamDeckPlugin`
 6. Publish release
+
+### Automatic Issue Closing
+
+GitHub automatically closes issues when these keywords are used in:
+- **Commit messages** merged to main: `git commit -m "feat: add feature X (Closes #123)"`
+- **PR descriptions**: Include `Closes #123` in the PR body
+- **Release notes**: Issues are closed when the release is published
+
+**Keywords** (case-insensitive):
+- `Closes #X` / `Close #X`
+- `Fixes #X` / `Fix #X`  
+- `Resolves #X` / `Resolve #X`
+
+**Multiple issues**: `Closes #11, Closes #20` or `Fixes #11, #20`
 
 #### 8. Post-Release Cleanup
 
