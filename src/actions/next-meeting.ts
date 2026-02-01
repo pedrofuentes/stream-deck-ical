@@ -14,20 +14,45 @@ import { secondsUntil, sec2time } from '../utils/time-utils.js';
 import { logger } from '../utils/logger.js';
 
 /**
+ * Per-button state for NextMeeting (marquee, title display)
+ */
+interface NextMeetingButtonState {
+  showingTitle: boolean;
+  titleTimeout?: NodeJS.Timeout;
+  marqueeInterval?: NodeJS.Timeout;
+  marqueePosition: number;
+}
+
+/**
  * NextMeeting action class
  */
 @action({ UUID: 'com.pedrofuentes.ical.nextmeeting' })
 export class NextMeetingAction extends BaseAction {
-  private showingTitle: boolean = false;
-  private titleTimeout?: NodeJS.Timeout;
-  private marqueeInterval?: NodeJS.Timeout;
-  private marqueePosition: number = 0;
+  // Per-button marquee state
+  private nextMeetingStates: Map<string, NextMeetingButtonState> = new Map();
+  
+  /**
+   * Get or create NextMeeting-specific state for a button
+   */
+  private getNextMeetingState(actionId: string): NextMeetingButtonState {
+    let state = this.nextMeetingStates.get(actionId);
+    if (!state) {
+      state = {
+        showingTitle: false,
+        marqueePosition: 0
+      };
+      this.nextMeetingStates.set(actionId, state);
+    }
+    return state;
+  }
   
   /**
    * Set initial image for next meeting
    */
   protected async setInitialImage(action: any): Promise<void> {
-    await this.setImage(action, 'nextMeeting');
+    // setInitialImage doesn't have actionId in base signature, use action.id
+    const actionId = action.id;
+    await this.setImage(actionId, action, 'nextMeeting');
   }
   
   /**
@@ -40,18 +65,20 @@ export class NextMeetingAction extends BaseAction {
   /**
    * Handle single key press - show meeting title
    */
-  protected async handleSinglePress(action: any): Promise<void> {
-    if (this.showingTitle) {
+  protected async handleSinglePress(actionId: string, action: any): Promise<void> {
+    const nmState = this.getNextMeetingState(actionId);
+    
+    if (nmState.showingTitle) {
       // Already showing title, stop marquee
-      this.stopMarquee();
-      this.showingTitle = false;
+      this.stopMarquee(actionId);
+      nmState.showingTitle = false;
       // Resume normal display
-      await this.updateDisplay(action);
+      await this.updateDisplay(actionId, action);
     } else {
       // Show title as marquee
-      const nextEvent = findNextEvent(this.getEvents());
+      const nextEvent = findNextEvent(this.getEventsForButton(actionId));
       if (nextEvent) {
-        this.startMarquee(action, nextEvent.summary);
+        this.startMarquee(actionId, action, nextEvent.summary);
       }
     }
   }
@@ -59,12 +86,13 @@ export class NextMeetingAction extends BaseAction {
   /**
    * Start marquee display of meeting title
    */
-  private startMarquee(action: any, title: string): void {
-    this.showingTitle = true;
-    this.marqueePosition = 0;
+  private startMarquee(actionId: string, action: any, title: string): void {
+    const nmState = this.getNextMeetingState(actionId);
+    nmState.showingTitle = true;
+    nmState.marqueePosition = 0;
     
     // Clear any existing marquee
-    this.stopMarquee();
+    this.stopMarquee(actionId);
     
     // Pad title for smooth scrolling (spaces at end for wrap-around)
     const paddedTitle = `${title}  •  `;
@@ -74,15 +102,15 @@ export class NextMeetingAction extends BaseAction {
       // Extract visible portion with wrap-around
       let displayText = '';
       for (let i = 0; i < displayWidth; i++) {
-        const charIndex = (this.marqueePosition + i) % paddedTitle.length;
+        const charIndex = (nmState.marqueePosition + i) % paddedTitle.length;
         displayText += paddedTitle[charIndex];
       }
       
       await action.setTitle(displayText);
       
-      this.marqueePosition++;
-      if (this.marqueePosition >= paddedTitle.length) {
-        this.marqueePosition = 0;
+      nmState.marqueePosition++;
+      if (nmState.marqueePosition >= paddedTitle.length) {
+        nmState.marqueePosition = 0;
       }
     };
     
@@ -90,71 +118,76 @@ export class NextMeetingAction extends BaseAction {
     updateMarquee();
     
     // Update every 250ms for smooth scrolling
-    this.marqueeInterval = setInterval(updateMarquee, 250);
+    nmState.marqueeInterval = setInterval(updateMarquee, 250);
     
     // Auto-stop after configurable duration (default 15 seconds)
     const displayDuration = this.getTitleDisplayDuration() * 1000;
-    this.titleTimeout = setTimeout(() => {
-      this.stopMarquee();
-      this.showingTitle = false;
-      this.updateDisplay(action);
+    nmState.titleTimeout = setTimeout(() => {
+      this.stopMarquee(actionId);
+      nmState.showingTitle = false;
+      this.updateDisplay(actionId, action);
     }, displayDuration);
   }
   
   /**
-   * Stop marquee display
+   * Stop marquee display for a specific button
    */
-  private stopMarquee(): void {
-    if (this.marqueeInterval) {
-      clearInterval(this.marqueeInterval);
-      this.marqueeInterval = undefined;
-    }
-    if (this.titleTimeout) {
-      clearTimeout(this.titleTimeout);
-      this.titleTimeout = undefined;
+  private stopMarquee(actionId: string): void {
+    const nmState = this.nextMeetingStates.get(actionId);
+    if (nmState) {
+      if (nmState.marqueeInterval) {
+        clearInterval(nmState.marqueeInterval);
+        nmState.marqueeInterval = undefined;
+      }
+      if (nmState.titleTimeout) {
+        clearTimeout(nmState.titleTimeout);
+        nmState.titleTimeout = undefined;
+      }
     }
   }
   
   /**
    * Update display with countdown to next meeting
    */
-  protected async updateDisplay(action: any): Promise<void> {
+  protected async updateDisplay(actionId: string, action: any): Promise<void> {
+    const nmState = this.getNextMeetingState(actionId);
+    
     // Don't update if showing marquee
-    if (this.showingTitle) {
+    if (nmState.showingTitle) {
       return;
     }
     
     // Check cache status
-    const status = this.getCacheStatus();
+    const status = this.getCacheStatusForButton(actionId);
     if (status !== 'LOADED' && status !== 'NO_EVENTS') {
       const statusText = getStatusText(status);
-      logger.debug(`[NextMeeting] Cache status: ${status}, showing: ${statusText}`);
+      logger.debug(`[NextMeeting:${actionId}] Cache status: ${status}, showing: ${statusText}`);
       await action.setTitle(statusText);
-      await this.setImage(action, 'nextMeeting');
+      await this.setImage(actionId, action, 'nextMeeting');
       return;
     }
     
     // Find next event
-    const events = this.getEvents();
+    const events = this.getEventsForButton(actionId);
     const nextEvent = findNextEvent(events);
     
-    logger.debug(`[NextMeeting] Cache has ${events.length} total events, next=${nextEvent ? nextEvent.summary : 'none'}`);
+    logger.debug(`[NextMeeting:${actionId}] Cache has ${events.length} total events, next=${nextEvent ? nextEvent.summary : 'none'}`);
     
     if (!nextEvent) {
-      logger.debug(`[NextMeeting] No upcoming events in cache`);
+      logger.debug(`[NextMeeting:${actionId}] No upcoming events in cache`);
       await action.setTitle('No\nUpcoming\nMeeting');
-      await this.setImage(action, 'nextMeeting');
+      await this.setImage(actionId, action, 'nextMeeting');
       return;
     }
     
     // Calculate time until meeting
     const secondsRemaining = secondsUntil(nextEvent.start);
     
-    logger.debug(`[NextMeeting] Event: "${nextEvent.summary}", starts: ${nextEvent.start.toISOString()}, in ${secondsRemaining}s`);
+    logger.debug(`[NextMeeting:${actionId}] Event: "${nextEvent.summary}", starts: ${nextEvent.start.toISOString()}, in ${secondsRemaining}s`);
     
     if (secondsRemaining < 0) {
       // Event has started, find the next one
-      logger.debug(`[NextMeeting] Event already started (${secondsRemaining}s ago), will refresh on next tick`);
+      logger.debug(`[NextMeeting:${actionId}] Event already started (${secondsRemaining}s ago), will refresh on next tick`);
       // Don't update this tick, let next tick handle it
       return;
     }
@@ -163,17 +196,17 @@ export class NextMeetingAction extends BaseAction {
     let imageState = 'normal';
     if (secondsRemaining <= this.RED_ZONE) {
       imageState = 'red';
-      await this.setImage(action, 'nextMeetingRed');
+      await this.setImage(actionId, action, 'nextMeetingRed');
     } else if (secondsRemaining <= this.ORANGE_ZONE) {
       imageState = 'orange';
-      await this.setImage(action, 'nextMeetingOrange');
+      await this.setImage(actionId, action, 'nextMeetingOrange');
     } else {
-      await this.setImage(action, 'nextMeeting');
+      await this.setImage(actionId, action, 'nextMeeting');
     }
     
     // Update title with countdown
     const timeText = sec2time(secondsRemaining);
-    logger.debug(`[NextMeeting] Display: ${timeText}, image=${imageState}`);
+    logger.debug(`[NextMeeting:${actionId}] Display: ${timeText}, image=${imageState}`);
     await action.setTitle(timeText);
   }
   
@@ -181,7 +214,10 @@ export class NextMeetingAction extends BaseAction {
    * Override to stop marquee when disappearing
    */
   async onWillDisappear(ev: any): Promise<void> {
-    this.stopMarquee();
+    const actionId = ev.action.id;
+    this.stopMarquee(actionId);
+    // Clean up NextMeeting-specific state
+    this.nextMeetingStates.delete(actionId);
     await super.onWillDisappear(ev);
   }
 }

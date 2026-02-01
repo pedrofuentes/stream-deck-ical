@@ -28,96 +28,125 @@ export function setGlobalCalendarConfig(url: string, timeWindow: number, exclude
 }
 
 /**
+ * Per-button state for SingletonAction pattern
+ * Since SingletonAction uses one instance for all buttons, we track state per button ID
+ */
+interface ButtonState {
+  interval?: NodeJS.Timeout;
+  waitingForCacheInterval?: NodeJS.Timeout;
+  cacheVersion: number;
+  currentImage: string;
+  lastKeyPress: number;
+  actionRef: any;
+  flashInterval?: NodeJS.Timeout;
+  isFlashing: boolean;
+  calendarId?: string;
+  useCustomCalendar: boolean;
+}
+
+/**
  * Base action class with common functionality
  */
 export abstract class BaseAction extends SingletonAction {
-  protected interval?: NodeJS.Timeout;
-  protected waitingForCacheInterval?: NodeJS.Timeout;
-  protected cacheVersion: number = 0;
-  protected currentImage: string = '';
-  protected lastKeyPress: number = 0;
-  protected actionRef?: any; // Keep reference to action for async operations
-  protected flashInterval?: NodeJS.Timeout;
-  protected isFlashing: boolean = false;
-  
-  // Per-action calendar settings
-  protected actionId?: string;
-  protected calendarId?: string;
-  protected useCustomCalendar: boolean = false;
+  // Per-button state storage (SingletonAction = one instance for all buttons)
+  protected buttonStates: Map<string, ButtonState> = new Map();
   
   // Color zones (in seconds)
   protected readonly RED_ZONE = 30;
   protected readonly ORANGE_ZONE = 300; // 5 minutes
   
   /**
+   * Get or create button state for an action ID
+   */
+  protected getButtonState(actionId: string): ButtonState {
+    let state = this.buttonStates.get(actionId);
+    if (!state) {
+      state = {
+        cacheVersion: 0,
+        currentImage: '',
+        lastKeyPress: 0,
+        actionRef: null,
+        isFlashing: false,
+        useCustomCalendar: false
+      };
+      this.buttonStates.set(actionId, state);
+    }
+    return state;
+  }
+  
+  /**
    * Called when action appears on Stream Deck
    */
   async onWillAppear(ev: WillAppearEvent<any>): Promise<void> {
-    logger.debug(`${this.constructor.name} will appear`);
+    const actionId = ev.action.id;
+    logger.debug(`${this.constructor.name} will appear: ${actionId}`);
     
-    // Keep reference to action
-    this.actionRef = ev.action;
-    this.actionId = ev.action.id;
+    // Get or create button state
+    const state = this.getButtonState(actionId);
+    state.actionRef = ev.action;
     
     // Check for per-action settings
     const settings = ev.payload.settings as ActionSettings | undefined;
-    this.useCustomCalendar = settings?.useCustomCalendar ?? false;
+    state.useCustomCalendar = settings?.useCustomCalendar ?? false;
     
-    if (this.useCustomCalendar && settings?.customUrl) {
+    if (state.useCustomCalendar && settings?.customUrl) {
       // Register with custom calendar
-      this.calendarId = calendarManager.registerAction(
-        this.actionId,
+      state.calendarId = calendarManager.registerAction(
+        actionId,
         settings.customUrl,
         settings.customTimeWindow ?? globalTimeWindow,
         settings.customExcludeAllDay ?? globalExcludeAllDay
       );
-      logger.info(`[${this.constructor.name}] Using custom calendar: ${settings.customLabel || settings.customUrl.substring(0, 30)}...`);
+      logger.info(`[${this.constructor.name}] ${actionId} using custom calendar: ${settings.customLabel || settings.customUrl.substring(0, 30)}...`);
     } else if (globalUrl) {
       // Register with global calendar
-      this.calendarId = calendarManager.registerAction(
-        this.actionId,
+      state.calendarId = calendarManager.registerAction(
+        actionId,
         globalUrl,
         globalTimeWindow,
         globalExcludeAllDay
       );
-      logger.debug(`[${this.constructor.name}] Using global calendar`);
+      logger.debug(`[${this.constructor.name}] ${actionId} using global calendar`);
     }
     
     // Set initial image
     await this.setInitialImage(ev.action);
     
     // Check cache status and start timer when ready
-    this.waitForCacheAndStart(ev.action);
+    this.waitForCacheAndStart(actionId, ev.action);
   }
   
   /**
-   * Get events for this action (from its registered calendar)
+   * Get events for a specific action (from its registered calendar)
    */
-  protected getEvents(): CalendarEvent[] {
-    if (this.actionId && this.calendarId) {
-      return calendarManager.getEventsForAction(this.actionId);
+  protected getEventsForButton(actionId: string): CalendarEvent[] {
+    const state = this.buttonStates.get(actionId);
+    if (state?.calendarId) {
+      return calendarManager.getEventsForAction(actionId);
     }
     // Fallback to global cache for backwards compatibility
     return calendarCache.events;
   }
   
   /**
-   * Get cache status for this action
+   * Get cache status for a specific action
    */
-  protected getCacheStatus(): ErrorState {
-    if (this.actionId && this.calendarId) {
-      return calendarManager.getStatusForAction(this.actionId);
+  protected getCacheStatusForButton(actionId: string): ErrorState {
+    const state = this.buttonStates.get(actionId);
+    if (state?.calendarId) {
+      return calendarManager.getStatusForAction(actionId);
     }
     // Fallback to global cache
     return calendarCache.status;
   }
   
   /**
-   * Get cache version for this action
+   * Get cache version for a specific action
    */
-  protected getCacheVersion(): number {
-    if (this.actionId && this.calendarId) {
-      const calendar = calendarManager.getCalendarForAction(this.actionId);
+  protected getCacheVersionForButton(actionId: string): number {
+    const state = this.buttonStates.get(actionId);
+    if (state?.calendarId) {
+      const calendar = calendarManager.getCalendarForAction(actionId);
       return calendar?.cache.version ?? 0;
     }
     return calendarCache.version;
@@ -126,19 +155,21 @@ export abstract class BaseAction extends SingletonAction {
   /**
    * Wait for cache to be available, then start timer
    */
-  private waitForCacheAndStart(action: any): void {
+  private waitForCacheAndStart(actionId: string, action: any): void {
+    const state = this.getButtonState(actionId);
+    
     // Clear any existing waiting interval
-    if (this.waitingForCacheInterval) {
-      clearInterval(this.waitingForCacheInterval);
-      this.waitingForCacheInterval = undefined;
+    if (state.waitingForCacheInterval) {
+      clearInterval(state.waitingForCacheInterval);
+      state.waitingForCacheInterval = undefined;
     }
     
     // Get status from the action's calendar
-    const status = this.getCacheStatus();
+    const status = this.getCacheStatusForButton(actionId);
     
     // If cache is loaded, start immediately
     if (status === 'LOADED' || status === 'NO_EVENTS') {
-      this.startTimer(action);
+      this.startTimerForButton(actionId, action);
       return;
     }
     
@@ -147,20 +178,20 @@ export abstract class BaseAction extends SingletonAction {
     action.setTitle(statusText);
     
     // Check every 500ms for cache to become available (faster response on startup)
-    this.waitingForCacheInterval = setInterval(() => {
+    state.waitingForCacheInterval = setInterval(() => {
       // Use stored actionRef if available (more reliable after plugin restart)
-      const currentAction = this.actionRef || action;
+      const currentAction = state.actionRef || action;
       
-      const currentStatus = this.getCacheStatus();
+      const currentStatus = this.getCacheStatusForButton(actionId);
       
       if (currentStatus === 'LOADED' || currentStatus === 'NO_EVENTS') {
         // Cache is ready, start timer
-        if (this.waitingForCacheInterval) {
-          clearInterval(this.waitingForCacheInterval);
-          this.waitingForCacheInterval = undefined;
+        if (state.waitingForCacheInterval) {
+          clearInterval(state.waitingForCacheInterval);
+          state.waitingForCacheInterval = undefined;
         }
-        logger.debug('Cache ready, starting timer');
-        this.startTimer(currentAction);
+        logger.debug(`Cache ready for ${actionId}, starting timer`);
+        this.startTimerForButton(actionId, currentAction);
       } else {
         // Update status text while waiting
         const statusText = getStatusText(currentStatus);
@@ -168,75 +199,86 @@ export abstract class BaseAction extends SingletonAction {
       }
     }, 500);
     
-    logger.debug('Waiting for cache to become available...');
+    logger.debug(`Waiting for cache for ${actionId}...`);
   }
   
   /**
    * Called when action disappears from Stream Deck
    */
   async onWillDisappear(ev: WillDisappearEvent<any>): Promise<void> {
-    logger.debug(`${this.constructor.name} will disappear`);
-    this.stopTimer();
+    const actionId = ev.action.id;
+    logger.debug(`${this.constructor.name} will disappear: ${actionId}`);
     
-    // Unregister from CalendarManager
-    if (this.actionId) {
-      calendarManager.unregisterAction(this.actionId);
+    const state = this.buttonStates.get(actionId);
+    if (state) {
+      // Stop button's timer
+      if (state.interval) {
+        clearInterval(state.interval);
+      }
+      
+      // Clear waiting interval
+      if (state.waitingForCacheInterval) {
+        clearInterval(state.waitingForCacheInterval);
+      }
+      
+      // Stop any flash
+      if (state.flashInterval) {
+        clearInterval(state.flashInterval);
+      }
+      
+      // Unregister from CalendarManager
+      calendarManager.unregisterAction(actionId);
+      
+      // Remove state for this button
+      this.buttonStates.delete(actionId);
     }
-    
-    // Clear waiting interval
-    if (this.waitingForCacheInterval) {
-      clearInterval(this.waitingForCacheInterval);
-      this.waitingForCacheInterval = undefined;
-    }
-    
-    this.actionRef = undefined;
-    this.actionId = undefined;
-    this.calendarId = undefined;
   }
   
   /**
    * Called when settings are received/updated from Property Inspector
    */
   async onDidReceiveSettings(ev: DidReceiveSettingsEvent<any>): Promise<void> {
+    const actionId = ev.action.id;
     const settings = ev.payload.settings as ActionSettings | undefined;
-    logger.debug(`[${this.constructor.name}] Settings received:`, JSON.stringify(settings));
+    logger.debug(`[${this.constructor.name}] Settings received for ${actionId}:`, JSON.stringify(settings));
     
-    if (!this.actionId) {
-      logger.debug(`[${this.constructor.name}] No action ID, skipping settings update`);
+    const state = this.buttonStates.get(actionId);
+    if (!state) {
+      logger.debug(`[${this.constructor.name}] No state for action ${actionId}, skipping settings update`);
       return;
     }
     
     const newUseCustomCalendar = settings?.useCustomCalendar ?? false;
     
     // Check if calendar settings changed
-    if (newUseCustomCalendar !== this.useCustomCalendar || 
+    if (newUseCustomCalendar !== state.useCustomCalendar || 
         (newUseCustomCalendar && settings?.customUrl)) {
       
-      this.useCustomCalendar = newUseCustomCalendar;
+      state.useCustomCalendar = newUseCustomCalendar;
       
       // Re-register with the appropriate calendar
       if (newUseCustomCalendar && settings?.customUrl) {
-        this.calendarId = calendarManager.registerAction(
-          this.actionId,
+        state.calendarId = calendarManager.registerAction(
+          actionId,
           settings.customUrl,
           settings.customTimeWindow ?? globalTimeWindow,
           settings.customExcludeAllDay ?? globalExcludeAllDay
         );
-        logger.info(`[${this.constructor.name}] Switched to custom calendar: ${settings.customLabel || settings.customUrl.substring(0, 30)}...`);
+        logger.info(`[${this.constructor.name}] Switched ${actionId} to custom calendar: ${settings.customLabel || settings.customUrl.substring(0, 30)}...`);
       } else if (globalUrl) {
-        this.calendarId = calendarManager.registerAction(
-          this.actionId,
+        state.calendarId = calendarManager.registerAction(
+          actionId,
           globalUrl,
           globalTimeWindow,
           globalExcludeAllDay
         );
-        logger.info(`[${this.constructor.name}] Switched to global calendar`);
+        logger.info(`[${this.constructor.name}] Switched ${actionId} to global calendar`);
       }
       
       // Restart the display with new calendar
-      this.stopTimer();
-      if (this.actionRef) {
-        this.waitForCacheAndStart(this.actionRef);
+      this.stopTimerForButton(actionId);
+      if (state.actionRef) {
+        this.waitForCacheAndStart(actionId, state.actionRef);
       }
     }
   }
@@ -252,35 +294,42 @@ export abstract class BaseAction extends SingletonAction {
    * Called when key is released
    */
   async onKeyUp(ev: KeyUpEvent<any>): Promise<void> {
+    const actionId = ev.action.id;
+    const state = this.buttonStates.get(actionId);
+    if (!state) return;
+    
     // Check for double press
     const now = Date.now();
-    const timeSinceLastPress = now - this.lastKeyPress;
-    this.lastKeyPress = now;
+    const timeSinceLastPress = now - state.lastKeyPress;
+    state.lastKeyPress = now;
     
     if (timeSinceLastPress < 500) {
       // Double press detected - force refresh
-      await this.handleDoublePress(ev.action);
+      await this.handleDoublePress(actionId, ev.action);
     } else {
       // Single press
-      await this.handleSinglePress(ev.action);
+      await this.handleSinglePress(actionId, ev.action);
     }
   }
   
   /**
    * Handle single key press (override in subclasses)
    */
-  protected async handleSinglePress(action: any): Promise<void> {
+  protected async handleSinglePress(actionId: string, action: any): Promise<void> {
     // Override in subclasses
   }
   
   /**
    * Handle double key press (force refresh)
    */
-  protected async handleDoublePress(action: any): Promise<void> {
-    logger.info('🔄 Double press detected - forcing calendar refresh');
+  protected async handleDoublePress(actionId: string, action: any): Promise<void> {
+    logger.info(`🔄 Double press detected on ${actionId} - forcing calendar refresh`);
+    
+    const state = this.buttonStates.get(actionId);
+    if (!state) return;
     
     // Stop the current timer
-    this.stopTimer();
+    this.stopTimerForButton(actionId);
     
     // Show loading state
     await action.setTitle('Refreshing\n...');
@@ -288,9 +337,9 @@ export abstract class BaseAction extends SingletonAction {
     
     try {
       // Refresh the appropriate calendar
-      if (this.actionId && this.calendarId) {
+      if (state.calendarId) {
         // Refresh through CalendarManager (handles URL-level deduplication)
-        await calendarManager.refreshCalendarForAction(this.actionId);
+        await calendarManager.refreshCalendarForAction(actionId);
       } else {
         // Fallback to global refresh
         await forceRefreshCache();
@@ -301,60 +350,64 @@ export abstract class BaseAction extends SingletonAction {
     }
     
     // Restart the timer to show updated data
-    this.waitForCacheAndStart(action);
+    this.waitForCacheAndStart(actionId, action);
   }
   
   /**
-   * Start the update timer
+   * Start the update timer for a specific button
    */
-  protected startTimer(action: any): void {
-    this.cacheVersion = this.getCacheVersion();
+  protected startTimerForButton(actionId: string, action: any): void {
+    const state = this.buttonStates.get(actionId);
+    if (!state) return;
     
-    // Clear any existing timer
-    this.stopTimer();
+    state.cacheVersion = this.getCacheVersionForButton(actionId);
+    
+    // Clear any existing timer for this button
+    this.stopTimerForButton(actionId);
     
     // Update immediately
-    this.updateDisplay(action);
+    this.updateDisplay(actionId, action);
     
     // Set up interval for updates (every second)
-    this.interval = setInterval(() => {
+    state.interval = setInterval(() => {
       // Check if cache is still loaded
-      const status = this.getCacheStatus();
+      const status = this.getCacheStatusForButton(actionId);
       if (status !== 'LOADED' && status !== 'NO_EVENTS') {
         // Cache is reloading, stop timer and wait again
-        this.stopTimer();
-        this.waitForCacheAndStart(action);
+        this.stopTimerForButton(actionId);
+        this.waitForCacheAndStart(actionId, action);
         return;
       }
       
       // Check if cache was updated
-      const currentVersion = this.getCacheVersion();
-      if (this.cacheVersion !== currentVersion) {
-        this.cacheVersion = currentVersion;
-        logger.debug('Cache updated, refreshing display');
+      const currentVersion = this.getCacheVersionForButton(actionId);
+      if (state.cacheVersion !== currentVersion) {
+        state.cacheVersion = currentVersion;
+        logger.debug(`Cache updated for ${actionId}, refreshing display`);
       }
       
-      this.updateDisplay(action);
+      this.updateDisplay(actionId, action);
     }, 1000);
     
-    logger.debug('Timer started');
+    logger.debug(`Timer started for ${actionId}`);
   }
   
   /**
-   * Stop the update timer
+   * Stop the update timer for a specific button
    */
-  protected stopTimer(): void {
-    if (this.interval) {
-      clearInterval(this.interval);
-      this.interval = undefined;
-      logger.debug('Timer stopped');
+  protected stopTimerForButton(actionId: string): void {
+    const state = this.buttonStates.get(actionId);
+    if (state?.interval) {
+      clearInterval(state.interval);
+      state.interval = undefined;
+      logger.debug(`Timer stopped for ${actionId}`);
     }
   }
   
   /**
    * Update the display (override in subclasses)
    */
-  protected abstract updateDisplay(action: any): Promise<void>;
+  protected abstract updateDisplay(actionId: string, action: any): Promise<void>;
   
   /**
    * Set initial image (override in subclasses)
@@ -364,9 +417,10 @@ export abstract class BaseAction extends SingletonAction {
   /**
    * Set action image by name
    */
-  protected async setImage(action: any, imageName: string): Promise<void> {
-    if (this.currentImage !== imageName) {
-      this.currentImage = imageName;
+  protected async setImage(actionId: string, action: any, imageName: string): Promise<void> {
+    const state = this.buttonStates.get(actionId);
+    if (state && state.currentImage !== imageName) {
+      state.currentImage = imageName;
       await action.setImage(`assets/${imageName}.png`);
     }
   }
@@ -375,55 +429,61 @@ export abstract class BaseAction extends SingletonAction {
    * Flash the button to draw attention (e.g., meeting starting)
    * Alternates between normal and highlight image
    */
-  protected async flashButton(action: any, normalImage: string, highlightImage: string, count: number = 10): Promise<void> {
+  protected async flashButton(actionId: string, action: any, normalImage: string, highlightImage: string, count: number = 10): Promise<void> {
     // Check if flash is enabled in settings
     const settings = getSettings();
     if (settings.flashOnMeetingStart === false) {
       return;
     }
     
+    const state = this.buttonStates.get(actionId);
+    if (!state) return;
+    
     // Don't start new flash if already flashing
-    if (this.isFlashing) {
+    if (state.isFlashing) {
       return;
     }
     
-    this.isFlashing = true;
+    state.isFlashing = true;
     let flashCount = 0;
-    const flashInterval = 200; // ms between flashes
+    const flashIntervalMs = 200; // ms between flashes
     
-    logger.info(`🔔 Flashing button ${count} times`);
+    logger.info(`🔔 Flashing button ${actionId} ${count} times`);
     
-    this.flashInterval = setInterval(async () => {
+    state.flashInterval = setInterval(async () => {
       if (flashCount >= count * 2) {
         // Done flashing
-        if (this.flashInterval) {
-          clearInterval(this.flashInterval);
-          this.flashInterval = undefined;
+        if (state.flashInterval) {
+          clearInterval(state.flashInterval);
+          state.flashInterval = undefined;
         }
-        this.isFlashing = false;
+        state.isFlashing = false;
         // Reset to normal image
-        this.currentImage = '';
-        await this.setImage(action, normalImage);
+        state.currentImage = '';
+        await this.setImage(actionId, action, normalImage);
         return;
       }
       
       // Alternate between highlight and normal
       const useHighlight = flashCount % 2 === 0;
-      this.currentImage = ''; // Force image update
+      state.currentImage = ''; // Force image update
       await action.setImage(`assets/${useHighlight ? highlightImage : normalImage}.png`);
       flashCount++;
-    }, flashInterval);
+    }, flashIntervalMs);
   }
   
   /**
-   * Stop any ongoing flash
+   * Stop any ongoing flash for a specific button
    */
-  protected stopFlash(): void {
-    if (this.flashInterval) {
-      clearInterval(this.flashInterval);
-      this.flashInterval = undefined;
+  protected stopFlashForButton(actionId: string): void {
+    const state = this.buttonStates.get(actionId);
+    if (state) {
+      if (state.flashInterval) {
+        clearInterval(state.flashInterval);
+        state.flashInterval = undefined;
+      }
+      state.isFlashing = false;
     }
-    this.isFlashing = false;
   }
   
   /**
