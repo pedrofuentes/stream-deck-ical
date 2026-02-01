@@ -49,13 +49,26 @@ export interface RecurrenceRule {
 }
 
 /**
- * Plugin settings stored per action instance
+ * Plugin settings stored per action instance (legacy, kept for compatibility)
  */
 export interface PluginSettings {
   url?: string;
   timeWindow?: 1 | 3 | 5 | 7; // days
   lastRefresh?: number;
   urlVersion?: number;
+}
+
+/**
+ * Per-action settings that can override global calendar settings
+ * Stored via setSettings() for each action instance
+ */
+export interface ActionSettings {
+  // Custom calendar override (if not set or false, uses global)
+  useCustomCalendar?: boolean;
+  customUrl?: string;
+  customLabel?: string; // User-friendly name for PI organization
+  customTimeWindow?: 1 | 3 | 5 | 7;
+  customExcludeAllDay?: boolean;
 }
 
 /**
@@ -67,7 +80,21 @@ export interface GlobalSettings {
   timeWindow: 1 | 3 | 5 | 7; // days
   excludeAllDay?: boolean; // default true
   titleDisplayDuration?: 5 | 10 | 15 | 30; // seconds, default 15
-  flashOnMeetingStart?: boolean; // default true
+  flashOnMeetingStart?: boolean; // default false
+}
+
+/**
+ * Calendar instance for multi-calendar support
+ * Managed by CalendarManager - one instance per unique URL
+ */
+export interface CalendarInstance {
+  id: string; // Hash/identifier for the calendar
+  url: string;
+  timeWindow: number;
+  excludeAllDay: boolean;
+  cache: CalendarCache;
+  updateInterval?: NodeJS.Timeout;
+  refCount: number; // How many actions reference this calendar
 }
 
 /**
