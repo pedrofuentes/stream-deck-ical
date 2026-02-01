@@ -244,10 +244,11 @@ describe('Edge cases', () => {
       const isActive = event.start.getTime() <= Date.now() && event.end.getTime() >= Date.now();
       expect(isActive).toBe(true);
       
-      // Time remaining should be about 12 hours
+      // Time remaining should be about 12 hours (allow for timing variance)
       const secondsRemaining = Math.floor((event.end.getTime() - Date.now()) / 1000);
       const display = sec2time(secondsRemaining);
-      expect(display).toBe('12h');
+      // Could be 11h or 12h depending on when test runs within the minute
+      expect(['11h', '12h']).toContain(display);
     });
   });
 

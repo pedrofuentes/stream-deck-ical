@@ -84,6 +84,21 @@ interface ButtonState {
   useCustomCalendar: boolean;
 }
 
+// Registry of all action instances for cross-action communication
+const actionInstances: BaseAction[] = [];
+
+/**
+ * Migrate buttons using deleted calendars to the default calendar.
+ * Called when named calendars are updated.
+ */
+export function migrateDeletedCalendars(currentCalendarIds: string[]): void {
+  logger.info(`[BaseAction] Checking for buttons using deleted calendars. Valid IDs: ${currentCalendarIds.join(', ')}`);
+  
+  for (const action of actionInstances) {
+    action.migrateButtonsWithDeletedCalendar(currentCalendarIds);
+  }
+}
+
 /**
  * Base action class with common functionality
  */
@@ -91,9 +106,18 @@ export abstract class BaseAction extends SingletonAction {
   // Per-button state storage (SingletonAction = one instance for all buttons)
   protected buttonStates: Map<string, ButtonState> = new Map();
   
+  // Store the action settings per button for migration
+  protected buttonSettings: Map<string, ActionSettings | undefined> = new Map();
+  
   // Color zone defaults (in seconds) - can be overridden via settings
   protected readonly DEFAULT_RED_ZONE = 30;
   protected readonly DEFAULT_ORANGE_ZONE = 300; // 5 minutes
+  
+  constructor() {
+    super();
+    // Register this instance for cross-action communication
+    actionInstances.push(this);
+  }
   
   /**
    * Get the red zone threshold (in seconds)
@@ -143,6 +167,9 @@ export abstract class BaseAction extends SingletonAction {
     
     // Check for per-action settings
     const settings = ev.payload.settings as ActionSettings | undefined;
+    
+    // Store settings for potential migration when calendars change
+    this.buttonSettings.set(actionId, settings);
     
     // Store the calendarId from settings for potential retry
     state.pendingCalendarId = settings?.calendarId;
@@ -389,6 +416,7 @@ export abstract class BaseAction extends SingletonAction {
       
       // Remove state for this button
       this.buttonStates.delete(actionId);
+      this.buttonSettings.delete(actionId);
     }
   }
   
@@ -399,6 +427,9 @@ export abstract class BaseAction extends SingletonAction {
     const actionId = ev.action.id;
     const settings = ev.payload.settings as ActionSettings | undefined;
     logger.debug(`[${this.constructor.name}] Settings received for ${actionId}:`, JSON.stringify(settings));
+    
+    // Store settings for potential migration
+    this.buttonSettings.set(actionId, settings);
     
     const state = this.buttonStates.get(actionId);
     if (!state) {
@@ -669,5 +700,37 @@ export abstract class BaseAction extends SingletonAction {
   protected getTitleDisplayDuration(): number {
     const settings = getSettings();
     return settings.titleDisplayDuration ?? 15;
+  }
+  
+  /**
+   * Migrate buttons using deleted calendars to the default calendar.
+   * Called when named calendars are updated and some may have been deleted.
+   */
+  public migrateButtonsWithDeletedCalendar(validCalendarIds: string[]): void {
+    const validSet = new Set(validCalendarIds);
+    
+    for (const [actionId, settings] of this.buttonSettings) {
+      if (settings?.calendarId && !validSet.has(settings.calendarId)) {
+        const state = this.buttonStates.get(actionId);
+        logger.info(`[${this.constructor.name}] Button ${actionId} was using deleted calendar ${settings.calendarId}, migrating to default`);
+        
+        // Clear the calendarId from stored settings
+        const updatedSettings = { ...settings, calendarId: undefined };
+        this.buttonSettings.set(actionId, updatedSettings);
+        
+        // Update the action's settings on the Stream Deck
+        if (state?.actionRef) {
+          state.actionRef.setSettings(updatedSettings);
+        }
+        
+        // Re-register with the default calendar
+        this.registerCalendarForButton(actionId, updatedSettings);
+        
+        // Restart the timer with the new calendar
+        if (state?.actionRef) {
+          this.waitForCacheAndStart(actionId, state.actionRef);
+        }
+      }
+    }
   }
 }

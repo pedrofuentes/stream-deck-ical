@@ -13,7 +13,7 @@ import { TimeLeftAction } from './actions/time-left.js';
 import { CombinedAction } from './actions/combined-action.js';
 import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo, setFeedConfig, setActionSettings } from './services/calendar-service.js';
 import { calendarManager } from './services/calendar-manager.js';
-import { setGlobalCalendarConfig, setNamedCalendars } from './actions/base-action.js';
+import { setGlobalCalendarConfig, setNamedCalendars, migrateDeletedCalendars } from './actions/base-action.js';
 import { logger, isDebugMode } from './utils/logger.js';
 import { NamedCalendar } from './types/index.js';
 
@@ -111,6 +111,12 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
     
     // Update named calendars for BaseAction
     setNamedCalendars(newCalendars, newDefaultCalendarId);
+    
+    // Migrate any buttons using deleted calendars to default
+    if (calendarsChanged) {
+      const validCalendarIds = newCalendars.map(c => c.id);
+      migrateDeletedCalendars(validCalendarIds);
+    }
     
     // Get URL for default/legacy calendar
     const defaultCal = newCalendars.find(c => c.id === newDefaultCalendarId) || newCalendars[0];

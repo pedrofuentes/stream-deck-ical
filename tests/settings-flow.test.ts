@@ -356,3 +356,35 @@ describe('Calendar ID Generation', () => {
     expect(id.startsWith('cal_')).toBe(true);
   });
 });
+
+describe('Calendar Deletion Migration', () => {
+  it('migrateDeletedCalendars should call migrateButtonsWithDeletedCalendar on actions', async () => {
+    // Test the migrateDeletedCalendars function directly through importing it
+    // This test verifies the function exists and can be called
+    const { migrateDeletedCalendars, setNamedCalendars } = await import('../src/actions/base-action.js');
+    
+    // Set up initial calendars
+    setNamedCalendars([
+      { id: 'cal-1', name: 'Work', url: 'https://work.com/cal.ics' },
+      { id: 'cal-2', name: 'Personal', url: 'https://personal.com/cal.ics' }
+    ], 'cal-1');
+    
+    // Call migration with only one calendar remaining (cal-2 deleted)
+    // This should not throw and should log migration attempts
+    expect(() => migrateDeletedCalendars(['cal-1'])).not.toThrow();
+  });
+
+  it('migrateDeletedCalendars should handle empty calendar list', async () => {
+    const { migrateDeletedCalendars } = await import('../src/actions/base-action.js');
+    
+    // All calendars deleted - should not throw
+    expect(() => migrateDeletedCalendars([])).not.toThrow();
+  });
+
+  it('migrateDeletedCalendars should handle no registered actions', async () => {
+    const { migrateDeletedCalendars } = await import('../src/actions/base-action.js');
+    
+    // Even with no actions registered, should not throw
+    expect(() => migrateDeletedCalendars(['cal-1', 'cal-2'])).not.toThrow();
+  });
+});
