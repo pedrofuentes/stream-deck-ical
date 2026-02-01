@@ -54,6 +54,7 @@ function getOpener() {
 
 /**
  * Render the calendar list
+ * First calendar is always the default and cannot be deleted
  */
 function renderCalendarList() {
     const listEl = document.getElementById('calendar-list');
@@ -64,23 +65,33 @@ function renderCalendarList() {
         return;
     }
     
-    listEl.innerHTML = calendars.map(cal => {
-        const isDefault = cal.id === defaultCalendarId;
+    // First calendar is always the default
+    defaultCalendarId = calendars[0].id;
+    
+    listEl.innerHTML = calendars.map((cal, index) => {
+        const isFirst = index === 0;
         return `
-            <div class="calendar-item ${isDefault ? 'default' : ''}" data-id="${cal.id}">
+            <div class="calendar-item ${isFirst ? 'default' : ''}" data-id="${cal.id}">
                 <div class="calendar-name">
                     ${escapeHtml(cal.name)}
-                    ${isDefault ? '<span class="default-badge">Default</span>' : ''}
+                    ${isFirst ? '<span class="default-badge">Default</span>' : ''}
                 </div>
                 <div class="calendar-url" title="${escapeHtml(cal.url)}">${escapeHtml(cal.url)}</div>
                 <div class="calendar-actions">
-                    ${!isDefault ? `<button class="btn-small btn-default" onclick="setDefaultCalendar('${cal.id}')">★</button>` : ''}
-                    <button class="btn-small btn-edit" onclick="editCalendar('${cal.id}')">Edit</button>
-                    <button class="btn-small btn-delete" onclick="deleteCalendar('${cal.id}')">🗑</button>
+                    <button class="btn-small btn-edit" data-id="${cal.id}">Edit</button>
+                    ${!isFirst ? `<button class="btn-small btn-delete" data-id="${cal.id}">🗑</button>` : ''}
                 </div>
             </div>
         `;
     }).join('');
+    
+    // Attach event listeners (onclick in innerHTML doesn't work in modules)
+    listEl.querySelectorAll('.btn-edit').forEach(btn => {
+        btn.addEventListener('click', () => editCalendar(btn.dataset.id));
+    });
+    listEl.querySelectorAll('.btn-delete').forEach(btn => {
+        btn.addEventListener('click', () => deleteCalendar(btn.dataset.id));
+    });
 }
 
 /**
@@ -194,11 +205,17 @@ function saveCalendar() {
 }
 
 /**
- * Delete a calendar
+ * Delete a calendar (first calendar cannot be deleted)
  */
 function deleteCalendar(id) {
     const cal = calendars.find(c => c.id === id);
     if (!cal) return;
+    
+    // First calendar cannot be deleted
+    if (calendars[0].id === id) {
+        showAlert('The first calendar is the default and cannot be deleted.');
+        return;
+    }
     
     if (!confirm(`Delete calendar "${cal.name}"?`)) {
         return;
@@ -206,26 +223,10 @@ function deleteCalendar(id) {
     
     calendars = calendars.filter(c => c.id !== id);
     
-    // If deleted calendar was default, set new default
-    if (defaultCalendarId === id) {
-        defaultCalendarId = calendars.length > 0 ? calendars[0].id : null;
-    }
-    
     renderCalendarList();
     
     // Auto-save after delete
     autoSaveCalendars('Calendar deleted!');
-}
-
-/**
- * Set a calendar as the default
- */
-function setDefaultCalendar(id) {
-    defaultCalendarId = id;
-    renderCalendarList();
-    
-    // Auto-save after default change
-    autoSaveCalendars('Default calendar changed!');
 }
 
 /**

@@ -269,6 +269,24 @@ class CalendarManager {
   }
 
   /**
+   * Force refresh ALL calendars
+   * Used when user clicks "Force Refresh" in settings
+   */
+  async refreshAllCalendars(): Promise<void> {
+    const calendarCount = this.calendars.size;
+    logger.info(`🔄 [CalendarManager] Force refreshing all ${calendarCount} calendars...`);
+    
+    const refreshPromises: Promise<void>[] = [];
+    for (const [calendarId, calendar] of this.calendars) {
+      logger.debug(`[CalendarManager] Refreshing calendar: ${calendarId}`);
+      refreshPromises.push(this.updateCalendarCache(calendar));
+    }
+    
+    await Promise.all(refreshPromises);
+    logger.info(`✅ [CalendarManager] All ${calendarCount} calendars refreshed`);
+  }
+
+  /**
    * Start periodic updates for a calendar instance
    */
   private startUpdates(calendar: CalendarInstance): void {

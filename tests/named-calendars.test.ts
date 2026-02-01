@@ -522,21 +522,24 @@ describe('Property Inspector - Legacy URL Support', () => {
 describe('Property Inspector - Calendar Selection', () => {
   /**
    * Test the PI logic for determining which calendar is selected
-   * This is what updateSelectedCalendar does in pi.js
+   * First calendar is always the default
    */
   function getSelectedCalendarId(
     actionSettings: ActionSettings | undefined,
     globalSettings: any
   ): string {
-    let defaultCalendarId = globalSettings.defaultCalendarId;
+    let calendars = globalSettings.calendars || [];
     
     // Handle legacy URL
-    if ((!globalSettings.calendars || globalSettings.calendars.length === 0) && globalSettings.url) {
-      defaultCalendarId = '__legacy__';
+    if (calendars.length === 0 && globalSettings.url) {
+      calendars = [{ id: '__legacy__', name: 'Default Calendar', url: globalSettings.url }];
     }
     
-    // If no explicit selection, use the default calendar
-    return actionSettings?.calendarId || defaultCalendarId || '';
+    // First calendar is always the default
+    const defaultCalendarId = calendars.length > 0 ? calendars[0].id : '';
+    
+    // If no explicit selection, use the first (default) calendar
+    return actionSettings?.calendarId || defaultCalendarId;
   }
   
   it('should use explicit calendarId when set', () => {
@@ -545,8 +548,7 @@ describe('Property Inspector - Calendar Selection', () => {
       calendars: [
         { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
         { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
-      ],
-      defaultCalendarId: 'cal-1'
+      ]
     };
     
     const selected = getSelectedCalendarId(actionSettings, globalSettings);
@@ -554,19 +556,18 @@ describe('Property Inspector - Calendar Selection', () => {
     expect(selected).toBe('cal-2');
   });
   
-  it('should use default calendar when no explicit selection', () => {
+  it('should use first calendar as default when no explicit selection', () => {
     const actionSettings = {};
     const globalSettings = {
       calendars: [
         { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
         { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
-      ],
-      defaultCalendarId: 'cal-2'
+      ]
     };
     
     const selected = getSelectedCalendarId(actionSettings, globalSettings);
     
-    expect(selected).toBe('cal-2');
+    expect(selected).toBe('cal-1'); // First calendar is always default
   });
   
   it('should use legacy calendar ID when only legacy URL exists', () => {
@@ -593,71 +594,57 @@ describe('Property Inspector - Calendar Selection', () => {
 describe('Property Inspector - Dropdown Rendering', () => {
   /**
    * Test the dropdown rendering logic from pi.js
+   * First calendar is always the default (marked with ★)
    */
   function renderDropdownOptions(
-    calendars: NamedCalendar[],
-    defaultCalendarId: string | undefined
+    calendars: NamedCalendar[]
   ): { value: string; text: string }[] {
     const options: { value: string; text: string }[] = [];
     
-    // Simply list all calendars - mark default with ★
-    calendars.forEach(cal => {
+    // Simply list all calendars - first (default) gets ★
+    calendars.forEach((cal, index) => {
       options.push({
         value: cal.id,
-        text: cal.name + (cal.id === defaultCalendarId ? ' ★' : '')
+        text: cal.name + (index === 0 ? ' ★' : '')
       });
     });
     
     return options;
   }
   
-  it('should render single calendar without duplication', () => {
+  it('should render single calendar with star', () => {
     const calendars: NamedCalendar[] = [
       { id: 'cal-1', name: 'Default', url: 'https://default.ics' }
     ];
     
-    const options = renderDropdownOptions(calendars, 'cal-1');
+    const options = renderDropdownOptions(calendars);
     
     expect(options).toHaveLength(1);
     expect(options[0].value).toBe('cal-1');
     expect(options[0].text).toBe('Default ★');
   });
   
-  it('should render multiple calendars with star on default', () => {
+  it('should render multiple calendars with star on first only', () => {
     const calendars: NamedCalendar[] = [
       { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
       { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' },
       { id: 'cal-3', name: 'Team', url: 'https://team.ics' }
     ];
     
-    const options = renderDropdownOptions(calendars, 'cal-2');
+    const options = renderDropdownOptions(calendars);
     
     expect(options).toHaveLength(3);
-    expect(options[0].text).toBe('Work');
-    expect(options[1].text).toBe('Personal ★');
+    expect(options[0].text).toBe('Work ★'); // First is always default
+    expect(options[1].text).toBe('Personal');
     expect(options[2].text).toBe('Team');
   });
   
-  it('should handle no default calendar', () => {
-    const calendars: NamedCalendar[] = [
-      { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
-      { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
-    ];
-    
-    const options = renderDropdownOptions(calendars, undefined);
-    
-    expect(options).toHaveLength(2);
-    expect(options[0].text).toBe('Work');
-    expect(options[1].text).toBe('Personal');
-    // No stars when no default set
-  });
-  
-  it('should render legacy synthetic calendar', () => {
+  it('should render legacy synthetic calendar with star', () => {
     const calendars: NamedCalendar[] = [
       { id: '__legacy__', name: 'Default Calendar', url: 'https://legacy.ics' }
     ];
     
-    const options = renderDropdownOptions(calendars, '__legacy__');
+    const options = renderDropdownOptions(calendars);
     
     expect(options).toHaveLength(1);
     expect(options[0].value).toBe('__legacy__');
@@ -777,6 +764,7 @@ describe('Setup - Auto-Save Calendars', () => {
 describe('Setup - Calendar CRUD Operations', () => {
   /**
    * Test calendar add/edit/delete operations from setup.js
+   * First calendar is always the default and cannot be deleted
    */
   
   function generateId(): string {
@@ -786,9 +774,8 @@ describe('Setup - Calendar CRUD Operations', () => {
   function addCalendar(
     calendars: NamedCalendar[],
     name: string,
-    url: string,
-    defaultCalendarId: string | undefined
-  ): { calendars: NamedCalendar[]; defaultCalendarId: string | undefined; newId: string } {
+    url: string
+  ): { calendars: NamedCalendar[]; newId: string } {
     const newCal: NamedCalendar = {
       id: generateId(),
       name: name,
@@ -797,80 +784,77 @@ describe('Setup - Calendar CRUD Operations', () => {
     
     const newCalendars = [...calendars, newCal];
     
-    // If this is the first calendar, make it the default
-    const newDefaultId = calendars.length === 0 ? newCal.id : defaultCalendarId;
-    
-    return { calendars: newCalendars, defaultCalendarId: newDefaultId, newId: newCal.id };
+    return { calendars: newCalendars, newId: newCal.id };
   }
   
   function deleteCalendar(
     calendars: NamedCalendar[],
-    idToDelete: string,
-    defaultCalendarId: string | undefined
-  ): { calendars: NamedCalendar[]; defaultCalendarId: string | undefined } {
-    const newCalendars = calendars.filter(c => c.id !== idToDelete);
-    
-    // If deleted calendar was default, set new default
-    let newDefaultId = defaultCalendarId;
-    if (defaultCalendarId === idToDelete) {
-      newDefaultId = newCalendars.length > 0 ? newCalendars[0].id : undefined;
+    idToDelete: string
+  ): { calendars: NamedCalendar[]; error?: string } {
+    // First calendar cannot be deleted
+    if (calendars.length > 0 && calendars[0].id === idToDelete) {
+      return { calendars, error: 'The first calendar is the default and cannot be deleted.' };
     }
     
-    return { calendars: newCalendars, defaultCalendarId: newDefaultId };
+    const newCalendars = calendars.filter(c => c.id !== idToDelete);
+    return { calendars: newCalendars };
   }
   
-  it('should add calendar and set as default if first', () => {
-    const result = addCalendar([], 'Work', 'https://work.ics', undefined);
+  it('should add first calendar (becomes default)', () => {
+    const result = addCalendar([], 'Work', 'https://work.ics');
     
     expect(result.calendars).toHaveLength(1);
     expect(result.calendars[0].name).toBe('Work');
-    expect(result.defaultCalendarId).toBe(result.newId);
+    // First calendar is always the default
+    expect(result.calendars[0].id).toBe(result.newId);
   });
   
-  it('should add calendar without changing default if not first', () => {
+  it('should add additional calendar', () => {
     const existing: NamedCalendar[] = [
       { id: 'cal-1', name: 'Work', url: 'https://work.ics' }
     ];
     
-    const result = addCalendar(existing, 'Personal', 'https://personal.ics', 'cal-1');
+    const result = addCalendar(existing, 'Personal', 'https://personal.ics');
     
     expect(result.calendars).toHaveLength(2);
-    expect(result.defaultCalendarId).toBe('cal-1'); // Unchanged
+    expect(result.calendars[0].id).toBe('cal-1'); // First stays default
   });
   
-  it('should delete calendar and update default if needed', () => {
+  it('should not delete first calendar (default)', () => {
     const calendars: NamedCalendar[] = [
       { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
       { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
     ];
     
-    const result = deleteCalendar(calendars, 'cal-1', 'cal-1');
+    const result = deleteCalendar(calendars, 'cal-1');
     
-    expect(result.calendars).toHaveLength(1);
-    expect(result.calendars[0].id).toBe('cal-2');
-    expect(result.defaultCalendarId).toBe('cal-2'); // Updated to next available
+    expect(result.calendars).toHaveLength(2); // Not deleted
+    expect(result.error).toBe('The first calendar is the default and cannot be deleted.');
   });
   
-  it('should delete calendar without changing default if not default', () => {
+  it('should delete non-first calendar', () => {
     const calendars: NamedCalendar[] = [
       { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
       { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' }
     ];
     
-    const result = deleteCalendar(calendars, 'cal-2', 'cal-1');
+    const result = deleteCalendar(calendars, 'cal-2');
     
     expect(result.calendars).toHaveLength(1);
-    expect(result.defaultCalendarId).toBe('cal-1'); // Unchanged
+    expect(result.calendars[0].id).toBe('cal-1');
+    expect(result.error).toBeUndefined();
   });
   
-  it('should set default to undefined when deleting last calendar', () => {
+  it('should handle deleting third calendar', () => {
     const calendars: NamedCalendar[] = [
-      { id: 'cal-1', name: 'Work', url: 'https://work.ics' }
+      { id: 'cal-1', name: 'Work', url: 'https://work.ics' },
+      { id: 'cal-2', name: 'Personal', url: 'https://personal.ics' },
+      { id: 'cal-3', name: 'Team', url: 'https://team.ics' }
     ];
     
-    const result = deleteCalendar(calendars, 'cal-1', 'cal-1');
+    const result = deleteCalendar(calendars, 'cal-3');
     
-    expect(result.calendars).toHaveLength(0);
-    expect(result.defaultCalendarId).toBeUndefined();
+    expect(result.calendars).toHaveLength(2);
+    expect(result.calendars.map(c => c.id)).toEqual(['cal-1', 'cal-2']);
   });
 });

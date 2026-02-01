@@ -188,14 +188,14 @@ function updateCalendarDropdown() {
     if (noCalendarsContainer) noCalendarsContainer.style.display = 'none';
     if (calendarInfoContainer) calendarInfoContainer.style.display = 'flex';
     
-    // Find default calendar
-    const defaultCal = calendars.find(c => c.id === defaultCalendarId);
+    // First calendar is always the default
+    const defaultId = calendars.length > 0 ? calendars[0].id : undefined;
     
-    // Simply list all calendars - mark default with ★
-    calendars.forEach(cal => {
+    // Simply list all calendars - mark first (default) with ★
+    calendars.forEach((cal, index) => {
         const option = document.createElement('option');
         option.value = cal.id;
-        option.textContent = cal.name + (cal.id === defaultCalendarId ? ' ★' : '');
+        option.textContent = cal.name + (index === 0 ? ' ★' : '');
         select.appendChild(option);
     });
     
@@ -211,15 +211,21 @@ function updateSelectedCalendar() {
     if (!select) return;
     
     let calendars = globalSettings.calendars || [];
-    let defaultCalendarId = globalSettings.defaultCalendarId;
     
     // Handle legacy URL
     if (calendars.length === 0 && globalSettings.url) {
-        defaultCalendarId = '__legacy__';
+        calendars = [{
+            id: '__legacy__',
+            name: 'Default Calendar',
+            url: globalSettings.url
+        }];
     }
     
-    // If no explicit selection, use the default calendar
-    const selectedId = actionSettings.calendarId || defaultCalendarId || '';
+    // First calendar is always the default
+    const defaultCalendarId = calendars.length > 0 ? calendars[0].id : '';
+    
+    // If no explicit selection, use the first (default) calendar
+    const selectedId = actionSettings.calendarId || defaultCalendarId;
     select.value = selectedId;
     
     // Update calendar info display
@@ -234,7 +240,6 @@ function updateCalendarInfo(calendarId) {
     if (!infoEl) return;
     
     let calendars = globalSettings.calendars || [];
-    let defaultCalendarId = globalSettings.defaultCalendarId;
     
     // Handle legacy URL
     if (calendars.length === 0 && globalSettings.url) {
@@ -243,15 +248,17 @@ function updateCalendarInfo(calendarId) {
             name: 'Default Calendar',
             url: globalSettings.url
         }];
-        defaultCalendarId = '__legacy__';
     }
+    
+    // First calendar is always the default
+    const defaultCalendarId = calendars.length > 0 ? calendars[0].id : undefined;
     
     let calendar;
     if (calendarId) {
         calendar = calendars.find(c => c.id === calendarId);
     } else {
-        // Using default
-        calendar = calendars.find(c => c.id === defaultCalendarId);
+        // Using default (first calendar)
+        calendar = calendars[0];
     }
     
     if (calendar) {

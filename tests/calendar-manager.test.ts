@@ -269,6 +269,53 @@ describe('CalendarManager', () => {
     });
   });
 
+  describe('refreshAllCalendars', () => {
+    it('should refresh all registered calendars', async () => {
+      // Register multiple calendars
+      const url1 = 'https://calendar.google.com/test1.ics';
+      const url2 = 'https://calendar.google.com/test2.ics';
+      manager.registerAction('action1', url1);
+      manager.registerAction('action2', url2);
+      
+      // Wait for initial updates
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Track fetch calls
+      const fetchCountBefore = mockFetch.mock.calls.length;
+      
+      await manager.refreshAllCalendars();
+      
+      // Should have made fetches for both calendars
+      expect(mockFetch.mock.calls.length).toBeGreaterThanOrEqual(fetchCountBefore + 2);
+    });
+
+    it('should handle empty calendar list', async () => {
+      // No calendars registered
+      await expect(manager.refreshAllCalendars()).resolves.not.toThrow();
+    });
+
+    it('should refresh calendars in parallel', async () => {
+      // Register multiple calendars
+      const url1 = 'https://calendar.google.com/test1.ics';
+      const url2 = 'https://calendar.google.com/test2.ics';
+      const url3 = 'https://calendar.google.com/test3.ics';
+      manager.registerAction('action1', url1);
+      manager.registerAction('action2', url2);
+      manager.registerAction('action3', url3);
+      
+      // Wait for initial updates
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const startTime = Date.now();
+      await manager.refreshAllCalendars();
+      const endTime = Date.now();
+      
+      // Should complete quickly (parallel execution)
+      // Each mock fetch resolves immediately, so total time should be < 500ms
+      expect(endTime - startTime).toBeLessThan(500);
+    });
+  });
+
   describe('error handling', () => {
     it('should handle network errors', async () => {
       mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));

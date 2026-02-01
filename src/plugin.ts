@@ -12,6 +12,7 @@ import { NextMeetingAction } from './actions/next-meeting.js';
 import { TimeLeftAction } from './actions/time-left.js';
 import { CombinedAction } from './actions/combined-action.js';
 import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo, setFeedConfig, setActionSettings } from './services/calendar-service.js';
+import { calendarManager } from './services/calendar-manager.js';
 import { setGlobalCalendarConfig, setNamedCalendars } from './actions/base-action.js';
 import { logger, isDebugMode } from './utils/logger.js';
 import { NamedCalendar } from './types/index.js';
@@ -127,6 +128,13 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
     // Start new updates if we have a URL
     if (effectiveUrl) {
       updateIntervalId = startPeriodicUpdates(effectiveUrl, newTimeWindow, 10, newExcludeAllDay);
+    }
+    
+    // Force refresh ALL calendars in the calendar manager
+    if (forceRefreshRequested) {
+      calendarManager.refreshAllCalendars().catch(err => {
+        logger.error(`Error refreshing all calendars: ${err}`);
+      });
     }
   } else {
     // Just update the urlVersion tracker
