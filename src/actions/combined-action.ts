@@ -103,12 +103,13 @@ export class CombinedAction extends BaseAction {
     updateMarquee();
     this.marqueeInterval = setInterval(updateMarquee, 250);
     
-    // Auto-stop after 15 seconds (will use configurable duration once v2.1.0 is merged)
+    // Auto-stop after configured duration
+    const displayDuration = this.getTitleDisplayDuration() * 1000;
     this.titleTimeout = setTimeout(() => {
       this.stopMarquee();
       this.showingTitle = false;
       this.updateDisplay(action);
-    }, 15000);
+    }, displayDuration);
   }
   
   /**
@@ -177,7 +178,8 @@ export class CombinedAction extends BaseAction {
     
     if (newMeetings.length > 0 && (this.lastActiveMeetingIds.size > 0 || activeEvents.length === newMeetings.length)) {
       logger.info(`[Combined] New meeting started: "${newMeetings[0].summary}"`);
-      // Flash functionality will be added when merged with v2.1.0
+      // Flash to alert user of meeting start
+      await this.flashButton(action, 'activeMeeting', 'activeMeetingRed');
     }
     
     this.lastActiveMeetingIds = currentMeetingIds;

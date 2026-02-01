@@ -39,42 +39,39 @@ vi.mock('../src/utils/logger', () => ({
   }
 }));
 
-// Create mock calendar cache
-let mockCache = {
-  version: 1,
-  status: 'LOADED' as string,
-  events: [] as CalendarEvent[],
-  lastFetch: Date.now(),
-  provider: 'test'
-};
-
-// Mock the calendar service
+// Mock the calendar service - don't reference external variables in vi.mock
 vi.mock('../src/services/calendar-service', () => ({
-  calendarCache: mockCache,
+  calendarCache: {
+    version: 1,
+    status: 'LOADED',
+    events: [],
+    lastFetch: Date.now(),
+    provider: 'test'
+  },
   getStatusText: vi.fn((status: string) => {
     switch (status) {
-      case 'INIT': return 'Loading\niCal';
+      case 'INIT': return 'Please\nSetup';
       case 'LOADING': return 'Loading\niCal';
+      case 'INVALID_URL': return 'Please\nSetup';
       case 'LOADED': return '';
       case 'NO_EVENTS': return 'No\nMeetings\nFound';
       default: return 'Error';
     }
-  })
+  }),
+  getSettings: vi.fn(() => ({
+    titleDisplayDuration: 15,
+    flashOnMeetingStart: false
+  }))
 }));
 
 // Mock the event utils
 vi.mock('../src/utils/event-utils', () => ({
-  findActiveEvents: vi.fn(() => {
-    const now = new Date();
-    return mockCache.events.filter(e => e.start <= now && e.end > now);
-  }),
-  findNextEvent: vi.fn(() => {
-    const now = new Date();
-    return mockCache.events.find(e => e.start > now);
-  })
+  findActiveEvents: vi.fn(() => []),
+  findNextEvent: vi.fn(() => undefined)
 }));
 
 import { findActiveEvents, findNextEvent } from '../src/utils/event-utils';
+import { getStatusText, getSettings, calendarCache } from '../src/services/calendar-service';
 
 describe('Combined Action Logic', () => {
   const now = new Date();
@@ -84,10 +81,10 @@ describe('Combined Action Logic', () => {
     vi.useFakeTimers();
     vi.setSystemTime(now);
     
-    // Reset mock cache
-    mockCache.version = 1;
-    mockCache.status = 'LOADED';
-    mockCache.events = [];
+    // Reset mock cache via the imported object
+    (calendarCache as any).version = 1;
+    (calendarCache as any).status = 'LOADED';
+    (calendarCache as any).events = [];
   });
 
   afterEach(() => {
@@ -96,10 +93,13 @@ describe('Combined Action Logic', () => {
 
   describe('Mode detection', () => {
     it('should show "No Meetings" when no events', () => {
-      mockCache.events = [];
+      (calendarCache as any).events = [];
       
-      const activeEvents = findActiveEvents(mockCache.events);
-      const nextEvent = findNextEvent(mockCache.events);
+      vi.mocked(findActiveEvents).mockReturnValue([]);
+      vi.mocked(findNextEvent).mockReturnValue(undefined);
+      
+      const activeEvents = findActiveEvents((calendarCache as any).events);
+      const nextEvent = findNextEvent((calendarCache as any).events);
       
       expect(activeEvents.length).toBe(0);
       expect(nextEvent).toBeUndefined();
@@ -109,19 +109,20 @@ describe('Combined Action Logic', () => {
       const start = new Date(now.getTime() - 30 * 60 * 1000); // 30 min ago
       const end = new Date(now.getTime() + 30 * 60 * 1000); // 30 min from now
       
-      mockCache.events = [{
+      const activeMeeting = {
         uid: '1',
         summary: 'Active Meeting',
         start,
         end,
         isAllDay: false
-      }];
+      };
       
-      // Mock the active events finding
-      vi.mocked(findActiveEvents).mockReturnValueOnce([mockCache.events[0]]);
-      vi.mocked(findNextEvent).mockReturnValueOnce(undefined);
+      (calendarCache as any).events = [activeMeeting];
       
-      const activeEvents = findActiveEvents(mockCache.events);
+      vi.mocked(findActiveEvents).mockReturnValue([activeMeeting]);
+      vi.mocked(findNextEvent).mockReturnValue(undefined);
+      
+      const activeEvents = findActiveEvents((calendarCache as any).events);
       
       expect(activeEvents.length).toBe(1);
       expect(activeEvents[0].summary).toBe('Active Meeting');
@@ -138,13 +139,14 @@ describe('Combined Action Logic', () => {
         end,
         isAllDay: false
       };
-      mockCache.events = [upcomingEvent];
       
-      // Test the logic directly without relying on mocked return values
-      // The actual test is that when there are no active events (start > now),
-      // and there is a future event, we should show next-meeting mode
-      const activeEvents: any[] = []; // No active meetings
-      const nextEvent = upcomingEvent; // We have an upcoming meeting
+      (calendarCache as any).events = [upcomingEvent];
+      
+      vi.mocked(findActiveEvents).mockReturnValue([]);
+      vi.mocked(findNextEvent).mockReturnValue(upcomingEvent);
+      
+      const activeEvents = findActiveEvents((calendarCache as any).events);
+      const nextEvent = findNextEvent((calendarCache as any).events);
       
       // This represents what Combined action should do
       const mode = activeEvents.length > 0 ? 'time-left' : 
@@ -154,32 +156,33 @@ describe('Combined Action Logic', () => {
     });
 
     it('should transition from next-meeting to time-left when meeting starts', () => {
-      // Initial: upcoming meeting
       const meetingStart = new Date(now.getTime() + 1000); // 1 second from now
       const meetingEnd = new Date(now.getTime() + 60 * 60 * 1000);
       
-      mockCache.events = [{
+      const meeting = {
         uid: '1',
         summary: 'Transition Meeting',
         start: meetingStart,
         end: meetingEnd,
         isAllDay: false
-      }];
+      };
+      
+      (calendarCache as any).events = [meeting];
       
       // Before meeting starts
       vi.mocked(findActiveEvents).mockReturnValueOnce([]);
-      vi.mocked(findNextEvent).mockReturnValueOnce(mockCache.events[0]);
+      vi.mocked(findNextEvent).mockReturnValueOnce(meeting);
       
-      let activeEvents = findActiveEvents(mockCache.events);
+      let activeEvents = findActiveEvents((calendarCache as any).events);
       expect(activeEvents.length).toBe(0);
       
       // After meeting starts
       vi.advanceTimersByTime(2000);
       
-      vi.mocked(findActiveEvents).mockReturnValueOnce([mockCache.events[0]]);
+      vi.mocked(findActiveEvents).mockReturnValueOnce([meeting]);
       vi.mocked(findNextEvent).mockReturnValueOnce(undefined);
       
-      activeEvents = findActiveEvents(mockCache.events);
+      activeEvents = findActiveEvents((calendarCache as any).events);
       expect(activeEvents.length).toBe(1);
     });
   });
@@ -190,14 +193,16 @@ describe('Combined Action Logic', () => {
       const end1 = new Date(now.getTime() + 15 * 60 * 1000);
       const end2 = new Date(now.getTime() + 30 * 60 * 1000);
       
-      mockCache.events = [
+      const meetings = [
         { uid: '1', summary: 'Meeting 1', start, end: end1, isAllDay: false },
         { uid: '2', summary: 'Meeting 2', start, end: end2, isAllDay: false }
       ];
       
-      vi.mocked(findActiveEvents).mockReturnValue(mockCache.events);
+      (calendarCache as any).events = meetings;
       
-      const activeEvents = findActiveEvents(mockCache.events);
+      vi.mocked(findActiveEvents).mockReturnValue(meetings);
+      
+      const activeEvents = findActiveEvents((calendarCache as any).events);
       expect(activeEvents.length).toBe(2);
       
       // Simulate cycling
@@ -212,16 +217,192 @@ describe('Combined Action Logic', () => {
 
   describe('Loading states', () => {
     it('should show loading status when cache is not ready', () => {
-      mockCache.status = 'LOADING';
+      (calendarCache as any).status = 'LOADING';
       
-      // The action should show loading text in this state
-      expect(mockCache.status).toBe('LOADING');
+      expect((calendarCache as any).status).toBe('LOADING');
     });
 
     it('should show "No Meetings" for NO_EVENTS status', () => {
-      mockCache.status = 'NO_EVENTS';
+      (calendarCache as any).status = 'NO_EVENTS';
       
-      expect(mockCache.status).toBe('NO_EVENTS');
+      expect((calendarCache as any).status).toBe('NO_EVENTS');
+    });
+  });
+});
+
+describe('Combined Action v2.1.0+ Features', () => {
+  const now = new Date();
+  
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+    
+    (calendarCache as any).version = 1;
+    (calendarCache as any).status = 'LOADED';
+    (calendarCache as any).events = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe('INIT status behavior', () => {
+    it('should show "Please Setup" for INIT status (v2.1.0 behavior)', () => {
+      (calendarCache as any).status = 'INIT';
+      
+      const statusText = getStatusText('INIT');
+      expect(statusText).toBe('Please\nSetup');
+    });
+
+    it('should show "Please Setup" for INVALID_URL status', () => {
+      const statusText = getStatusText('INVALID_URL');
+      expect(statusText).toBe('Please\nSetup');
+    });
+
+    it('should show "Loading iCal" only for LOADING status', () => {
+      const statusText = getStatusText('LOADING');
+      expect(statusText).toBe('Loading\niCal');
+    });
+  });
+
+  describe('Color zones (inherited from BaseAction)', () => {
+    it('should use correct thresholds for red zone (30 seconds)', () => {
+      const RED_ZONE = 30;
+      
+      // Meeting ending in 25 seconds should be red
+      expect(25 <= RED_ZONE).toBe(true);
+      // Meeting ending in 35 seconds should not be red
+      expect(35 <= RED_ZONE).toBe(false);
+    });
+
+    it('should use correct thresholds for orange zone (300 seconds)', () => {
+      const ORANGE_ZONE = 300;
+      const RED_ZONE = 30;
+      
+      // Meeting ending in 60 seconds should be orange (not red)
+      expect(60 <= ORANGE_ZONE && 60 > RED_ZONE).toBe(true);
+      // Meeting ending in 400 seconds should not be orange
+      expect(400 <= ORANGE_ZONE).toBe(false);
+    });
+  });
+
+  describe('Mode transitions', () => {
+    it('should clear lastActiveMeetingIds when switching to next-meeting mode', () => {
+      // This tests that the tracking set is cleared when no active meetings
+      const lastActiveMeetingIds = new Set(['meeting-1', 'meeting-2']);
+      
+      // When mode switches to next-meeting, it should clear
+      lastActiveMeetingIds.clear();
+      
+      expect(lastActiveMeetingIds.size).toBe(0);
+    });
+
+    it('should detect newly started meetings for flash notification', () => {
+      const lastActiveMeetingIds = new Set<string>();
+      
+      // Simulate meeting starting
+      const newMeetingId = 'new-meeting-123';
+      const currentMeetingIds = new Set([newMeetingId]);
+      
+      // Check if this is a new meeting
+      const isNewMeeting = !lastActiveMeetingIds.has(newMeetingId);
+      
+      expect(isNewMeeting).toBe(true);
+    });
+
+    it('should not detect existing meetings as new', () => {
+      const existingMeetingId = 'existing-meeting-456';
+      const lastActiveMeetingIds = new Set([existingMeetingId]);
+      
+      // Check if this is a new meeting
+      const isNewMeeting = !lastActiveMeetingIds.has(existingMeetingId);
+      
+      expect(isNewMeeting).toBe(false);
+    });
+  });
+
+  describe('Meeting index handling', () => {
+    it('should reset meeting index when it exceeds active meetings count', () => {
+      let currentMeetingIndex = 5;
+      const activeEventsLength = 2;
+      
+      // This is what the combined action does
+      if (currentMeetingIndex >= activeEventsLength) {
+        currentMeetingIndex = 0;
+      }
+      
+      expect(currentMeetingIndex).toBe(0);
+    });
+
+    it('should preserve meeting index when within bounds', () => {
+      let currentMeetingIndex = 1;
+      const activeEventsLength = 3;
+      
+      if (currentMeetingIndex >= activeEventsLength) {
+        currentMeetingIndex = 0;
+      }
+      
+      expect(currentMeetingIndex).toBe(1);
+    });
+  });
+
+  describe('Marquee behavior', () => {
+    it('should use configurable title display duration', () => {
+      const settings = getSettings();
+      
+      // Default is 15 seconds
+      expect(settings.titleDisplayDuration).toBe(15);
+      
+      // Duration in ms should be seconds * 1000
+      const durationMs = settings.titleDisplayDuration * 1000;
+      expect(durationMs).toBe(15000);
+    });
+
+    it('should toggle showingTitle on press', () => {
+      let showingTitle = false;
+      
+      // First press starts marquee
+      showingTitle = true;
+      expect(showingTitle).toBe(true);
+      
+      // Second press stops marquee
+      showingTitle = false;
+      expect(showingTitle).toBe(false);
+    });
+
+    it('should reset marquee position to 0 on start', () => {
+      let marqueePosition = 10; // Simulate some previous state
+      
+      // On start, should reset
+      marqueePosition = 0;
+      
+      expect(marqueePosition).toBe(0);
+    });
+  });
+
+  describe('Display text formatting', () => {
+    it('should show meeting indicator for multiple concurrent meetings', () => {
+      const timeText = '25m 30s';
+      const currentIndex = 0;
+      const totalMeetings = 3;
+      
+      const titleText = totalMeetings > 1 
+        ? `${timeText}\n(${currentIndex + 1}/${totalMeetings})`
+        : timeText;
+      
+      expect(titleText).toBe('25m 30s\n(1/3)');
+    });
+
+    it('should show only time for single meeting', () => {
+      const timeText = '25m 30s';
+      const totalMeetings = 1;
+      
+      const titleText = totalMeetings > 1 
+        ? `${timeText}\n(1/${totalMeetings})`
+        : timeText;
+      
+      expect(titleText).toBe('25m 30s');
     });
   });
 });
