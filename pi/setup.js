@@ -37,6 +37,63 @@ function getOpener() {
 }
 
 /**
+ * Toggle custom calendar section visibility
+ */
+function toggleCustomCalendarSection() {
+    const checkbox = document.getElementById('useCustomCalendar');
+    const section = document.getElementById('customCalendarSection');
+    if (checkbox && section) {
+        section.style.display = checkbox.checked ? 'block' : 'none';
+    }
+}
+
+/**
+ * Save per-action settings (custom calendar for this button)
+ */
+function saveActionSettings() {
+    const opener = getOpener();
+    if (!opener || !opener.websocket) {
+        console.log('[SETUP] Cannot save action settings - no opener/websocket');
+        return;
+    }
+    
+    const useCustomCalendar = document.getElementById('useCustomCalendar')?.checked || false;
+    const customLabel = document.getElementById('customLabel')?.value.trim() || '';
+    const customUrl = document.getElementById('customUrl')?.value.trim() || '';
+    const customTimeWindow = parseInt(document.getElementById('customTimeWindow')?.value || '3', 10);
+    const customExcludeAllDay = document.getElementById('customExcludeAllDay')?.checked !== false;
+    
+    // Validate custom URL if custom calendar is enabled
+    if (useCustomCalendar && customUrl && !isValidURL(customUrl)) {
+        showAlert('Custom calendar URL is not valid. Please enter a valid URL.');
+        return false;
+    }
+    
+    const actionSettings = {
+        useCustomCalendar: useCustomCalendar,
+        customLabel: customLabel,
+        customUrl: customUrl,
+        customTimeWindow: customTimeWindow,
+        customExcludeAllDay: customExcludeAllDay
+    };
+    
+    // Save using setSettings (per-action)
+    const json = {
+        event: 'setSettings',
+        context: opener.uuid,
+        payload: actionSettings
+    };
+    
+    console.log('[SETUP] Saving action settings:', actionSettings);
+    opener.websocket.send(JSON.stringify(json));
+    
+    // Store in opener for reference
+    opener.actionSettings = actionSettings;
+    
+    return true;
+}
+
+/**
  * Save URL and settings
  */
 function saveUrl() {
@@ -47,38 +104,57 @@ function saveUrl() {
     const titleDisplayDurationEl = document.getElementById('titleDisplayDuration');
     const titleDisplayDuration = titleDisplayDurationEl ? parseInt(titleDisplayDurationEl.value, 10) : 15;
     const flashOnMeetingStartEl = document.getElementById('flashOnMeetingStart');
-    const flashOnMeetingStart = flashOnMeetingStartEl ? flashOnMeetingStartEl.checked : true;
+    const flashOnMeetingStart = flashOnMeetingStartEl ? flashOnMeetingStartEl.checked : false;
     
-    if (!url) {
+    // Check if using custom calendar - only validate global URL if not using custom
+    const useCustomCalendar = document.getElementById('useCustomCalendar')?.checked || false;
+    const customUrl = document.getElementById('customUrl')?.value.trim() || '';
+    
+    // Validate: need either a global URL or a custom URL
+    if (!useCustomCalendar && !url) {
         showAlert('Please enter an iCal URL');
         return;
     }
     
-    if (!isValidURL(url)) {
+    if (!useCustomCalendar && url && !isValidURL(url)) {
         showAlert('Please enter a valid iCal URL (must start with http:// or https://)');
+        return;
+    }
+    
+    if (useCustomCalendar && customUrl && !isValidURL(customUrl)) {
+        showAlert('Please enter a valid custom iCal URL (must start with http:// or https://)');
+        return;
+    }
+    
+    if (useCustomCalendar && !customUrl) {
+        showAlert('Please enter a custom calendar URL or disable custom calendar');
         return;
     }
     
     // Get parent window's websocket connection
     const opener = getOpener();
     if (opener && opener.websocket) {
-        const settings = {
+        // Save global settings
+        const globalSettings = {
             url: url,
             timeWindow: timeWindow,
             excludeAllDay: excludeAllDay,
             titleDisplayDuration: titleDisplayDuration,
             flashOnMeetingStart: flashOnMeetingStart,
-            urlVersion: (opener.globalSettings.urlVersion || 0) + 1
+            urlVersion: (opener.globalSettings?.urlVersion || 0) + 1
         };
         
-        const json = {
+        const globalJson = {
             event: 'setGlobalSettings',
             context: opener.uuid,
-            payload: settings
+            payload: globalSettings
         };
         
-        opener.websocket.send(JSON.stringify(json));
-        opener.globalSettings = settings;
+        opener.websocket.send(JSON.stringify(globalJson));
+        opener.globalSettings = globalSettings;
+        
+        // Also save per-action settings
+        saveActionSettings();
         
         // Update parent window UI
         if (opener.document.getElementById('url')) {
@@ -143,6 +219,8 @@ function refreshIcal() {
 document.addEventListener('DOMContentLoaded', function() {
     // Get settings from opener window
     const opener = getOpener();
+    
+    // Load global settings
     if (opener && opener.globalSettings) {
         const urlInput = document.getElementById('url');
         const timeWindowSelect = document.getElementById('timeWindow');
@@ -166,12 +244,46 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         const flashOnMeetingStartCheckbox = document.getElementById('flashOnMeetingStart');
         if (flashOnMeetingStartCheckbox) {
-            // Default to true if not set
+            // Default to false if not set
             flashOnMeetingStartCheckbox.checked = opener.globalSettings.flashOnMeetingStart === true;
         }
     }
     
-    // Add event listeners
+    // Load per-action settings (custom calendar)
+    if (opener && opener.actionSettings) {
+        const useCustomCalendar = document.getElementById('useCustomCalendar');
+        const customLabel = document.getElementById('customLabel');
+        const customUrl = document.getElementById('customUrl');
+        const customTimeWindow = document.getElementById('customTimeWindow');
+        const customExcludeAllDay = document.getElementById('customExcludeAllDay');
+        
+        if (useCustomCalendar) {
+            useCustomCalendar.checked = opener.actionSettings.useCustomCalendar === true;
+        }
+        if (customLabel) {
+            customLabel.value = opener.actionSettings.customLabel || '';
+        }
+        if (customUrl) {
+            customUrl.value = opener.actionSettings.customUrl || '';
+        }
+        if (customTimeWindow) {
+            customTimeWindow.value = opener.actionSettings.customTimeWindow || 3;
+        }
+        if (customExcludeAllDay) {
+            customExcludeAllDay.checked = opener.actionSettings.customExcludeAllDay !== false;
+        }
+        
+        // Update UI based on checkbox state
+        toggleCustomCalendarSection();
+    }
+    
+    // Add event listener for custom calendar toggle
+    const useCustomCalendarCheckbox = document.getElementById('useCustomCalendar');
+    if (useCustomCalendarCheckbox) {
+        useCustomCalendarCheckbox.addEventListener('change', toggleCustomCalendarSection);
+    }
+    
+    // Add event listeners for save/refresh buttons
     const saveButton = document.getElementById('save');
     if (saveButton) {
         saveButton.addEventListener('click', saveUrl);

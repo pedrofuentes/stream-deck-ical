@@ -12,7 +12,50 @@
     <div class="sdpi-wrapper">
         <div id="alerts" class="content" style="display: none;"></div>
         
-        <div class="sdpi-heading">iCal Settings</div>
+        <!-- Per-Button Custom Calendar Section -->
+        <div class="sdpi-heading">Button Settings</div>
+        
+        <div class="sdpi-item" type="checkbox">
+            <div class="sdpi-item-label">Calendar Source</div>
+            <div class="sdpi-item-value">
+                <input type="checkbox" id="useCustomCalendar">
+                <label for="useCustomCalendar"><span></span>Use custom calendar for this button</label>
+            </div>
+        </div>
+        
+        <div id="customCalendarSection" style="display: none; padding-left: 10px; border-left: 2px solid #3a3a3a;">
+            <div class="sdpi-item full-row">
+                <div class="sdpi-item-label">Calendar Label</div>
+                <input id="customLabel" class="sdpi-item-value" type="text" value="" placeholder="e.g., Work, Personal, Family..." />
+            </div>
+            
+            <div class="sdpi-item full-row">
+                <div class="sdpi-item-label">Custom URL</div>
+                <input id="customUrl" class="sdpi-item-value" type="text" value="" placeholder="https://calendar.google.com/calendar/ical/..." />
+            </div>
+
+            <div class="sdpi-item">
+                <div class="sdpi-item-label">Time Window</div>
+                <select id="customTimeWindow" class="sdpi-item-value select">
+                    <option value="1">1 Day</option>
+                    <option value="3" selected>3 Days</option>
+                    <option value="5">5 Days</option>
+                    <option value="7">7 Days</option>
+                </select>
+            </div>
+
+            <div class="sdpi-item" type="checkbox">
+                <div class="sdpi-item-label">All-Day Events</div>
+                <div class="sdpi-item-value">
+                    <input type="checkbox" id="customExcludeAllDay" checked>
+                    <label for="customExcludeAllDay"><span></span>Hide all-day events</label>
+                </div>
+            </div>
+        </div>
+        
+        <hr class="sdpi-separator" style="margin: 15px 0; border-color: #3a3a3a;" />
+        
+        <div class="sdpi-heading">Global Settings (Default Calendar)</div>
 
         <div class="sdpi-item full-row">
             <div class="sdpi-item-label">iCal URL</div>
@@ -63,6 +106,7 @@
         <div class="sdpi-heading">Features</div>
         <div class="content">
             <ul>
+                <li><strong>New:</strong> Per-button custom calendars - use different calendars on different buttons!</li>
                 <li><strong>New:</strong> Configurable title display duration (5, 10, 15, or 30 seconds)</li>
                 <li><strong>New:</strong> Flash button when meeting starts (can be disabled)</li>
                 <li><strong>New:</strong> Support for recurring events (daily, weekly, monthly, etc.)</li>

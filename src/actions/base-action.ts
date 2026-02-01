@@ -7,7 +7,7 @@
  * @license MIT
  */
 
-import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent, KeyDownEvent, KeyUpEvent } from '@elgato/streamdeck';
+import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent, KeyDownEvent, KeyUpEvent, DidReceiveSettingsEvent } from '@elgato/streamdeck';
 import { calendarCache, getStatusText, forceRefreshCache, getSettings } from '../services/calendar-service.js';
 import { calendarManager } from '../services/calendar-manager.js';
 import { CalendarEvent, ActionSettings, ErrorState } from '../types/index.js';
@@ -192,6 +192,53 @@ export abstract class BaseAction extends SingletonAction {
     this.actionRef = undefined;
     this.actionId = undefined;
     this.calendarId = undefined;
+  }
+  
+  /**
+   * Called when settings are received/updated from Property Inspector
+   */
+  async onDidReceiveSettings(ev: DidReceiveSettingsEvent<any>): Promise<void> {
+    const settings = ev.payload.settings as ActionSettings | undefined;
+    logger.debug(`[${this.constructor.name}] Settings received:`, JSON.stringify(settings));
+    
+    if (!this.actionId) {
+      logger.debug(`[${this.constructor.name}] No action ID, skipping settings update`);
+      return;
+    }
+    
+    const newUseCustomCalendar = settings?.useCustomCalendar ?? false;
+    
+    // Check if calendar settings changed
+    if (newUseCustomCalendar !== this.useCustomCalendar || 
+        (newUseCustomCalendar && settings?.customUrl)) {
+      
+      this.useCustomCalendar = newUseCustomCalendar;
+      
+      // Re-register with the appropriate calendar
+      if (newUseCustomCalendar && settings?.customUrl) {
+        this.calendarId = calendarManager.registerAction(
+          this.actionId,
+          settings.customUrl,
+          settings.customTimeWindow ?? globalTimeWindow,
+          settings.customExcludeAllDay ?? globalExcludeAllDay
+        );
+        logger.info(`[${this.constructor.name}] Switched to custom calendar: ${settings.customLabel || settings.customUrl.substring(0, 30)}...`);
+      } else if (globalUrl) {
+        this.calendarId = calendarManager.registerAction(
+          this.actionId,
+          globalUrl,
+          globalTimeWindow,
+          globalExcludeAllDay
+        );
+        logger.info(`[${this.constructor.name}] Switched to global calendar`);
+      }
+      
+      // Restart the display with new calendar
+      this.stopTimer();
+      if (this.actionRef) {
+        this.waitForCacheAndStart(this.actionRef);
+      }
+    }
   }
   
   /**

@@ -7,6 +7,7 @@ window.websocket = null;
 window.uuid = null;
 window.actionInfo = {};
 window.globalSettings = {};
+window.actionSettings = {};  // Per-action settings (custom calendar)
 window.setupPopup = null;  // Reference to setup popup window
 
 // Local references for convenience
@@ -14,6 +15,7 @@ let websocket = null;
 let uuid = null;
 let actionInfo = {};
 let globalSettings = {};
+let actionSettings = {};
 
 /**
  * Connect to Stream Deck
@@ -23,6 +25,12 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, 
     window.uuid = inUUID;
     actionInfo = JSON.parse(inActionInfo);
     window.actionInfo = actionInfo;
+    
+    // Load action settings from actionInfo if available
+    if (actionInfo.payload && actionInfo.payload.settings) {
+        actionSettings = actionInfo.payload.settings;
+        window.actionSettings = actionSettings;
+    }
     
     websocket = new WebSocket('ws://127.0.0.1:' + inPort);
     window.websocket = websocket;
@@ -36,6 +44,9 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, 
         
         // Request global settings
         requestGlobalSettings();
+        
+        // Request action settings (per-action)
+        requestSettings();
     };
     
     websocket.onmessage = function(evt) {
@@ -49,6 +60,13 @@ function connectElgatoStreamDeckSocket(inPort, inUUID, inRegisterEvent, inInfo, 
             globalSettings = jsonPayload.settings || {};
             window.globalSettings = globalSettings;
             updateUI();
+        }
+        
+        // Handle per-action settings
+        if (event === 'didReceiveSettings') {
+            actionSettings = jsonPayload.settings || {};
+            window.actionSettings = actionSettings;
+            console.log('[PI] Action settings received:', actionSettings);
         }
         
         // Forward sendToPropertyInspector messages to popup window
@@ -94,6 +112,19 @@ function requestGlobalSettings() {
     if (websocket) {
         const json = {
             event: 'getGlobalSettings',
+            context: uuid
+        };
+        websocket.send(JSON.stringify(json));
+    }
+}
+
+/**
+ * Request per-action settings
+ */
+function requestSettings() {
+    if (websocket) {
+        const json = {
+            event: 'getSettings',
             context: uuid
         };
         websocket.send(JSON.stringify(json));
