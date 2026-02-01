@@ -12,7 +12,7 @@
 
 import { action, KeyUpEvent } from '@elgato/streamdeck';
 import { BaseAction } from './base-action.js';
-import { calendarCache, getStatusText } from '../services/calendar-service.js';
+import { getStatusText } from '../services/calendar-service.js';
 import { findActiveEvents, findNextEvent } from '../utils/event-utils.js';
 import { secondsUntil, sec2time } from '../utils/time-utils.js';
 import { logger } from '../utils/logger.js';
@@ -52,7 +52,7 @@ export class CombinedAction extends BaseAction {
   protected async handleSinglePress(action: any): Promise<void> {
     if (this.currentMode === 'time-left') {
       // Cycle through concurrent meetings (like TimeLeft)
-      const activeEvents = findActiveEvents(calendarCache.events);
+      const activeEvents = findActiveEvents(this.getEvents());
       if (activeEvents.length > 1) {
         this.currentMeetingIndex = (this.currentMeetingIndex + 1) % activeEvents.length;
         logger.info(`[Combined] Switched to meeting ${this.currentMeetingIndex + 1}/${activeEvents.length}: "${activeEvents[this.currentMeetingIndex].summary}"`);
@@ -65,7 +65,7 @@ export class CombinedAction extends BaseAction {
         this.showingTitle = false;
         await this.updateDisplay(action);
       } else {
-        const nextEvent = findNextEvent(calendarCache.events);
+        const nextEvent = findNextEvent(this.getEvents());
         if (nextEvent) {
           this.startMarquee(action, nextEvent.summary);
         }
@@ -136,9 +136,10 @@ export class CombinedAction extends BaseAction {
     }
     
     // Check cache status
-    if (calendarCache.status !== 'LOADED' && calendarCache.status !== 'NO_EVENTS') {
-      const statusText = getStatusText(calendarCache.status);
-      logger.debug(`[Combined] Cache status: ${calendarCache.status}, showing: ${statusText}`);
+    const status = this.getCacheStatus();
+    if (status !== 'LOADED' && status !== 'NO_EVENTS') {
+      const statusText = getStatusText(status);
+      logger.debug(`[Combined] Cache status: ${status}, showing: ${statusText}`);
       await action.setTitle(statusText);
       await this.setImage(action, 'nextMeeting');
       this.currentMode = 'no-events';
@@ -146,8 +147,9 @@ export class CombinedAction extends BaseAction {
     }
     
     // Find active and upcoming events
-    const activeEvents = findActiveEvents(calendarCache.events);
-    const nextEvent = findNextEvent(calendarCache.events);
+    const events = this.getEvents();
+    const activeEvents = findActiveEvents(events);
+    const nextEvent = findNextEvent(events);
     
     logger.debug(`[Combined] Active events: ${activeEvents.length}, next event: ${nextEvent?.summary || 'none'}`);
     

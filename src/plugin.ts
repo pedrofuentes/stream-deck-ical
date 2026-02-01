@@ -12,6 +12,7 @@ import { NextMeetingAction } from './actions/next-meeting.js';
 import { TimeLeftAction } from './actions/time-left.js';
 import { CombinedAction } from './actions/combined-action.js';
 import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo, setFeedConfig, setActionSettings } from './services/calendar-service.js';
+import { setGlobalCalendarConfig } from './actions/base-action.js';
 import { logger, isDebugMode } from './utils/logger.js';
 
 // Global settings
@@ -90,7 +91,10 @@ streamDeck.settings.onDidReceiveGlobalSettings((ev) => {
     currentUrlVersion = newUrlVersion;
     currentExcludeAllDay = newExcludeAllDay;
     
-    // Update the feed config for force refresh
+    // Update global calendar config for BaseAction
+    setGlobalCalendarConfig(newUrl, newTimeWindow, newExcludeAllDay);
+    
+    // Update the feed config for force refresh (legacy support)
     setFeedConfig(newUrl, newTimeWindow, newExcludeAllDay);
     
     // Stop existing updates
@@ -125,6 +129,9 @@ streamDeck.settings.getGlobalSettings().then((settings: any) => {
   currentExcludeAllDay = actualSettings?.excludeAllDay === undefined ? true : Boolean(actualSettings?.excludeAllDay);
   currentTitleDisplayDuration = (actualSettings?.titleDisplayDuration as number) || 15;
   currentFlashOnMeetingStart = actualSettings?.flashOnMeetingStart === undefined ? false : Boolean(actualSettings?.flashOnMeetingStart);
+  
+  // Set global calendar config for BaseAction
+  setGlobalCalendarConfig(currentUrl, currentTimeWindow, currentExcludeAllDay);
   
   // Set action settings
   setActionSettings({

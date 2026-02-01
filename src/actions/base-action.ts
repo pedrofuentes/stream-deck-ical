@@ -9,7 +9,23 @@
 
 import streamDeck, { action, SingletonAction, WillAppearEvent, WillDisappearEvent, KeyDownEvent, KeyUpEvent } from '@elgato/streamdeck';
 import { calendarCache, getStatusText, forceRefreshCache, getSettings } from '../services/calendar-service.js';
+import { calendarManager } from '../services/calendar-manager.js';
+import { CalendarEvent, ActionSettings, ErrorState } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+
+// Global settings (set by plugin.ts)
+let globalUrl: string = '';
+let globalTimeWindow: number = 3;
+let globalExcludeAllDay: boolean = true;
+
+/**
+ * Set global calendar settings (called from plugin.ts)
+ */
+export function setGlobalCalendarConfig(url: string, timeWindow: number, excludeAllDay: boolean): void {
+  globalUrl = url;
+  globalTimeWindow = timeWindow;
+  globalExcludeAllDay = excludeAllDay;
+}
 
 /**
  * Base action class with common functionality
@@ -24,6 +40,11 @@ export abstract class BaseAction extends SingletonAction {
   protected flashInterval?: NodeJS.Timeout;
   protected isFlashing: boolean = false;
   
+  // Per-action calendar settings
+  protected actionId?: string;
+  protected calendarId?: string;
+  protected useCustomCalendar: boolean = false;
+  
   // Color zones (in seconds)
   protected readonly RED_ZONE = 30;
   protected readonly ORANGE_ZONE = 300; // 5 minutes
@@ -36,12 +57,70 @@ export abstract class BaseAction extends SingletonAction {
     
     // Keep reference to action
     this.actionRef = ev.action;
+    this.actionId = ev.action.id;
+    
+    // Check for per-action settings
+    const settings = ev.payload.settings as ActionSettings | undefined;
+    this.useCustomCalendar = settings?.useCustomCalendar ?? false;
+    
+    if (this.useCustomCalendar && settings?.customUrl) {
+      // Register with custom calendar
+      this.calendarId = calendarManager.registerAction(
+        this.actionId,
+        settings.customUrl,
+        settings.customTimeWindow ?? globalTimeWindow,
+        settings.customExcludeAllDay ?? globalExcludeAllDay
+      );
+      logger.info(`[${this.constructor.name}] Using custom calendar: ${settings.customLabel || settings.customUrl.substring(0, 30)}...`);
+    } else if (globalUrl) {
+      // Register with global calendar
+      this.calendarId = calendarManager.registerAction(
+        this.actionId,
+        globalUrl,
+        globalTimeWindow,
+        globalExcludeAllDay
+      );
+      logger.debug(`[${this.constructor.name}] Using global calendar`);
+    }
     
     // Set initial image
     await this.setInitialImage(ev.action);
     
     // Check cache status and start timer when ready
     this.waitForCacheAndStart(ev.action);
+  }
+  
+  /**
+   * Get events for this action (from its registered calendar)
+   */
+  protected getEvents(): CalendarEvent[] {
+    if (this.actionId && this.calendarId) {
+      return calendarManager.getEventsForAction(this.actionId);
+    }
+    // Fallback to global cache for backwards compatibility
+    return calendarCache.events;
+  }
+  
+  /**
+   * Get cache status for this action
+   */
+  protected getCacheStatus(): ErrorState {
+    if (this.actionId && this.calendarId) {
+      return calendarManager.getStatusForAction(this.actionId);
+    }
+    // Fallback to global cache
+    return calendarCache.status;
+  }
+  
+  /**
+   * Get cache version for this action
+   */
+  protected getCacheVersion(): number {
+    if (this.actionId && this.calendarId) {
+      const calendar = calendarManager.getCalendarForAction(this.actionId);
+      return calendar?.cache.version ?? 0;
+    }
+    return calendarCache.version;
   }
   
   /**
@@ -54,14 +133,17 @@ export abstract class BaseAction extends SingletonAction {
       this.waitingForCacheInterval = undefined;
     }
     
+    // Get status from the action's calendar
+    const status = this.getCacheStatus();
+    
     // If cache is loaded, start immediately
-    if (calendarCache.status === 'LOADED' || calendarCache.status === 'NO_EVENTS') {
+    if (status === 'LOADED' || status === 'NO_EVENTS') {
       this.startTimer(action);
       return;
     }
     
     // Show loading status
-    const statusText = getStatusText(calendarCache.status);
+    const statusText = getStatusText(status);
     action.setTitle(statusText);
     
     // Check every 500ms for cache to become available (faster response on startup)
@@ -69,7 +151,9 @@ export abstract class BaseAction extends SingletonAction {
       // Use stored actionRef if available (more reliable after plugin restart)
       const currentAction = this.actionRef || action;
       
-      if (calendarCache.status === 'LOADED' || calendarCache.status === 'NO_EVENTS') {
+      const currentStatus = this.getCacheStatus();
+      
+      if (currentStatus === 'LOADED' || currentStatus === 'NO_EVENTS') {
         // Cache is ready, start timer
         if (this.waitingForCacheInterval) {
           clearInterval(this.waitingForCacheInterval);
@@ -79,7 +163,7 @@ export abstract class BaseAction extends SingletonAction {
         this.startTimer(currentAction);
       } else {
         // Update status text while waiting
-        const statusText = getStatusText(calendarCache.status);
+        const statusText = getStatusText(currentStatus);
         currentAction.setTitle(statusText);
       }
     }, 500);
@@ -94,6 +178,11 @@ export abstract class BaseAction extends SingletonAction {
     logger.debug(`${this.constructor.name} will disappear`);
     this.stopTimer();
     
+    // Unregister from CalendarManager
+    if (this.actionId) {
+      calendarManager.unregisterAction(this.actionId);
+    }
+    
     // Clear waiting interval
     if (this.waitingForCacheInterval) {
       clearInterval(this.waitingForCacheInterval);
@@ -101,6 +190,8 @@ export abstract class BaseAction extends SingletonAction {
     }
     
     this.actionRef = undefined;
+    this.actionId = undefined;
+    this.calendarId = undefined;
   }
   
   /**
@@ -149,8 +240,14 @@ export abstract class BaseAction extends SingletonAction {
     await this.setInitialImage(action);
     
     try {
-      // Actually refresh the calendar cache
-      await forceRefreshCache();
+      // Refresh the appropriate calendar
+      if (this.actionId && this.calendarId) {
+        // Refresh through CalendarManager (handles URL-level deduplication)
+        await calendarManager.refreshCalendarForAction(this.actionId);
+      } else {
+        // Fallback to global refresh
+        await forceRefreshCache();
+      }
       logger.info('✅ Force refresh completed');
     } catch (error) {
       logger.error('❌ Force refresh failed:', error);
@@ -164,7 +261,7 @@ export abstract class BaseAction extends SingletonAction {
    * Start the update timer
    */
   protected startTimer(action: any): void {
-    this.cacheVersion = calendarCache.version;
+    this.cacheVersion = this.getCacheVersion();
     
     // Clear any existing timer
     this.stopTimer();
@@ -175,7 +272,8 @@ export abstract class BaseAction extends SingletonAction {
     // Set up interval for updates (every second)
     this.interval = setInterval(() => {
       // Check if cache is still loaded
-      if (calendarCache.status !== 'LOADED' && calendarCache.status !== 'NO_EVENTS') {
+      const status = this.getCacheStatus();
+      if (status !== 'LOADED' && status !== 'NO_EVENTS') {
         // Cache is reloading, stop timer and wait again
         this.stopTimer();
         this.waitForCacheAndStart(action);
@@ -183,8 +281,9 @@ export abstract class BaseAction extends SingletonAction {
       }
       
       // Check if cache was updated
-      if (this.cacheVersion !== calendarCache.version) {
-        this.cacheVersion = calendarCache.version;
+      const currentVersion = this.getCacheVersion();
+      if (this.cacheVersion !== currentVersion) {
+        this.cacheVersion = currentVersion;
         logger.debug('Cache updated, refreshing display');
       }
       

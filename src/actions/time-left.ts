@@ -8,7 +8,7 @@
 
 import { action, KeyDownEvent, KeyUpEvent } from '@elgato/streamdeck';
 import { BaseAction } from './base-action.js';
-import { calendarCache, getStatusText } from '../services/calendar-service.js';
+import { getStatusText } from '../services/calendar-service.js';
 import { findActiveEvents } from '../utils/event-utils.js';
 import { secondsUntil, sec2time } from '../utils/time-utils.js';
 import { logger } from '../utils/logger.js';
@@ -41,7 +41,7 @@ export class TimeLeftAction extends BaseAction {
    * Handle single key press - cycle through concurrent meetings
    */
   protected async handleSinglePress(action: any): Promise<void> {
-    const activeEvents = findActiveEvents(calendarCache.events);
+    const activeEvents = findActiveEvents(this.getEvents());
     
     if (activeEvents.length > 1) {
       // Cycle to next meeting
@@ -61,18 +61,20 @@ export class TimeLeftAction extends BaseAction {
    */
   protected async updateDisplay(action: any): Promise<void> {
     // Check cache status
-    if (calendarCache.status !== 'LOADED' && calendarCache.status !== 'NO_EVENTS') {
-      const statusText = getStatusText(calendarCache.status);
-      logger.debug(`[TimeLeft] Cache status: ${calendarCache.status}, showing: ${statusText}`);
+    const status = this.getCacheStatus();
+    if (status !== 'LOADED' && status !== 'NO_EVENTS') {
+      const statusText = getStatusText(status);
+      logger.debug(`[TimeLeft] Cache status: ${status}, showing: ${statusText}`);
       await action.setTitle(statusText);
       await this.setImage(action, 'activeMeeting');
       return;
     }
     
     // Find active events
-    const activeEvents = findActiveEvents(calendarCache.events);
+    const events = this.getEvents();
+    const activeEvents = findActiveEvents(events);
     
-    logger.debug(`[TimeLeft] Cache has ${calendarCache.events.length} total events, ${activeEvents.length} active`);
+    logger.debug(`[TimeLeft] Cache has ${events.length} total events, ${activeEvents.length} active`);
     
     if (activeEvents.length === 0) {
       // No active meetings

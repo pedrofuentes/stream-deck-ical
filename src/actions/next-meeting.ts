@@ -8,7 +8,7 @@
 
 import { action, KeyUpEvent } from '@elgato/streamdeck';
 import { BaseAction } from './base-action.js';
-import { calendarCache, getStatusText } from '../services/calendar-service.js';
+import { getStatusText } from '../services/calendar-service.js';
 import { findNextEvent } from '../utils/event-utils.js';
 import { secondsUntil, sec2time } from '../utils/time-utils.js';
 import { logger } from '../utils/logger.js';
@@ -49,7 +49,7 @@ export class NextMeetingAction extends BaseAction {
       await this.updateDisplay(action);
     } else {
       // Show title as marquee
-      const nextEvent = findNextEvent(calendarCache.events);
+      const nextEvent = findNextEvent(this.getEvents());
       if (nextEvent) {
         this.startMarquee(action, nextEvent.summary);
       }
@@ -125,18 +125,20 @@ export class NextMeetingAction extends BaseAction {
     }
     
     // Check cache status
-    if (calendarCache.status !== 'LOADED' && calendarCache.status !== 'NO_EVENTS') {
-      const statusText = getStatusText(calendarCache.status);
-      logger.debug(`[NextMeeting] Cache status: ${calendarCache.status}, showing: ${statusText}`);
+    const status = this.getCacheStatus();
+    if (status !== 'LOADED' && status !== 'NO_EVENTS') {
+      const statusText = getStatusText(status);
+      logger.debug(`[NextMeeting] Cache status: ${status}, showing: ${statusText}`);
       await action.setTitle(statusText);
       await this.setImage(action, 'nextMeeting');
       return;
     }
     
     // Find next event
-    const nextEvent = findNextEvent(calendarCache.events);
+    const events = this.getEvents();
+    const nextEvent = findNextEvent(events);
     
-    logger.debug(`[NextMeeting] Cache has ${calendarCache.events.length} total events, next=${nextEvent ? nextEvent.summary : 'none'}`);
+    logger.debug(`[NextMeeting] Cache has ${events.length} total events, next=${nextEvent ? nextEvent.summary : 'none'}`);
     
     if (!nextEvent) {
       logger.debug(`[NextMeeting] No upcoming events in cache`);
