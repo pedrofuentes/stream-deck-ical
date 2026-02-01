@@ -154,7 +154,6 @@ function saveActionSettings(settings) {
 function updateCalendarDropdown() {
     const select = document.getElementById('calendarSelect');
     const noCalendarsContainer = document.getElementById('noCalendarsContainer');
-    const calendarInfoContainer = document.getElementById('calendarInfoContainer');
     
     if (!select) return;
     
@@ -180,16 +179,11 @@ function updateCalendarDropdown() {
         select.innerHTML = '<option value="">No calendars available</option>';
         select.disabled = true;
         if (noCalendarsContainer) noCalendarsContainer.style.display = 'flex';
-        if (calendarInfoContainer) calendarInfoContainer.style.display = 'none';
         return;
     }
     
     select.disabled = false;
     if (noCalendarsContainer) noCalendarsContainer.style.display = 'none';
-    if (calendarInfoContainer) calendarInfoContainer.style.display = 'flex';
-    
-    // First calendar is always the default
-    const defaultId = calendars.length > 0 ? calendars[0].id : undefined;
     
     // Simply list all calendars - mark first (default) with ★
     calendars.forEach((cal, index) => {
@@ -227,58 +221,6 @@ function updateSelectedCalendar() {
     // If no explicit selection, use the first (default) calendar
     const selectedId = actionSettings.calendarId || defaultCalendarId;
     select.value = selectedId;
-    
-    // Update calendar info display
-    updateCalendarInfo(selectedId);
-}
-
-/**
- * Update the calendar info display
- */
-function updateCalendarInfo(calendarId) {
-    const infoEl = document.getElementById('calendarInfo');
-    if (!infoEl) return;
-    
-    let calendars = globalSettings.calendars || [];
-    
-    // Handle legacy URL
-    if (calendars.length === 0 && globalSettings.url) {
-        calendars = [{
-            id: '__legacy__',
-            name: 'Default Calendar',
-            url: globalSettings.url
-        }];
-    }
-    
-    // First calendar is always the default
-    const defaultCalendarId = calendars.length > 0 ? calendars[0].id : undefined;
-    
-    let calendar;
-    if (calendarId) {
-        calendar = calendars.find(c => c.id === calendarId);
-    } else {
-        // Using default (first calendar)
-        calendar = calendars[0];
-    }
-    
-    if (calendar) {
-        // Truncate URL for display
-        const urlDisplay = calendar.url.length > 40 
-            ? calendar.url.substring(0, 40) + '...' 
-            : calendar.url;
-        infoEl.textContent = urlDisplay;
-        infoEl.title = calendar.url;
-    } else if (globalSettings.url) {
-        // Fallback to legacy URL display
-        const urlDisplay = globalSettings.url.length > 40 
-            ? globalSettings.url.substring(0, 40) + '...' 
-            : globalSettings.url;
-        infoEl.textContent = urlDisplay;
-        infoEl.title = globalSettings.url;
-    } else {
-        infoEl.textContent = 'No calendar selected';
-        infoEl.title = '';
-    }
 }
 
 /**
