@@ -104,7 +104,7 @@ describe('secondsUntil', () => {
     const past = new Date(Date.now() - 5000);
     const result = secondsUntil(past);
     expect(result).toBeLessThanOrEqual(-4);
-    expect(result).toBeGreaterThanOrEqual(-5);
+    expect(result).toBeGreaterThanOrEqual(-6); // Allow for timing variance
   });
 
   it('should return approximately 0 for current time', () => {

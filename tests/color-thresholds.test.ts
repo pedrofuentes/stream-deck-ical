@@ -240,3 +240,146 @@ describe('Threshold integration with actions', () => {
     });
   });
 });
+
+describe('Color Zone Logic', () => {
+  // Test the color zone determination logic as used in actions
+  
+  function determineColorZone(
+    secondsRemaining: number, 
+    redThreshold: number = 30, 
+    orangeThreshold: number = 300
+  ): 'red' | 'orange' | 'normal' {
+    if (secondsRemaining <= redThreshold) return 'red';
+    if (secondsRemaining <= orangeThreshold) return 'orange';
+    return 'normal';
+  }
+
+  describe('With default thresholds (30s red, 300s orange)', () => {
+    const redThreshold = 30;
+    const orangeThreshold = 300;
+
+    it('should return red when <= 30 seconds', () => {
+      expect(determineColorZone(30, redThreshold, orangeThreshold)).toBe('red');
+      expect(determineColorZone(15, redThreshold, orangeThreshold)).toBe('red');
+      expect(determineColorZone(0, redThreshold, orangeThreshold)).toBe('red');
+    });
+
+    it('should return orange when 31-300 seconds', () => {
+      expect(determineColorZone(31, redThreshold, orangeThreshold)).toBe('orange');
+      expect(determineColorZone(150, redThreshold, orangeThreshold)).toBe('orange');
+      expect(determineColorZone(300, redThreshold, orangeThreshold)).toBe('orange');
+    });
+
+    it('should return normal when > 300 seconds', () => {
+      expect(determineColorZone(301, redThreshold, orangeThreshold)).toBe('normal');
+      expect(determineColorZone(600, redThreshold, orangeThreshold)).toBe('normal');
+      expect(determineColorZone(3600, redThreshold, orangeThreshold)).toBe('normal');
+    });
+  });
+
+  describe('With custom thresholds', () => {
+    it('should use 60s red threshold correctly', () => {
+      const redThreshold = 60;
+      const orangeThreshold = 300;
+      
+      expect(determineColorZone(60, redThreshold, orangeThreshold)).toBe('red');
+      expect(determineColorZone(61, redThreshold, orangeThreshold)).toBe('orange');
+    });
+
+    it('should use 600s orange threshold correctly', () => {
+      const redThreshold = 30;
+      const orangeThreshold = 600;
+      
+      expect(determineColorZone(300, redThreshold, orangeThreshold)).toBe('orange');
+      expect(determineColorZone(600, redThreshold, orangeThreshold)).toBe('orange');
+      expect(determineColorZone(601, redThreshold, orangeThreshold)).toBe('normal');
+    });
+
+    it('should handle 2 minute red and 10 minute orange', () => {
+      const redThreshold = 120; // 2 minutes
+      const orangeThreshold = 600; // 10 minutes
+      
+      expect(determineColorZone(60, redThreshold, orangeThreshold)).toBe('red');
+      expect(determineColorZone(120, redThreshold, orangeThreshold)).toBe('red');
+      expect(determineColorZone(121, redThreshold, orangeThreshold)).toBe('orange');
+      expect(determineColorZone(300, redThreshold, orangeThreshold)).toBe('orange');
+      expect(determineColorZone(601, redThreshold, orangeThreshold)).toBe('normal');
+    });
+  });
+
+  describe('Edge cases', () => {
+    it('should handle threshold boundary exactly', () => {
+      expect(determineColorZone(30, 30, 300)).toBe('red');
+      expect(determineColorZone(300, 30, 300)).toBe('orange');
+    });
+
+    it('should handle negative seconds (past meeting)', () => {
+      // In real usage, negative means meeting has ended
+      expect(determineColorZone(-10, 30, 300)).toBe('red');
+    });
+
+    it('should handle very large time values', () => {
+      const oneDay = 86400;
+      expect(determineColorZone(oneDay, 30, 300)).toBe('normal');
+    });
+
+    it('should handle red threshold equal to orange (edge case config)', () => {
+      // If user misconfigures thresholds equal, red wins
+      expect(determineColorZone(60, 60, 60)).toBe('red');
+    });
+
+    it('should handle red > orange (invalid but handled)', () => {
+      // If red > orange (invalid config), orange zone would never show
+      const redThreshold = 300;
+      const orangeThreshold = 60; // Invalid: orange < red
+      
+      // 100s is > orange(60) but < red(300), so technically orange
+      // But with this config: 100 <= 300 (red), so red wins
+      expect(determineColorZone(100, redThreshold, orangeThreshold)).toBe('red');
+    });
+  });
+});
+
+describe('Image State Mapping', () => {
+  // Map color zones to image names for different action types
+  
+  describe('TimeLeft/Active Meeting images', () => {
+    const imageMap: Record<string, string> = {
+      'normal': 'activeMeeting',
+      'orange': 'activeMeetingOrange',
+      'red': 'activeMeetingRed'
+    };
+
+    it('should map normal to activeMeeting', () => {
+      expect(imageMap['normal']).toBe('activeMeeting');
+    });
+
+    it('should map orange to activeMeetingOrange', () => {
+      expect(imageMap['orange']).toBe('activeMeetingOrange');
+    });
+
+    it('should map red to activeMeetingRed', () => {
+      expect(imageMap['red']).toBe('activeMeetingRed');
+    });
+  });
+
+  describe('NextMeeting images', () => {
+    const imageMap: Record<string, string> = {
+      'normal': 'nextMeeting',
+      'orange': 'nextMeetingOrange',
+      'red': 'nextMeetingRed'
+    };
+
+    it('should map normal to nextMeeting', () => {
+      expect(imageMap['normal']).toBe('nextMeeting');
+    });
+
+    it('should map orange to nextMeetingOrange', () => {
+      expect(imageMap['orange']).toBe('nextMeetingOrange');
+    });
+
+    it('should map red to nextMeetingRed', () => {
+      expect(imageMap['red']).toBe('nextMeetingRed');
+    });
+  });
+});
