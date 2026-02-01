@@ -72,6 +72,7 @@ export function getNamedCalendars(): NamedCalendar[] {
 interface ButtonState {
   interval?: NodeJS.Timeout;
   waitingForCacheInterval?: NodeJS.Timeout;
+  calendarRetryInterval?: NodeJS.Timeout;
   cacheVersion: number;
   currentImage: string;
   lastKeyPress: number;
@@ -79,6 +80,7 @@ interface ButtonState {
   flashInterval?: NodeJS.Timeout;
   isFlashing: boolean;
   calendarId?: string;
+  pendingCalendarId?: string;
   useCustomCalendar: boolean;
 }
 
@@ -126,10 +128,30 @@ export abstract class BaseAction extends SingletonAction {
     // Check for per-action settings
     const settings = ev.payload.settings as ActionSettings | undefined;
     
+    // Store the calendarId from settings for potential retry
+    state.pendingCalendarId = settings?.calendarId;
+    
+    // Try to register the calendar
+    this.registerCalendarForButton(actionId, settings);
+    
+    // Set initial image
+    await this.setInitialImage(ev.action);
+    
+    // Check cache status and start timer when ready
+    this.waitForCacheAndStart(actionId, ev.action);
+  }
+  
+  /**
+   * Register calendar for a button, with retry if named calendars not loaded yet
+   */
+  private registerCalendarForButton(actionId: string, settings: ActionSettings | undefined): void {
+    const state = this.getButtonState(actionId);
+    
     // Determine which calendar to use
     let calendarUrl: string | undefined;
     let calendarTimeWindow = globalTimeWindow;
     let calendarExcludeAllDay = globalExcludeAllDay;
+    let needsRetry = false;
     
     if (settings?.calendarId) {
       // New approach: Use named calendar by ID
@@ -139,6 +161,13 @@ export abstract class BaseAction extends SingletonAction {
         calendarTimeWindow = namedCal.timeWindow ?? globalTimeWindow;
         calendarExcludeAllDay = namedCal.excludeAllDay ?? globalExcludeAllDay;
         logger.info(`[${this.constructor.name}] ${actionId} using named calendar: ${namedCal.name}`);
+      } else if (namedCalendars.length === 0) {
+        // Named calendars not loaded yet - we'll retry when they load
+        logger.debug(`[${this.constructor.name}] ${actionId} waiting for named calendars to load (calendarId: ${settings.calendarId})`);
+        needsRetry = true;
+      } else {
+        // Named calendars loaded but this ID not found - might be deleted
+        logger.warn(`[${this.constructor.name}] ${actionId} calendar ID ${settings.calendarId} not found, using default`);
       }
     } else if (settings?.useCustomCalendar && settings?.customUrl) {
       // Legacy approach: Direct custom URL
@@ -148,8 +177,8 @@ export abstract class BaseAction extends SingletonAction {
       logger.info(`[${this.constructor.name}] ${actionId} using legacy custom calendar: ${settings.customLabel || settings.customUrl.substring(0, 30)}...`);
     }
     
-    // If no specific calendar, use default from named calendars or global URL
-    if (!calendarUrl) {
+    // If no specific calendar found and not waiting for retry, use default
+    if (!calendarUrl && !needsRetry) {
       const defaultCal = getDefaultCalendar();
       if (defaultCal) {
         calendarUrl = defaultCal.url;
@@ -165,19 +194,63 @@ export abstract class BaseAction extends SingletonAction {
     
     // Register with CalendarManager if we have a URL
     if (calendarUrl) {
+      // Unregister old calendar if switching
+      if (state.calendarId) {
+        calendarManager.unregisterAction(actionId);
+      }
       state.calendarId = calendarManager.registerAction(
         actionId,
         calendarUrl,
         calendarTimeWindow,
         calendarExcludeAllDay
       );
+      state.pendingCalendarId = undefined; // Clear pending since we registered
+    } else if (needsRetry) {
+      // Schedule retry to wait for named calendars to load
+      this.scheduleCalendarRetry(actionId, settings);
+    }
+  }
+  
+  /**
+   * Schedule a retry to register the calendar when named calendars load
+   */
+  private scheduleCalendarRetry(actionId: string, settings: ActionSettings | undefined): void {
+    const state = this.getButtonState(actionId);
+    
+    // Clear existing retry interval if any
+    if (state.calendarRetryInterval) {
+      clearInterval(state.calendarRetryInterval);
     }
     
-    // Set initial image
-    await this.setInitialImage(ev.action);
+    let retryCount = 0;
+    const maxRetries = 20; // 10 seconds max wait (20 * 500ms)
     
-    // Check cache status and start timer when ready
-    this.waitForCacheAndStart(actionId, ev.action);
+    state.calendarRetryInterval = setInterval(() => {
+      retryCount++;
+      
+      // Check if named calendars are now available
+      if (namedCalendars.length > 0) {
+        clearInterval(state.calendarRetryInterval!);
+        state.calendarRetryInterval = undefined;
+        
+        logger.info(`[${this.constructor.name}] ${actionId} named calendars now available, registering...`);
+        this.registerCalendarForButton(actionId, settings);
+        
+        // Restart the timer with the correct calendar
+        const action = state.actionRef;
+        if (action) {
+          this.waitForCacheAndStart(actionId, action);
+        }
+      } else if (retryCount >= maxRetries) {
+        clearInterval(state.calendarRetryInterval!);
+        state.calendarRetryInterval = undefined;
+        
+        logger.warn(`[${this.constructor.name}] ${actionId} timed out waiting for named calendars, using default`);
+        // Fall back to default
+        state.pendingCalendarId = undefined;
+        this.registerCalendarForButton(actionId, undefined);
+      }
+    }, 500);
   }
   
   /**
@@ -283,6 +356,11 @@ export abstract class BaseAction extends SingletonAction {
       // Clear waiting interval
       if (state.waitingForCacheInterval) {
         clearInterval(state.waitingForCacheInterval);
+      }
+      
+      // Clear calendar retry interval
+      if (state.calendarRetryInterval) {
+        clearInterval(state.calendarRetryInterval);
       }
       
       // Stop any flash
