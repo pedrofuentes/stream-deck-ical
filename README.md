@@ -8,11 +8,16 @@ This plugin is available on the Stream Deck store, you can also download [the la
 
 ## ✨ New in v2.3
 
-- ✅ **Multiple Calendars Support**: Use different calendars on different buttons! (#5)
-  - Enable "Use custom calendar" in the button settings
-  - Configure separate URL, time window, and all-day event options per button
-  - Label your calendars for easy identification (e.g., "Work", "Personal", "Family")
-  - Buttons using the same URL share a single cache (efficient!)
+- ✅ **Named Calendars**: Set up multiple calendars with friendly names in Settings (#5)
+  - Create a library of calendars (Work, Personal, Family, etc.)
+  - Each button can select which calendar to use from a dropdown
+  - Calendars sharing the same URL share a single cache (efficient!)
+- ✅ **Per-Button Settings**: Each button can have its own time window and all-day event preferences
+- ✅ **Configurable Warning Thresholds**: Customize when orange/red warnings appear
+  - Orange warning: Choose from 1, 2, 3, 5, 10, 15, or 30 minutes (default: 5 min)
+  - Red warning: Choose from 10, 15, 30, 45, or 60 seconds (default: 30 sec)
+- ✅ **Graceful Calendar Deletion**: Buttons using a deleted calendar automatically fall back to default
+- ✅ **Improved Settings UI**: Redesigned Property Inspector with collapsible help sections
 
 ## ✨ New in v2.2
 
@@ -37,7 +42,9 @@ This plugin is available on the Stream Deck store, you can also download [the la
 - ✅ **Provider Compatibility**: Optimized for Google Calendar, Microsoft Outlook/Office 365, and Apple Calendar
 
 ## Features ##
-* ✅ **Multiple calendars** - Different buttons can show different calendars
+* ✅ **Named calendars** - Set up multiple calendars with friendly names, assign to buttons via dropdown
+* ✅ **Per-button settings** - Each button can use different calendar, time window, and all-day preferences
+* ✅ **Configurable warning thresholds** - Customize orange/red warning times
 * ✅ **Recurring events** with RRULE expansion and EXDATE handling
 * ✅ **Configurable time window** (1, 3, 5, or 7 days)
 * ✅ **Exclude all-day events** option (enabled by default)
@@ -50,8 +57,8 @@ This plugin is available on the Stream Deck store, you can also download [the la
 
 ### Time Left ###
 * Shows time left until the meeting ends
-* Changes icon color to orange when 5 minutes are left on the meeting
-* Changes icon color to red when 30 seconds are left on the meeting and goes up to 5 minutes after the meeting
+* Changes icon color to orange when time remaining reaches the orange threshold (default: 5 minutes)
+* Changes icon color to red when time remaining reaches the red threshold (default: 30 seconds)
 * When the meeting ends the counter will keep going and stay red for 5 minutes, if the user pushes the button it will show the next meeting if one is available
 * Supports multiple concurrent meetings, to switch between meeting just push the button
 * Shows meeting indicator (e.g., "1/3") when multiple meetings are active
@@ -65,7 +72,7 @@ This plugin is available on the Stream Deck store, you can also download [the la
   * Scrolling marquee for meeting titles (tap to show/hide)
   * Concurrent meeting support (tap to cycle through active meetings)
   * Flash alert when meetings start
-  * Color-coded countdown (orange at 5 min, red at 30 sec)
+  * Configurable warning thresholds (orange/red)
 * **Perfect for limited Stream Deck space** - one button does it all!
 
 ### Next Meeting ###
@@ -75,8 +82,8 @@ This plugin is available on the Stream Deck store, you can also download [the la
   * If the button is pushed while the text is showing it will go back to show the time left until the next meeting
   * At the end of the title animation, the button will go back to show the time left until the next meeting
 * **Optional flash alert** when meetings are about to start (disabled by default)
-* Changes icon color to orange when there are 5 minutes left for the next meeting to start
-* Changes icon color to red when there are 30 seconds left for the next meeting to start
+* Changes icon color to orange when time remaining reaches the orange threshold (default: 5 minutes)
+* Changes icon color to red when time remaining reaches the red threshold (default: 30 seconds)
 
 ## Calendar Provider Support
 
@@ -138,15 +145,29 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup instructions.
 
 ## Configuration
 
+### Global Settings (Settings Popup)
 1. Drag an action to your Stream Deck
 2. Click the action to open Property Inspector
 3. Click "Settings" button
-4. Enter your iCal URL
-5. Choose time window (1, 3, 5, or 7 days)
-6. Set title display duration (5, 10, 15, or 30 seconds)
-7. Optionally enable "Flash when meeting starts" for visual alerts
-8. Optionally uncheck "Exclude All-Day Events" to show all-day events
-9. Click "Save Settings"
+4. **Manage Calendars**: Add named calendars with friendly labels
+   - Click "Add Calendar" to create a new entry
+   - Give it a name (e.g., "Work", "Personal")
+   - Paste your iCal URL
+   - Set time window and all-day event preferences per calendar
+   - Click ★ to set as default calendar
+5. **Warning Thresholds**: Customize when color warnings appear
+   - Orange warning: 1-30 minutes (default: 5 min)
+   - Red warning: 10-60 seconds (default: 30 sec)
+6. **Other Options**:
+   - Title display duration (5, 10, 15, or 30 seconds)
+   - Flash on meeting start (optional visual alert)
+7. Click "Save Settings"
+
+### Per-Button Settings (Property Inspector)
+Each button can override the default calendar:
+1. Select the button on your Stream Deck
+2. In Property Inspector, use the "Calendar" dropdown to select which calendar this button should use
+3. The default calendar is indicated with "(Default)" in the dropdown
 
 ## Troubleshooting
 
@@ -195,12 +216,17 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 ## Changelog
 
 ### v2.3.0 (2026)
-- ✨ **Multiple Calendars Support**: Each button can use a different calendar (#5)
-- ✨ Per-button custom URL, time window, and all-day event settings
-- ✨ Calendar labels for easy identification in settings
-- ✨ URL-level caching: buttons sharing the same URL share a single cache
-- ✅ Added CalendarManager service with 28 tests
-- ✅ Added 13 per-action settings tests
+- ✨ **Named Calendars**: Set up multiple calendars with friendly names in Settings (#5)
+- ✨ **Per-Button Calendar Selection**: Each button selects calendar from dropdown
+- ✨ **Configurable Warning Thresholds**: Customize orange (1-30 min) and red (10-60 sec) warnings
+- ✨ **Graceful Calendar Deletion**: Buttons auto-migrate to default when calendar is deleted
+- ✨ **Improved Settings UI**: Redesigned Property Inspector with collapsible help
+- ✨ Per-button time window and all-day event settings
+- ✨ URL-level caching: buttons sharing same URL share a single cache
+- 🐛 Fixed button state preservation with SingletonAction pattern
+- 🐛 Fixed calendar selection not persisting after Stream Deck restart
+- ✅ Added CalendarManager service with 31 tests
+- ✅ Added 104 new regression tests (529 total)
 
 ### v2.2.0 (2026)
 - ✨ **Smart Calendar Action**: New combined action that auto-switches between Time Left and Next Meeting (#10)

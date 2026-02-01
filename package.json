@@ -1,6 +1,6 @@
 {
   "name": "stream-deck-ical",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "An elgato Stream Deck plugin that displays information from your calendar using an iCal URL. Visual cues and a countdown will help you end meetings on time and be ready for the next one.",
   "private": true,
   "type": "module",

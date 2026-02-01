@@ -73,15 +73,36 @@ PI uses WebSocket, not direct imports. Settings flow:
 
 ### Per-Action Settings (v2.3.0)
 
-Each button can have its own calendar via `ActionSettings`:
+Each button can select a calendar via `ActionSettings`:
 
 ```typescript
 interface ActionSettings {
-  useCustomCalendar?: boolean;  // false = use global
+  calendarId?: string;          // ID of named calendar to use (new in v2.3)
+  // Legacy fields (kept for backwards compatibility)
+  useCustomCalendar?: boolean;
   customUrl?: string;
-  customLabel?: string;         // For PI organization only
+  customLabel?: string;
   customTimeWindow?: 1 | 3 | 5 | 7;
   customExcludeAllDay?: boolean;
+}
+```
+
+**Named Calendars** in GlobalSettings:
+```typescript
+interface NamedCalendar {
+  id: string;           // Unique ID (e.g., "cal_abc123")
+  name: string;         // User-friendly name (e.g., "Work")
+  url: string;          // iCal URL
+  timeWindow?: number;  // Optional override (1, 3, 5, or 7 days)
+  excludeAllDay?: boolean;
+}
+
+interface GlobalSettings {
+  calendars?: NamedCalendar[];
+  defaultCalendarId?: string;
+  orangeThreshold?: number;   // Seconds for orange warning (default: 300 = 5 min)
+  redThreshold?: number;      // Seconds for red warning (default: 30)
+  // ... other settings
 }
 ```
 
@@ -92,12 +113,15 @@ interface ActionSettings {
 
 **BaseAction** provides:
 - `buttonStates: Map<string, ButtonState>` - Per-button state storage
+- `buttonSettings: Map<string, ActionSettings>` - Per-button settings for migration
 - `getEventsForButton(actionId)` - Returns events from the button's registered calendar
 - `getCacheStatusForButton(actionId)` - Returns status of the button's calendar
 - `startTimerForButton(actionId, action)` - Starts update timer for a specific button
 - `stopTimerForButton(actionId)` - Stops timer for a specific button
 - `setImage(actionId, action, imageName)` - Sets image for a specific button
 - `onDidReceiveSettings()` - Handles settings changes, re-registers calendar
+- `migrateButtonsWithDeletedCalendar(validIds)` - Migrates buttons when calendar deleted
+- `getRedZone()` / `getOrangeZone()` - Get configurable warning thresholds
 
 ## Build System
 
@@ -234,15 +258,16 @@ const flashEnabled = settings.flashOnMeetingStart === true;
 | Outlook times wrong | Windows timezone not mapped | Check `timezone-service.ts` mapping |
 | Buttons stuck on "Loading" | Startup race condition | `waitForCacheAndStart` uses 500ms polling with `actionRef` fallback |
 | Title shows for too long | Duration multiplied twice | `getTitleDisplayDuration()` returns seconds, caller multiplies by 1000 |
-| Custom calendar not loading | Missing action ID | Ensure `onWillAppear` sets `this.actionId = ev.action.id` |
+| Calendar not loading | Named calendars not set up | Ensure at least one calendar is configured in Settings |
+| Button using deleted calendar | Calendar was removed | Buttons auto-migrate to default via `migrateDeletedCalendars()` |
 | Settings not persisting | Using wrong settings event | Global = `setGlobalSettings`, Per-action = `setSettings` |
 
 ## File Locations
 
 - **Actions**: `src/actions/` - Extend `BaseAction`
 - **Services**: `src/services/` - Business logic (`calendar-manager.ts` for multi-calendar)
-- **Types**: `src/types/index.ts` - All interfaces (`ActionSettings`, `CalendarInstance`)
-- **PI HTML**: `pi/setup.html` - Settings popup (includes custom calendar section)
+- **Types**: `src/types/index.ts` - All interfaces (`ActionSettings`, `NamedCalendar`, `CalendarInstance`)
+- **PI HTML**: `pi/setup.html` - Settings popup (Named Calendars management)
 - **PI JS**: `pi/setup.js` - Settings logic (not TypeScript)
 - **Tests**: `tests/` - Vitest test files
 
