@@ -21,6 +21,7 @@ export class TimeLeftAction extends BaseAction {
   private currentMeetingIndex: number = 0;
   private meetingEnded: boolean = false;
   private endTimeout?: NodeJS.Timeout;
+  private lastActiveMeetingIds: Set<string> = new Set();
   
   /**
    * Set initial image for active meeting
@@ -85,6 +86,19 @@ export class TimeLeftAction extends BaseAction {
     
     // Reset meeting ended flag if we have active meetings
     this.meetingEnded = false;
+    
+    // Check for newly started meetings (flash if enabled)
+    const currentMeetingIds = new Set(activeEvents.map(e => `${e.summary}-${e.start.getTime()}`));
+    const newMeetings = activeEvents.filter(e => !this.lastActiveMeetingIds.has(`${e.summary}-${e.start.getTime()}`));
+    
+    if (newMeetings.length > 0 && this.lastActiveMeetingIds.size > 0 || (newMeetings.length > 0 && this.lastActiveMeetingIds.size === 0 && activeEvents.length === newMeetings.length)) {
+      // New meeting started - flash the button
+      logger.info(`[TimeLeft] New meeting started: "${newMeetings[0].summary}" - flashing button`);
+      this.flashButton(action, 'activeMeeting', 'activeMeetingRed');
+    }
+    
+    // Update tracking
+    this.lastActiveMeetingIds = currentMeetingIds;
     
     // Get current meeting (cycle through if multiple)
     if (this.currentMeetingIndex >= activeEvents.length) {

@@ -66,6 +66,8 @@ export interface GlobalSettings {
   urlVersion: number;
   timeWindow: 1 | 3 | 5 | 7; // days
   excludeAllDay?: boolean; // default true
+  titleDisplayDuration?: 5 | 10 | 15 | 30; // seconds, default 15
+  flashOnMeetingStart?: boolean; // default true
 }
 
 /**

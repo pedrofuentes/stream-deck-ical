@@ -145,8 +145,11 @@ Checkboxes require specific HTML structure for SDPI styling:
 When checking boolean settings, handle `undefined` for backwards compatibility:
 
 ```typescript
-// undefined = true (default), false = false, true = true
-const setting = value === undefined ? true : Boolean(value);
+// excludeAllDay: undefined = true (default on), false = false, true = true
+const excludeAllDay = value === undefined ? true : Boolean(value);
+
+// flashOnMeetingStart: undefined = false (default off), must explicitly be true
+const flashEnabled = settings.flashOnMeetingStart === true;
 ```
 
 ## Common Issues
@@ -158,6 +161,8 @@ const setting = value === undefined ? true : Boolean(value);
 | Checkbox not visible | Wrong SDPI HTML structure | Use `type="checkbox"` on parent div, label with span |
 | Debug panel always showing | `display: block` hardcoded | Set `display: none`, show only when `isDebugMode` |
 | Outlook times wrong | Windows timezone not mapped | Check `timezone-service.ts` mapping |
+| Buttons stuck on "Loading" | Startup race condition | `waitForCacheAndStart` uses 500ms polling with `actionRef` fallback |
+| Title shows for too long | Duration multiplied twice | `getTitleDisplayDuration()` returns seconds, caller multiplies by 1000 |
 
 ## File Locations
 
@@ -170,44 +175,142 @@ const setting = value === undefined ? true : Boolean(value);
 
 ## Release Process
 
-### Creating a Release Package
+### Complete Release Workflow
+
+Follow these steps in order for a complete release:
+
+#### 1. Pre-Release Checklist
+
+```powershell
+# Ensure all tests pass
+npm test
+
+# Ensure you're on the feature branch with all changes committed
+git status
+git log --oneline -5
+```
+
+#### 2. Update Version Numbers
+
+Update version in both files (must match):
+- `manifest.json`: 4-part version `"Version": "X.Y.Z.0"`
+- `package.json`: 3-part version `"version": "X.Y.Z"`
+
+#### 3. Merge Feature Branch to Main
+
+```powershell
+# Switch to main and pull latest
+git checkout main
+git pull origin main
+
+# Merge feature branch (use --no-ff to preserve history)
+# Include issue references to auto-close them
+git merge --no-ff feature/vX.Y.Z-branch-name -m "Merge feature/vX.Y.Z-branch-name: Brief description
+
+Closes #XX, Closes #YY"
+
+# Push to main
+git push origin main
+```
+
+#### 4. Create Release Package
 
 **CRITICAL**: Always use the Stream Deck CLI to create packages. Manual zipping will create invalid packages.
 
 ```powershell
-# 1. Build for production (outputs to release/ folder)
+# Build for production (outputs to release/ folder)
 npm run build:production
 
-# 2. Create package using Stream Deck CLI
+# Create package using Stream Deck CLI
 streamdeck pack "release/com.pedrofuentes.ical.sdPlugin" --output release
 
-# 3. Creates: release/com.pedrofuentes.ical.streamDeckPlugin
+# Verify package was created
+Get-Item "release/com.pedrofuentes.ical.streamDeckPlugin"
 ```
 
-### Creating a GitHub Release
-
-```powershell
-# 1. Create annotated tag
-git tag -a vX.Y.Z -m "vX.Y.Z - Description"
-git push origin vX.Y.Z
-
-# 2. Create release with plugin package
-gh release create vX.Y.Z "release/com.pedrofuentes.ical.streamDeckPlugin" `
-  --title "vX.Y.Z - Title" `
-  --notes "Release notes"
-```
-
-### Testing Before Release
+#### 5. Test the Package (Optional but Recommended)
 
 ```powershell
 # Remove dev plugin and test the package
 Stop-Process -Name "StreamDeck" -Force
 Remove-Item "$env:APPDATA\Elgato\StreamDeck\Plugins\com.pedrofuentes.ical.sdPlugin" -Recurse -Force
 Start-Process "$env:ProgramFiles\Elgato\StreamDeck\StreamDeck.exe"
-# Then double-click the .streamDeckPlugin file to install
+# Then double-click the .streamDeckPlugin file to install and verify it works
 ```
 
-### Version Numbers
+#### 6. Create Git Tag
 
-- `manifest.json`: 4-part version `"Version": "X.Y.Z.0"`
-- `package.json`: 3-part version `"version": "X.Y.Z"`
+```powershell
+# Create annotated tag on main branch
+git tag -a vX.Y.Z -m "vX.Y.Z - Brief description of release"
+
+# Push tag to remote
+git push origin vX.Y.Z
+```
+
+#### 7. Create GitHub Release
+
+**IMPORTANT**: Use GitHub keywords to automatically close related issues. Include `Closes #X`, `Fixes #X`, or `Resolves #X` in the release notes for each issue addressed.
+
+```powershell
+# Create release with plugin package attached
+gh release create vX.Y.Z "release/com.pedrofuentes.ical.streamDeckPlugin" `
+  --title "vX.Y.Z - Release Title" `
+  --notes "## What's New
+
+- ✨ Feature 1 (Closes #XX)
+- ✨ Feature 2 (Closes #YY)
+- 🐛 Bug fix 1 (Fixes #ZZ)
+
+## Installation
+
+Download the \`.streamDeckPlugin\` file and double-click to install."
+```
+
+Or create manually on GitHub:
+1. Go to https://github.com/pedrofuentes/stream-deck-ical/releases/new
+2. Choose the tag `vX.Y.Z`
+3. Set release title
+4. Add release notes with `Closes #X` or `Fixes #X` for each issue
+5. Attach `release/com.pedrofuentes.ical.streamDeckPlugin`
+6. Publish release
+
+### Automatic Issue Closing
+
+GitHub automatically closes issues when these keywords are used in:
+- **Commit messages** merged to main: `git commit -m "feat: add feature X (Closes #123)"`
+- **PR descriptions**: Include `Closes #123` in the PR body
+- **Release notes**: Issues are closed when the release is published
+
+**Keywords** (case-insensitive):
+- `Closes #X` / `Close #X`
+- `Fixes #X` / `Fix #X`  
+- `Resolves #X` / `Resolve #X`
+
+**Multiple issues**: `Closes #11, Closes #20` or `Fixes #11, #20`
+
+#### 8. Post-Release Cleanup
+
+```powershell
+# Delete merged feature branch (optional)
+git branch -d feature/vX.Y.Z-branch-name
+git push origin --delete feature/vX.Y.Z-branch-name
+
+# Re-link development plugin if needed
+streamdeck link "dist/com.pedrofuentes.ical.sdPlugin"
+```
+
+### Quick Reference Commands
+
+```powershell
+# Full release sequence (after testing is complete)
+git checkout main
+git pull origin main
+git merge --no-ff feature/vX.Y.Z-name -m "Merge feature/vX.Y.Z-name"
+git push origin main
+npm run build:production
+streamdeck pack "release/com.pedrofuentes.ical.sdPlugin" --output release
+git tag -a vX.Y.Z -m "vX.Y.Z - Description"
+git push origin vX.Y.Z
+gh release create vX.Y.Z "release/com.pedrofuentes.ical.streamDeckPlugin" --title "vX.Y.Z" --notes "Release notes"
+```

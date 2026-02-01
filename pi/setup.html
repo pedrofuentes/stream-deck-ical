@@ -38,6 +38,24 @@
         </div>
 
         <div class="sdpi-item">
+            <div class="sdpi-item-label">Title Display</div>
+            <select id="titleDisplayDuration" class="sdpi-item-value select">
+                <option value="5">5 seconds</option>
+                <option value="10">10 seconds</option>
+                <option value="15" selected>15 seconds</option>
+                <option value="30">30 seconds</option>
+            </select>
+        </div>
+
+        <div class="sdpi-item" type="checkbox">
+            <div class="sdpi-item-label">Meeting Alert</div>
+            <div class="sdpi-item-value">
+                <input type="checkbox" id="flashOnMeetingStart">
+                <label for="flashOnMeetingStart"><span></span>Flash when meeting starts</label>
+            </div>
+        </div>
+
+        <div class="sdpi-item">
             <button class="sdpi-item-value" id="save">Save Settings</button>
             <button class="sdpi-item-value" id="refresh">Force Refresh &#128472;</button>
         </div>
@@ -45,6 +63,8 @@
         <div class="sdpi-heading">Features</div>
         <div class="content">
             <ul>
+                <li><strong>New:</strong> Configurable title display duration (5, 10, 15, or 30 seconds)</li>
+                <li><strong>New:</strong> Flash button when meeting starts (can be disabled)</li>
                 <li><strong>New:</strong> Support for recurring events (daily, weekly, monthly, etc.)</li>
                 <li><strong>New:</strong> Configurable time window (1, 3, 5, or 7 days)</li>
                 <li><strong>New:</strong> Improved timezone handling for Outlook, Google, and Apple calendars</li>

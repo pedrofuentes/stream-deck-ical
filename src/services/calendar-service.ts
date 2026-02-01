@@ -157,7 +157,7 @@ export async function updateCalendarCache(
 export function getStatusText(status: ErrorState): string {
   switch (status) {
     case 'INIT':
-      return 'Loading\niCal';
+      return 'Please\nSetup';
     case 'LOADING':
       return 'Loading\niCal';
     case 'INVALID_URL':
@@ -217,6 +217,17 @@ let currentFeedUrl: string = '';
 let currentTimeWindow: number = 3;
 let currentExcludeAllDay: boolean = true;
 
+// Store all settings for access by actions
+interface ActionSettings {
+  titleDisplayDuration: number;
+  flashOnMeetingStart: boolean;
+}
+
+let currentSettings: ActionSettings = {
+  titleDisplayDuration: 15,
+  flashOnMeetingStart: true
+};
+
 /**
  * Set current feed configuration (called by plugin when settings change)
  */
@@ -224,6 +235,24 @@ export function setFeedConfig(url: string, timeWindowDays: number, excludeAllDay
   currentFeedUrl = url;
   currentTimeWindow = timeWindowDays;
   currentExcludeAllDay = excludeAllDay;
+}
+
+/**
+ * Set action-related settings (called by plugin when settings change)
+ */
+export function setActionSettings(settings: Partial<ActionSettings>): void {
+  currentSettings = {
+    ...currentSettings,
+    ...settings
+  };
+  logger.debug(`Action settings updated: titleDisplayDuration=${currentSettings.titleDisplayDuration}s, flashOnMeetingStart=${currentSettings.flashOnMeetingStart}`);
+}
+
+/**
+ * Get current action settings
+ */
+export function getSettings(): ActionSettings {
+  return { ...currentSettings };
 }
 
 /**

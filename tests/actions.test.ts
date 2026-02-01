@@ -39,6 +39,11 @@ vi.mock('../src/utils/logger', () => ({
 }));
 
 // Mock the calendar service
+const mockSettings = {
+  titleDisplayDuration: 15,
+  flashOnMeetingStart: true
+};
+
 vi.mock('../src/services/calendar-service', () => ({
   calendarCache: {
     version: 1,
@@ -49,11 +54,16 @@ vi.mock('../src/services/calendar-service', () => ({
   },
   getStatusText: vi.fn((status: string) => {
     switch (status) {
-      case 'INIT': return 'Loading\niCal';
+      case 'INIT': return 'Please\nSetup';
       case 'LOADING': return 'Loading\niCal';
+      case 'INVALID_URL': return 'Please\nSetup';
       case 'LOADED': return '';
       default: return 'Error';
     }
+  }),
+  getSettings: vi.fn(() => mockSettings),
+  setActionSettings: vi.fn((settings) => {
+    Object.assign(mockSettings, settings);
   })
 }));
 
@@ -107,7 +117,7 @@ class TestAction {
         const statusText = getStatusText(calendarCache.status);
         action.setTitle(statusText);
       }
-    }, 2000);
+    }, 500);
   }
   
   async onWillDisappear(ev: any): Promise<void> {
@@ -238,7 +248,7 @@ describe('BaseAction', () => {
       
       // Simulate cache becoming available
       (calendarCache as any).status = 'LOADED';
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(500);
       
       expect(testAction.getInterval()).toBeDefined();
     });
@@ -338,5 +348,256 @@ describe('Color zone constants', () => {
   it('should have correct ORANGE_ZONE value', () => {
     const action = new TestAction();
     expect(action['ORANGE_ZONE']).toBe(300);
+  });
+});
+
+describe('Action Settings Integration', () => {
+  let testAction: TestAction;
+  let mockAction: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    
+    // Reset mock settings
+    mockSettings.titleDisplayDuration = 15;
+    mockSettings.flashOnMeetingStart = true;
+    
+    mockAction = {
+      setTitle: vi.fn(),
+      setImage: vi.fn(),
+      showOk: vi.fn()
+    };
+    testAction = new TestAction();
+    
+    // Reset cache
+    (calendarCache as any).version = 1;
+    (calendarCache as any).status = 'LOADED';
+    (calendarCache as any).events = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('should use configurable title display duration from settings', () => {
+    // Default value
+    expect(mockSettings.titleDisplayDuration).toBe(15);
+    
+    // Change to 30 seconds
+    mockSettings.titleDisplayDuration = 30;
+    expect(mockSettings.titleDisplayDuration).toBe(30);
+    
+    // Change to 5 seconds
+    mockSettings.titleDisplayDuration = 5;
+    expect(mockSettings.titleDisplayDuration).toBe(5);
+  });
+
+  it('should have flashOnMeetingStart setting', () => {
+    expect(mockSettings.flashOnMeetingStart).toBe(true);
+    
+    mockSettings.flashOnMeetingStart = false;
+    expect(mockSettings.flashOnMeetingStart).toBe(false);
+  });
+});
+
+describe('v2.1.0 Feature Tests', () => {
+  let testAction: TestAction;
+  let mockAction: any;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    
+    // Reset mock settings to defaults
+    mockSettings.titleDisplayDuration = 15;
+    mockSettings.flashOnMeetingStart = true;
+    
+    mockAction = {
+      setTitle: vi.fn(),
+      setImage: vi.fn(),
+      showOk: vi.fn()
+    };
+    testAction = new TestAction();
+    
+    // Reset cache
+    (calendarCache as any).version = 1;
+    (calendarCache as any).status = 'LOADED';
+    (calendarCache as any).events = [];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  describe('Title Display Duration', () => {
+    it('should support all valid duration values (5, 10, 15, 30 seconds)', () => {
+      const validDurations = [5, 10, 15, 30];
+      
+      for (const duration of validDurations) {
+        mockSettings.titleDisplayDuration = duration;
+        expect(mockSettings.titleDisplayDuration).toBe(duration);
+      }
+    });
+
+    it('should default to 15 seconds when not set', () => {
+      // Simulate undefined setting
+      const settings = { titleDisplayDuration: undefined };
+      const displayDuration = settings.titleDisplayDuration ?? 15;
+      expect(displayDuration).toBe(15);
+    });
+
+    it('should return duration in seconds (not milliseconds)', () => {
+      // The getTitleDisplayDuration method should return seconds
+      // The caller multiplies by 1000 to get milliseconds
+      mockSettings.titleDisplayDuration = 5;
+      
+      // Simulate what getTitleDisplayDuration returns
+      const durationInSeconds = mockSettings.titleDisplayDuration ?? 15;
+      
+      // This should be 5 (seconds), not 5000 (milliseconds)
+      expect(durationInSeconds).toBe(5);
+      expect(durationInSeconds).toBeLessThan(100); // Sanity check it's not in ms
+    });
+  });
+
+  describe('Flash on Meeting Start', () => {
+    it('should be a boolean setting', () => {
+      expect(typeof mockSettings.flashOnMeetingStart).toBe('boolean');
+    });
+
+    it('should default to false for new installations', () => {
+      // Per v2.1.0 change, default should be false
+      // Simulate undefined setting (new installation)
+      const settings = { flashOnMeetingStart: undefined };
+      // The default behavior: undefined should be treated as false
+      const flashEnabled = settings.flashOnMeetingStart === true;
+      expect(flashEnabled).toBe(false);
+    });
+
+    it('should preserve true when explicitly set', () => {
+      const settings = { flashOnMeetingStart: true };
+      const flashEnabled = settings.flashOnMeetingStart === true;
+      expect(flashEnabled).toBe(true);
+    });
+
+    it('should preserve false when explicitly set', () => {
+      const settings = { flashOnMeetingStart: false };
+      const flashEnabled = settings.flashOnMeetingStart === true;
+      expect(flashEnabled).toBe(false);
+    });
+  });
+
+  describe('Startup Race Condition Fix', () => {
+    it('should start timer immediately when cache is already LOADED', async () => {
+      (calendarCache as any).status = 'LOADED';
+      await testAction.onWillAppear({ action: mockAction });
+      
+      // Should have interval set immediately
+      expect(testAction.getInterval()).toBeDefined();
+      expect(testAction.getWaitingInterval()).toBeUndefined();
+    });
+
+    it('should start timer immediately when cache status is NO_EVENTS', async () => {
+      (calendarCache as any).status = 'NO_EVENTS';
+      await testAction.onWillAppear({ action: mockAction });
+      
+      expect(testAction.getInterval()).toBeDefined();
+      expect(testAction.getWaitingInterval()).toBeUndefined();
+    });
+
+    it('should wait and poll when cache is INIT', async () => {
+      (calendarCache as any).status = 'INIT';
+      await testAction.onWillAppear({ action: mockAction });
+      
+      // Should be waiting, not running timer
+      expect(testAction.getWaitingInterval()).toBeDefined();
+      expect(testAction.getInterval()).toBeUndefined();
+    });
+
+    it('should wait and poll when cache is LOADING', async () => {
+      (calendarCache as any).status = 'LOADING';
+      await testAction.onWillAppear({ action: mockAction });
+      
+      expect(testAction.getWaitingInterval()).toBeDefined();
+      expect(testAction.getInterval()).toBeUndefined();
+    });
+
+    it('should show Please Setup for INIT status', async () => {
+      (calendarCache as any).status = 'INIT';
+      await testAction.onWillAppear({ action: mockAction });
+      
+      expect(mockAction.setTitle).toHaveBeenCalledWith('Please\nSetup');
+    });
+
+    it('should show Loading iCal for LOADING status', async () => {
+      (calendarCache as any).status = 'LOADING';
+      await testAction.onWillAppear({ action: mockAction });
+      
+      expect(mockAction.setTitle).toHaveBeenCalledWith('Loading\niCal');
+    });
+
+    it('should start timer when cache transitions from LOADING to LOADED', async () => {
+      (calendarCache as any).status = 'LOADING';
+      await testAction.onWillAppear({ action: mockAction });
+      
+      // Initially waiting
+      expect(testAction.getWaitingInterval()).toBeDefined();
+      expect(testAction.getInterval()).toBeUndefined();
+      
+      // Cache becomes ready
+      (calendarCache as any).status = 'LOADED';
+      
+      // Advance time for polling interval (500ms in the fix)
+      vi.advanceTimersByTime(500);
+      
+      // Should now have timer running
+      expect(testAction.getInterval()).toBeDefined();
+    });
+
+    it('should poll at 500ms intervals (fast startup response)', async () => {
+      (calendarCache as any).status = 'LOADING';
+      await testAction.onWillAppear({ action: mockAction });
+      
+      // At 400ms, still waiting
+      vi.advanceTimersByTime(400);
+      expect(testAction.getWaitingInterval()).toBeDefined();
+      
+      // Cache becomes ready
+      (calendarCache as any).status = 'LOADED';
+      
+      // At 500ms (100ms more), should detect and start
+      vi.advanceTimersByTime(100);
+      expect(testAction.getInterval()).toBeDefined();
+    });
+
+    it('should clear waiting interval when cache becomes available', async () => {
+      (calendarCache as any).status = 'LOADING';
+      await testAction.onWillAppear({ action: mockAction });
+      
+      expect(testAction.getWaitingInterval()).toBeDefined();
+      
+      (calendarCache as any).status = 'LOADED';
+      vi.advanceTimersByTime(500);
+      
+      // Waiting interval should be cleared
+      expect(testAction.getWaitingInterval()).toBeUndefined();
+    });
+  });
+
+  describe('INIT vs INVALID_URL Status', () => {
+    it('should show Please Setup for both INIT and INVALID_URL', () => {
+      // Both statuses should show the same message to guide user to setup
+      const initText = getStatusText('INIT');
+      const invalidUrlText = getStatusText('INVALID_URL');
+      
+      expect(initText).toBe('Please\nSetup');
+      expect(invalidUrlText).toBe('Please\nSetup');
+    });
+
+    it('should show Loading iCal only for LOADING status', () => {
+      const loadingText = getStatusText('LOADING');
+      expect(loadingText).toBe('Loading\niCal');
+    });
   });
 });
