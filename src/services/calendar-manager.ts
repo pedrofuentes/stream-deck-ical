@@ -128,14 +128,30 @@ class CalendarManager {
     
     if (instance) {
       logger.debug(`[CalendarManager] Reusing existing calendar: ${calendarId}`);
-      // Update settings if they changed (use most permissive)
+      let needsRefresh = false;
+      
+      // Update settings if they changed
+      // Use larger time window if multiple actions have different windows
       if (timeWindow > instance.timeWindow) {
         instance.timeWindow = timeWindow;
+        needsRefresh = true;
       }
-      // If any action wants all-day events, include them
-      if (!excludeAllDay) {
-        instance.excludeAllDay = false;
+      // Update excludeAllDay setting - since all actions using same calendar
+      // should have consistent settings, use the latest value
+      if (instance.excludeAllDay !== excludeAllDay) {
+        logger.debug(`[CalendarManager] Updating excludeAllDay: ${instance.excludeAllDay} -> ${excludeAllDay}`);
+        instance.excludeAllDay = excludeAllDay;
+        needsRefresh = true;
       }
+      
+      // If settings changed, trigger a refresh to apply the new settings
+      if (needsRefresh) {
+        logger.info(`[CalendarManager] Settings changed, refreshing calendar: ${calendarId}`);
+        this.refreshCalendar(calendarId).catch(err => {
+          logger.error(`[CalendarManager] Failed to refresh calendar after settings change: ${err}`);
+        });
+      }
+      
       return instance;
     }
     
@@ -359,6 +375,13 @@ class CalendarManager {
       
       // Process recurring events
       let allEvents = processRecurringEvents(parsed.events, startWindow, endWindow);
+      logger.info(`[CalendarManager] After recurring expansion: ${allEvents.length} events`);
+      
+      // Log first few events before filtering for debugging
+      const eventsToLog = allEvents.slice(0, 5);
+      eventsToLog.forEach((e, i) => {
+        logger.info(`[CalendarManager] Event ${i+1}: "${e.summary}" isAllDay=${e.isAllDay} start=${e.start.toISOString()}`);
+      });
       
       // Filter out all-day events if setting is enabled
       if (excludeAllDay) {
@@ -366,8 +389,10 @@ class CalendarManager {
         allEvents = allEvents.filter(e => !e.isAllDay);
         const filtered = beforeCount - allEvents.length;
         if (filtered > 0) {
-          logger.info(`[CalendarManager] Filtered ${filtered} all-day event(s)`);
+          logger.info(`[CalendarManager] Filtered ${filtered} all-day event(s), ${allEvents.length} remaining`);
         }
+      } else {
+        logger.info(`[CalendarManager] excludeAllDay=false, keeping all ${allEvents.length} events`);
       }
       
       // Sort by start time

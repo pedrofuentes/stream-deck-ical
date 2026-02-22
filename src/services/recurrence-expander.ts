@@ -114,6 +114,7 @@ export function isDateExcluded(date: Date, exdates: Date[]): boolean {
 
 /**
  * Process events with RRULEs and expand them into occurrences
+ * Handles recurrence exceptions (modified/deleted occurrences via RECURRENCE-ID)
  * @param events - Array of calendar events (may include recurring events)
  * @param startWindow - Start of time window
  * @param endWindow - End of time window
@@ -126,7 +127,32 @@ export function processRecurringEvents(
 ): CalendarEvent[] {
   const processedEvents: CalendarEvent[] = [];
   
+  // First pass: collect all recurrence exceptions (events with recurrenceId)
+  // These are modified or deleted occurrences of recurring events
+  // Key: "uid|recurrenceId" to handle multiple recurring series
+  const recurrenceExceptions = new Map<string, any>();
   for (const event of events) {
+    if (event.recurrenceId) {
+      // This is a recurrence exception - it overrides/deletes an occurrence
+      const key = `${event.uid}|${event.recurrenceId}`;
+      recurrenceExceptions.set(key, event);
+    }
+  }
+  
+  if (recurrenceExceptions.size > 0) {
+    logger.info(`Found ${recurrenceExceptions.size} recurrence exception(s)`);
+  }
+  
+  for (const event of events) {
+    // Skip recurrence exceptions - they'll replace expanded occurrences
+    if (event.recurrenceId) {
+      // If it's not cancelled, add it as a standalone event (modified occurrence)
+      if (event.status !== 'CANCELLED' && event.start >= startWindow && event.start <= endWindow) {
+        processedEvents.push(event);
+      }
+      continue;
+    }
+    
     if (event.rrule) {
       // This is a recurring event - expand it
       const expanded = expandRecurringEvent(
@@ -138,7 +164,17 @@ export function processRecurringEvents(
       );
       
       // Convert expanded events to CalendarEvent format
+      // Skip occurrences that have been overridden by recurrence exceptions
       for (const exp of expanded) {
+        const recurrenceKey = `${event.uid}|${exp.start.toISOString()}`;
+        const exception = recurrenceExceptions.get(recurrenceKey);
+        
+        if (exception) {
+          // This occurrence has been modified or deleted - skip expanded version
+          logger.debug(`Skipping occurrence ${exp.summary} at ${exp.start.toISOString()} - has recurrence exception`);
+          continue;
+        }
+        
         processedEvents.push({
           uid: exp.uid,
           summary: exp.summary,

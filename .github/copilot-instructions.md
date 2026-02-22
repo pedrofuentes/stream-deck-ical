@@ -2,6 +2,50 @@
 
 This file contains context and patterns specific to this project to help AI assistants provide better assistance.
 
+## Template Collaboration
+
+This plugin participates in the **stream-deck-template** knowledge-sharing ecosystem:
+https://github.com/pedrofuentes/stream-deck-template
+
+The template repo collects learnings from all Stream Deck plugins. This plugin's
+contribution tracking file lives at `contributions/ical.md` in that repo.
+
+### Before Starting Major Work
+
+Read the template's `LEARNINGS.md` for the latest consolidated knowledge from all plugins.
+It contains hard-won solutions for SVG rendering, manifest quirks, PI patterns, polling,
+testing, and more — discovered across multiple plugin projects.
+
+Fetch it directly:
+```
+https://raw.githubusercontent.com/pedrofuentes/stream-deck-template/main/LEARNINGS.md
+```
+
+Also check the companion guides for testing and UI:
+```
+https://raw.githubusercontent.com/pedrofuentes/stream-deck-template/main/scaffold/.github/TESTING-PROTOCOL.md
+https://raw.githubusercontent.com/pedrofuentes/stream-deck-template/main/scaffold/.github/UI-DESIGN-GUIDE.md
+```
+
+### After Significant Work — Contribute Back
+
+After completing significant work (new features, bug fixes, workarounds, testing discoveries),
+**proactively offer to write new learnings back to the template repo**.
+
+See `AGENTS.md` for the full contribution protocol.
+
+### Pre-Release Gate — MANDATORY
+
+**Never tag, push, or create a release without the user testing on their physical Stream Deck
+first.** The Stream Deck CLI (`validate`, `restart`) only checks manifest schema and plugin
+loading — it cannot verify runtime behavior, UI rendering, or key display. Always ask the
+user to test on device and wait for explicit confirmation before releasing.
+
+## Project Rules
+
+Refer to `AGENTS.md` for the full set of project rules, architecture, testing requirements,
+and conventions.
+
 ## Project Overview
 
 Stream Deck plugin displaying iCal calendar events. Built with:

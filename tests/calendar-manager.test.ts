@@ -118,12 +118,23 @@ describe('CalendarManager', () => {
       expect(calendar.timeWindow).toBe(7);
     });
 
-    it('should include all-day events if any action wants them', () => {
+    it('should update excludeAllDay when setting changes', () => {
       const url = 'https://calendar.google.com/test.ics';
       manager.getOrCreateCalendar(url, 3, true); // exclude all-day
       const calendar = manager.getOrCreateCalendar(url, 3, false); // include all-day
       
       expect(calendar.excludeAllDay).toBe(false);
+    });
+
+    it('should allow excludeAllDay to change back to true', () => {
+      const url = 'https://calendar.google.com/test.ics';
+      manager.getOrCreateCalendar(url, 3, false); // include all-day initially
+      const calendar1 = manager.getCalendarForAction('test') ?? manager.getOrCreateCalendar(url, 3, false);
+      expect(calendar1.excludeAllDay).toBe(false);
+      
+      // Now change back to exclude all-day
+      const calendar2 = manager.getOrCreateCalendar(url, 3, true);
+      expect(calendar2.excludeAllDay).toBe(true);
     });
   });
 
