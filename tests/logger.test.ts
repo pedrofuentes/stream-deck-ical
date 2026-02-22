@@ -21,7 +21,7 @@ vi.mock('@elgato/streamdeck', () => ({
 }));
 
 // Import after mocking
-import { logger, debugLogs, isDebugMode, DebugLogEntry } from '../src/utils/logger';
+import { logger, debugLogs, isDebugMode, DebugLogEntry, getFormattedLogs, getErrorLogs, clearLogs } from '../src/utils/logger';
 import streamDeck from '@elgato/streamdeck';
 
 describe('logger', () => {
@@ -103,17 +103,17 @@ describe('logger', () => {
   });
 
   describe('debugLogs rotation', () => {
-    it('should keep maximum 50 entries', () => {
-      // Add 60 entries
-      for (let i = 0; i < 60; i++) {
+    it('should keep maximum 500 entries', () => {
+      // Add 510 entries
+      for (let i = 0; i < 510; i++) {
         logger.info(`message ${i}`);
       }
       
-      expect(debugLogs).toHaveLength(50);
+      expect(debugLogs).toHaveLength(500);
       // First entry should be message 10 (0-9 were rotated out)
       expect(debugLogs[0].message).toBe('message 10');
-      // Last entry should be message 59
-      expect(debugLogs[49].message).toBe('message 59');
+      // Last entry should be message 509
+      expect(debugLogs[499].message).toBe('message 509');
     });
 
     it('should have ISO timestamp', () => {
@@ -152,6 +152,106 @@ describe('logger', () => {
       logger.info('data:', { nested: { key: 'value' } });
       expect(debugLogs[0].message).toBe('data: {"nested":{"key":"value"}}');
     });
+  });
+});
+
+describe('getFormattedLogs', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('should return empty string when no logs', () => {
+    expect(getFormattedLogs()).toBe('');
+  });
+
+  it('should format entries as [timestamp] [LEVEL] message', () => {
+    logger.info('hello world');
+    logger.error('something broke');
+    const formatted = getFormattedLogs();
+    const lines = formatted.split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/^\[\d{4}-\d{2}-\d{2}T.*\] \[INFO\] hello world$/);
+    expect(lines[1]).toMatch(/^\[\d{4}-\d{2}-\d{2}T.*\] \[ERROR\] something broke$/);
+  });
+
+  it('should respect maxEntries parameter', () => {
+    for (let i = 0; i < 10; i++) {
+      logger.info(`msg ${i}`);
+    }
+    const formatted = getFormattedLogs(3);
+    const lines = formatted.split('\n');
+    expect(lines).toHaveLength(3);
+    // Should return the LAST 3 entries
+    expect(lines[0]).toContain('msg 7');
+    expect(lines[1]).toContain('msg 8');
+    expect(lines[2]).toContain('msg 9');
+  });
+
+  it('should return all entries when maxEntries is undefined', () => {
+    for (let i = 0; i < 5; i++) {
+      logger.info(`msg ${i}`);
+    }
+    const formatted = getFormattedLogs();
+    const lines = formatted.split('\n');
+    expect(lines).toHaveLength(5);
+  });
+});
+
+describe('getErrorLogs', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('should return empty array when no logs', () => {
+    expect(getErrorLogs()).toEqual([]);
+  });
+
+  it('should return only error and warn entries', () => {
+    logger.debug('debug msg');
+    logger.info('info msg');
+    logger.warn('warn msg');
+    logger.error('error msg');
+    logger.info('another info');
+
+    const errors = getErrorLogs();
+    expect(errors).toHaveLength(2);
+    expect(errors[0].level).toBe('warn');
+    expect(errors[0].message).toBe('warn msg');
+    expect(errors[1].level).toBe('error');
+    expect(errors[1].message).toBe('error msg');
+  });
+
+  it('should not include debug or info entries', () => {
+    logger.debug('debug only');
+    logger.info('info only');
+    expect(getErrorLogs()).toHaveLength(0);
+  });
+});
+
+describe('clearLogs', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('should empty the debugLogs array', () => {
+    logger.info('msg 1');
+    logger.error('msg 2');
+    logger.warn('msg 3');
+    expect(debugLogs).toHaveLength(3);
+
+    clearLogs();
+    expect(debugLogs).toHaveLength(0);
+  });
+
+  it('should allow new logs after clearing', () => {
+    logger.info('before');
+    clearLogs();
+    logger.info('after');
+    expect(debugLogs).toHaveLength(1);
+    expect(debugLogs[0].message).toBe('after');
   });
 });
 

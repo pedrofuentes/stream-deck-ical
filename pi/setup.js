@@ -466,6 +466,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('save')?.addEventListener('click', saveUrl);
     document.getElementById('refresh')?.addEventListener('click', refreshIcal);
     document.getElementById('refresh-debug')?.addEventListener('click', requestDebugInfo);
+    document.getElementById('export-diagnostics')?.addEventListener('click', requestDiagnostics);
     
     // Auto-save on settings changes
     const settingsInputs = ['timeWindow', 'excludeAllDay', 'titleDisplayDuration', 'flashOnMeetingStart', 'orangeThreshold', 'redThreshold'];
@@ -488,6 +489,45 @@ document.addEventListener('DOMContentLoaded', function() {
     // Request debug info on load
     requestDebugInfo();
 });
+
+/**
+ * Request diagnostic report from plugin and copy to clipboard
+ */
+function requestDiagnostics() {
+    const opener = getOpener();
+    console.log('[SETUP] requestDiagnostics called');
+
+    const btn = document.getElementById('export-diagnostics');
+    if (btn) {
+        btn.textContent = '⏳ Generating...';
+        btn.disabled = true;
+    }
+
+    if (opener && opener.websocket) {
+        const json = {
+            event: 'sendToPlugin',
+            action: opener.actionInfo?.action || 'com.pedrofuentes.ical.combined',
+            context: opener.uuid,
+            payload: { action: 'getDiagnostics' }
+        };
+        opener.websocket.send(JSON.stringify(json));
+
+        // Timeout fallback in case the plugin doesn't respond
+        setTimeout(() => {
+            if (btn && btn.disabled) {
+                btn.textContent = '📋 Export Diagnostics';
+                btn.disabled = false;
+                showAlert('No response from plugin. Is the plugin running?');
+            }
+        }, 5000);
+    } else {
+        if (btn) {
+            btn.textContent = '📋 Export Diagnostics';
+            btn.disabled = false;
+        }
+        showAlert('Error: Cannot communicate with plugin.');
+    }
+}
 
 /**
  * Request debug info from plugin
@@ -576,6 +616,41 @@ function handlePluginMessage(message) {
             } else {
                 debugLogs.textContent = 'No logs available';
             }
+        }
+    }
+
+    if (message && message.action === 'diagnosticReport') {
+        const btn = document.getElementById('export-diagnostics');
+        const text = message.data && message.data.text;
+        if (text) {
+            // Copy to clipboard
+            navigator.clipboard.writeText(text).then(() => {
+                if (btn) {
+                    btn.textContent = '✅ Copied!';
+                    btn.disabled = false;
+                    setTimeout(() => { btn.textContent = '📋 Export Diagnostics'; }, 3000);
+                }
+                showAlert('Diagnostics copied to clipboard! Paste into a GitHub issue.', 'notice', 5);
+            }).catch(() => {
+                // Fallback: open in a new window
+                const w = window.open('', '_blank', 'width=700,height=500');
+                if (w) {
+                    w.document.write('<pre style="white-space:pre-wrap;font-size:12px;">' +
+                        text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</pre>');
+                    w.document.title = 'Diagnostic Report';
+                }
+                if (btn) {
+                    btn.textContent = '📋 Export Diagnostics';
+                    btn.disabled = false;
+                }
+                showAlert('Clipboard not available. Report opened in a new window.', 'notice', 5);
+            });
+        } else {
+            if (btn) {
+                btn.textContent = '📋 Export Diagnostics';
+                btn.disabled = false;
+            }
+            showAlert('No diagnostic data received.');
         }
     }
 }

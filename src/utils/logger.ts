@@ -23,10 +23,10 @@ export interface DebugLogEntry {
 }
 
 /**
- * Debug log store - keeps last 50 entries for UI display
+ * Debug log store - keeps last 500 entries for diagnostics export
  */
 export const debugLogs: DebugLogEntry[] = [];
-const MAX_DEBUG_LOGS = 50;
+const MAX_DEBUG_LOGS = 500;
 
 /**
  * Add entry to debug log store
@@ -44,6 +44,31 @@ function addDebugLog(level: DebugLogEntry['level'], ...args: any[]): void {
   while (debugLogs.length > MAX_DEBUG_LOGS) {
     debugLogs.shift();
   }
+}
+
+/**
+ * Get formatted log entries as a string for diagnostics export
+ * @param maxEntries - Maximum number of entries to include (default: all)
+ */
+export function getFormattedLogs(maxEntries?: number): string {
+  const entries = maxEntries ? debugLogs.slice(-maxEntries) : debugLogs;
+  return entries.map(log =>
+    `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}`
+  ).join('\n');
+}
+
+/**
+ * Get error/warn entries only (for diagnostics summary)
+ */
+export function getErrorLogs(): DebugLogEntry[] {
+  return debugLogs.filter(log => log.level === 'error' || log.level === 'warn');
+}
+
+/**
+ * Clear all debug logs
+ */
+export function clearLogs(): void {
+  debugLogs.length = 0;
 }
 
 /**

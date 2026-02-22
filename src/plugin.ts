@@ -15,6 +15,7 @@ import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo,
 import { calendarManager } from './services/calendar-manager.js';
 import { setGlobalCalendarConfig, setNamedCalendars, migrateDeletedCalendars } from './actions/base-action.js';
 import { logger, isDebugMode } from './utils/logger.js';
+import { compileDiagnosticReport, formatDiagnosticText } from './services/diagnostics-service.js';
 import { NamedCalendar } from './types/index.js';
 
 // Global settings
@@ -225,6 +226,20 @@ streamDeck.ui.onSendToPlugin((ev) => {
       } as any);
     } else {
       logger.warn('Cannot send debug info: streamDeck.ui.current is undefined');
+    }
+  }
+
+  if (payload && payload.action === 'getDiagnostics') {
+    logger.info('Diagnostics export requested from PI');
+    if (streamDeck.ui.current) {
+      const report = compileDiagnosticReport();
+      const text = formatDiagnosticText(report);
+      streamDeck.ui.current.sendToPropertyInspector({
+        action: 'diagnosticReport',
+        data: { text }
+      } as any);
+    } else {
+      logger.warn('Cannot send diagnostics: streamDeck.ui.current is undefined');
     }
   }
 });

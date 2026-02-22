@@ -191,13 +191,30 @@ export function parseICS(icsContent: string): ParsedCalendar {
       }
 
       // Get recurrence-id if this is a recurrence exception
+      // CRITICAL: Use the RECURRENCE-ID property's own TZID parameter, not just the calendar timezone.
+      // This ensures correct UTC conversion especially across DST boundaries.
       const recurrenceIdProp = vevent.getFirstProperty('recurrence-id');
       let recurrenceId: string | undefined;
       if (recurrenceIdProp) {
         const recIdTime = recurrenceIdProp.getFirstValue() as ICAL.Time;
         if (recIdTime) {
           recurrenceId = icalTimeToDate(recIdTime, calendarTimezone).toISOString();
+          logger.debug(`  RECURRENCE-ID: ${recurrenceId} (zone: ${recIdTime.zone?.tzid || 'none'})`);
         }
+      }
+
+      // Resolve the event's IANA timezone for DST-aware recurrence expansion.
+      // Priority: event DTSTART zone → calendar-level timezone → undefined
+      let eventTimezone: string | undefined;
+      if (startTime.zone && startTime.zone.tzid && startTime.zone.tzid !== 'floating' && startTime.zone.tzid !== 'UTC') {
+        try {
+          eventTimezone = parseTimezone(startTime.zone.tzid).ianaName;
+        } catch {
+          // Fall through to calendar timezone
+        }
+      }
+      if (!eventTimezone && calendarTimezone) {
+        eventTimezone = calendarTimezone;
       }
 
       // Detect all-day events
@@ -215,7 +232,8 @@ export function parseICS(icsContent: string): ParsedCalendar {
         isAllDay,
         rrule: rruleString,
         exdate: exdates,
-        recurrenceId
+        recurrenceId,
+        eventTimezone
       });
     } catch (e) {
       logger.error('Failed to parse event:', e);

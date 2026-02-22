@@ -32,6 +32,7 @@ import {
   getSettings
 } from '../src/services/calendar-service';
 import { ErrorState } from '../src/types/index';
+import { logger } from '../src/utils/logger';
 
 describe('isValidURL', () => {
   it('should return true for valid HTTP URLs', () => {
@@ -850,5 +851,131 @@ describe('Action Settings', () => {
         expect(getSettings().titleDisplayDuration).toBe(duration);
       }
     });
+  });
+});
+describe('isUpdating guard (#26)', () => {
+  beforeEach(() => {
+    calendarCache.version = 0;
+    calendarCache.status = 'INIT';
+    calendarCache.events = [];
+    calendarCache.lastFetch = undefined;
+    calendarCache.provider = undefined;
+    vi.clearAllMocks();
+  });
+
+  it('should skip concurrent update when one is already in progress', async () => {
+    // Create a slow fetch that we can control
+    let resolveFetch!: (value: any) => void;
+    const slowFetch = new Promise(resolve => { resolveFetch = resolve; });
+
+    global.fetch = vi.fn().mockImplementation(() => slowFetch);
+
+    // Start first update (will block on fetch)
+    const firstUpdate = updateCalendarCache('https://example.com/cal.ics');
+
+    // Start second update immediately — should be skipped because first is in progress
+    await updateCalendarCache('https://example.com/cal.ics');
+
+    // The second call should have logged a warning about already in progress
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('already in progress'));
+
+    // fetch should only have been called once (the second call was skipped)
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+
+    // Resolve the first fetch to let it complete
+    resolveFetch({
+      ok: true,
+      text: () => Promise.resolve('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR')
+    });
+
+    await firstUpdate;
+  });
+
+  it('should allow a new update after the previous one completes', async () => {
+    const icsContent = 'BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR';
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve(icsContent)
+    });
+
+    // First update — completes
+    await updateCalendarCache('https://example.com/cal.ics');
+
+    // Second update — should proceed normally because isUpdating was cleared
+    await updateCalendarCache('https://example.com/cal.ics');
+
+    // fetch should have been called twice
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('should reset isUpdating even after a fetch error', async () => {
+    global.fetch = vi.fn()
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+      .mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR')
+      });
+
+    // First update — fails
+    await updateCalendarCache('https://example.com/cal.ics');
+    expect(calendarCache.status).toBe('NETWORK_ERROR');
+
+    // Second update — should be allowed (isUpdating was reset in finally block)
+    await updateCalendarCache('https://example.com/cal.ics');
+    expect(global.fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('fetch timeout (#26)', () => {
+  beforeEach(() => {
+    calendarCache.version = 0;
+    calendarCache.status = 'INIT';
+    calendarCache.events = [];
+    calendarCache.lastFetch = undefined;
+    calendarCache.provider = undefined;
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('should pass an AbortSignal to fetch', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      text: () => Promise.resolve('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR')
+    });
+
+    await updateCalendarCache('https://example.com/cal.ics');
+
+    // Verify fetch was called with a signal option
+    const callArgs = (global.fetch as any).mock.calls[0];
+    expect(callArgs[1]).toBeDefined();
+    expect(callArgs[1].signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('should abort fetch after 30 seconds', async () => {
+    // Create a fetch that never resolves
+    global.fetch = vi.fn().mockImplementation((_url: string, options?: { signal?: AbortSignal }) => {
+      return new Promise((_resolve, reject) => {
+        if (options?.signal) {
+          options.signal.addEventListener('abort', () => {
+            reject(new DOMException('The operation was aborted.', 'AbortError'));
+          });
+        }
+      });
+    });
+
+    const updatePromise = updateCalendarCache('https://example.com/cal.ics');
+
+    // Advance timers past the 30-second timeout
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    await updatePromise;
+
+    // Should have resulted in an error status
+    expect(calendarCache.status).toBe('NETWORK_ERROR');
   });
 });

@@ -555,4 +555,130 @@ END:VCALENDAR`;
       expect(exception).toBeDefined();
     });
   });
+
+  describe('eventTimezone extraction', () => {
+    it('should extract eventTimezone from DTSTART TZID', () => {
+      const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VTIMEZONE
+TZID:America/New_York
+BEGIN:STANDARD
+DTSTART:19701101T020000
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+TZNAME:EST
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:19700308T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+TZNAME:EDT
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:tz-test-1
+DTSTART;TZID=America/New_York:20260601T100000
+DTEND;TZID=America/New_York:20260601T110000
+SUMMARY:New York Event
+END:VEVENT
+END:VCALENDAR`;
+
+      const result = parseICS(ics);
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0].eventTimezone).toBe('America/New_York');
+    });
+
+    it('should fallback to calendar timezone when DTSTART has no TZID', () => {
+      // Floating DTSTART with X-WR-TIMEZONE on calendar
+      const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+X-WR-TIMEZONE:Europe/London
+BEGIN:VEVENT
+UID:tz-test-2
+DTSTART:20260601T100000
+DTEND:20260601T110000
+SUMMARY:Floating Event
+END:VEVENT
+END:VCALENDAR`;
+
+      const result = parseICS(ics);
+      expect(result.events).toHaveLength(1);
+      // Floating DTSTART → falls back to calendar timezone
+      expect(result.events[0].eventTimezone).toBe('Europe/London');
+    });
+
+    it('should leave eventTimezone undefined for UTC-only events with no calendar timezone', () => {
+      const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VEVENT
+UID:tz-test-3
+DTSTART:20260601T100000Z
+DTEND:20260601T110000Z
+SUMMARY:UTC Event
+END:VEVENT
+END:VCALENDAR`;
+
+      const result = parseICS(ics);
+      expect(result.events).toHaveLength(1);
+      // UTC zone is explicitly excluded from eventTimezone
+      expect(result.events[0].eventTimezone).toBeUndefined();
+    });
+
+    it('should resolve Windows timezone name to IANA via parseTimezone', () => {
+      const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Microsoft//Outlook//EN
+BEGIN:VTIMEZONE
+TZID:Eastern Standard Time
+BEGIN:STANDARD
+DTSTART:19701101T020000
+RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU
+TZOFFSETFROM:-0400
+TZOFFSETTO:-0500
+END:STANDARD
+BEGIN:DAYLIGHT
+DTSTART:19700308T020000
+RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU
+TZOFFSETFROM:-0500
+TZOFFSETTO:-0400
+END:DAYLIGHT
+END:VTIMEZONE
+BEGIN:VEVENT
+UID:tz-test-4
+DTSTART;TZID=Eastern Standard Time:20260601T100000
+DTEND;TZID=Eastern Standard Time:20260601T110000
+SUMMARY:Outlook Event
+END:VEVENT
+END:VCALENDAR`;
+
+      const result = parseICS(ics);
+      expect(result.events).toHaveLength(1);
+      // "Eastern Standard Time" should resolve to America/New_York
+      expect(result.events[0].eventTimezone).toBe('America/New_York');
+    });
+
+    it('should not set eventTimezone for all-day events', () => {
+      const ics = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VEVENT
+UID:tz-test-5
+DTSTART;VALUE=DATE:20260601
+DTEND;VALUE=DATE:20260602
+SUMMARY:All Day Event
+END:VEVENT
+END:VCALENDAR`;
+
+      const result = parseICS(ics);
+      expect(result.events).toHaveLength(1);
+      expect(result.events[0].isAllDay).toBe(true);
+      // DATE values have no timezone component — should be undefined
+      expect(result.events[0].eventTimezone).toBeUndefined();
+    });
+  });
 });

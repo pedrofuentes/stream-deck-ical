@@ -36,6 +36,18 @@ export function isValidURL(url: string): boolean {
 }
 
 /**
+ * Fetch timeout in milliseconds (30 seconds).
+ * Prevents the plugin from hanging indefinitely if a server is unresponsive (#26).
+ */
+const FETCH_TIMEOUT_MS = 30_000;
+
+/**
+ * Guard against concurrent cache updates.
+ * If a previous update is still running, subsequent calls are skipped (#26).
+ */
+let isUpdating = false;
+
+/**
  * Fetch iCal feed from URL
  * @param url - iCal feed URL
  * @returns iCal feed content as string
@@ -45,22 +57,30 @@ async function fetchICalFeed(url: string): Promise<string> {
   const urlPreview = url.length > 60 ? url.substring(0, 60) + '...' : url;
   logger.info(`📥 Fetching iCal feed: ${urlPreview}`);
   
-  const response = await fetch(url, {
-    headers: {
-      'Accept': 'text/calendar, text/plain, */*'
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'text/calendar, text/plain, */*'
+      },
+      signal: controller.signal
+    });
+    
+    if (!response.ok) {
+      logger.error(`❌ Fetch failed: HTTP ${response.status} ${response.statusText}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-  });
-  
-  if (!response.ok) {
-    logger.error(`❌ Fetch failed: HTTP ${response.status} ${response.statusText}`);
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    
+    const content = await response.text();
+    const elapsed = Date.now() - startTime;
+    logger.info(`✅ Fetch successful: ${content.length} bytes in ${elapsed}ms`);
+    
+    return content;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  
-  const content = await response.text();
-  const elapsed = Date.now() - startTime;
-  logger.info(`✅ Fetch successful: ${content.length} bytes in ${elapsed}ms`);
-  
-  return content;
 }
 
 /**
@@ -87,7 +107,14 @@ export async function updateCalendarCache(
     calendarCache.events = [];
     return;
   }
+
+  // Prevent concurrent updates (#26)
+  if (isUpdating) {
+    logger.warn('⏳ Cache update already in progress, skipping');
+    return;
+  }
   
+  isUpdating = true;
   try {
     calendarCache.status = 'LOADING';
     logger.info(`🔄 Updating calendar cache (${timeWindowDays} day window, excludeAllDay=${excludeAllDay})...`);
@@ -146,6 +173,8 @@ export async function updateCalendarCache(
     }
     
     calendarCache.events = [];
+  } finally {
+    isUpdating = false;
   }
 }
 

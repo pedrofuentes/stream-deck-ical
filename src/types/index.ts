@@ -22,6 +22,8 @@ export interface CalendarEvent {
   rrule?: string;
   exdate?: Date[];
   recurrenceId?: string;
+  /** IANA timezone of the event (e.g., "Europe/Kiev"). Used for DST-aware recurrence expansion. */
+  eventTimezone?: string;
 }
 
 /**
@@ -121,6 +123,8 @@ export interface CalendarInstance {
   cache: CalendarCache;
   updateInterval?: NodeJS.Timeout;
   refCount: number; // How many actions reference this calendar
+  /** Guard flag to prevent concurrent updates (#26) */
+  isUpdating?: boolean;
 }
 
 /**

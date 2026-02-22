@@ -415,4 +415,92 @@ describe('CalendarManager', () => {
       expect(personalCal?.refCount).toBe(1);
     });
   });
+
+  describe('isUpdating guard (#26)', () => {
+    it('should skip concurrent calendar update when one is already in progress', async () => {
+      const url = 'https://example.com/cal.ics';
+      manager.registerAction('action-guard', url);
+      const calendar = manager.getCalendarForAction('action-guard');
+      expect(calendar).toBeDefined();
+
+      // Wait for the initial automatic update to fully complete
+      // (startUpdates fires updateCalendarCache but doesn't await it)
+      await vi.waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
+      // Let microtasks from the initial update settle so isUpdating resets
+      await new Promise(resolve => setTimeout(resolve, 0));
+      mockFetch.mockClear();
+
+      // Now simulate a slow fetch
+      let resolveFetch!: (value: any) => void;
+      const slowFetch = new Promise(resolve => { resolveFetch = resolve; });
+      mockFetch.mockImplementation(() => slowFetch);
+
+      // First manual refresh (will block on fetch)
+      const firstRefresh = manager.refreshCalendarForAction('action-guard');
+      // Yield to let the first refresh reach the fetch call
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Second refresh — should be skipped because isUpdating is true
+      await manager.refreshCalendarForAction('action-guard');
+
+      // The second call should have logged a warning about already in progress
+      const { logger: loggerMock } = await import('../src/utils/logger');
+      expect(loggerMock.warn).toHaveBeenCalledWith(
+        expect.stringContaining('already in progress')
+      );
+
+      // fetch should only have been called once (the second call was skipped)
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+
+      // Resolve the first fetch to let it complete
+      resolveFetch({
+        ok: true,
+        text: () => Promise.resolve('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR')
+      });
+
+      await firstRefresh;
+    });
+
+    it('should reset isUpdating after error so next update proceeds', async () => {
+      const url = 'https://example.com/cal.ics';
+      manager.registerAction('action-reset', url);
+
+      // Wait for initial auto-update to fully complete
+      await vi.waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
+      await new Promise(resolve => setTimeout(resolve, 0));
+      mockFetch.mockClear();
+
+      // First refresh — fails
+      mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+      await manager.refreshCalendarForAction('action-reset');
+
+      // Second refresh — should succeed (isUpdating was cleared in finally block)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        text: () => Promise.resolve('BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR')
+      });
+      await manager.refreshCalendarForAction('action-reset');
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('should pass AbortSignal to fetch', async () => {
+      const url = 'https://example.com/cal.ics';
+      manager.registerAction('action-signal', url);
+
+      // Wait for the initial update which also calls fetch with signal
+      await vi.waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
+
+      // Verify the fetch call included a signal
+      const callArgs = mockFetch.mock.calls[0];
+      expect(callArgs[1]).toBeDefined();
+      expect(callArgs[1].signal).toBeInstanceOf(AbortSignal);
+    });
+  });
 });

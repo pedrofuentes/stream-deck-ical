@@ -44,6 +44,12 @@ function isValidURL(url: string): boolean {
 }
 
 /**
+ * Fetch timeout in milliseconds (30 seconds).
+ * Prevents the plugin from hanging indefinitely if a server is unresponsive (#26).
+ */
+const FETCH_TIMEOUT_MS = 30_000;
+
+/**
  * Fetch iCal feed from URL
  */
 async function fetchICalFeed(url: string): Promise<string> {
@@ -51,22 +57,30 @@ async function fetchICalFeed(url: string): Promise<string> {
   const urlPreview = url.length > 60 ? url.substring(0, 60) + '...' : url;
   logger.info(`📥 [CalendarManager] Fetching: ${urlPreview}`);
   
-  const response = await fetch(url, {
-    headers: {
-      'Accept': 'text/calendar, text/plain, */*'
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'text/calendar, text/plain, */*'
+      },
+      signal: controller.signal
+    });
+    
+    if (!response.ok) {
+      logger.error(`❌ [CalendarManager] Fetch failed: HTTP ${response.status}`);
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
-  });
-  
-  if (!response.ok) {
-    logger.error(`❌ [CalendarManager] Fetch failed: HTTP ${response.status}`);
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    
+    const content = await response.text();
+    const elapsed = Date.now() - startTime;
+    logger.info(`✅ [CalendarManager] Fetch complete: ${content.length} bytes in ${elapsed}ms`);
+    
+    return content;
+  } finally {
+    clearTimeout(timeoutId);
   }
-  
-  const content = await response.text();
-  const elapsed = Date.now() - startTime;
-  logger.info(`✅ [CalendarManager] Fetch complete: ${content.length} bytes in ${elapsed}ms`);
-  
-  return content;
 }
 
 /**
@@ -354,7 +368,14 @@ class CalendarManager {
       cache.events = [];
       return;
     }
-    
+
+    // Prevent concurrent updates for this calendar (#26)
+    if (calendar.isUpdating) {
+      logger.warn(`⏳ [CalendarManager] Update already in progress for ${calendar.id}, skipping`);
+      return;
+    }
+
+    calendar.isUpdating = true;
     try {
       cache.status = 'LOADING';
       logger.info(`[CalendarManager] Updating ${calendar.id} (${timeWindow} day window, excludeAllDay=${excludeAllDay})`);
@@ -419,6 +440,8 @@ class CalendarManager {
       }
       
       cache.events = [];
+    } finally {
+      calendar.isUpdating = false;
     }
   }
 

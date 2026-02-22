@@ -159,13 +159,12 @@ Each button can use a different calendar from your library - just select it from
 
 ---
 
-## What's New in v2.3
+## What's New in v2.4
 
-- **Named Calendars** - Create a library of calendars with friendly names
-- **Per-Button Selection** - Each button picks its calendar from a dropdown
-- **Configurable Thresholds** - Customize orange/red warning times
-- **Graceful Deletion** - Buttons auto-migrate when calendar is removed
-- **Improved UI** - Cleaner settings with collapsible help
+- **Stability Fixes** - Capped RRULE expansion, fetch timeouts, concurrent update guards (#26)
+- **DST-Aware Recurrence** - Fixed RECURRENCE-ID matching across daylight saving transitions (#27)
+- **Export Diagnostics** - One-click diagnostic report for easier bug reporting
+- **Error Isolation** - Bad events no longer break the entire calendar
 
 See [full changelog](#changelog) for all versions.
 
@@ -179,7 +178,7 @@ See [full changelog](#changelog) for all versions.
 |------------|---------|
 | TypeScript | Type-safe plugin code |
 | Node.js SDK v2 | Stream Deck integration |
-| Vitest | 529 unit tests |
+| Vitest | 572 unit tests |
 | Rollup | Bundle optimization |
 | rrule | Recurring event expansion |
 | Luxon | Timezone handling |
@@ -195,6 +194,15 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 ---
 
 ## Changelog
+
+### v2.4.0 (2026)
+- 🐛 Fixed CPU spike from unbounded RRULE expansion (#26)
+- 🐛 Fixed RECURRENCE-ID mismatch across DST boundaries (#27)
+- ✨ Export Diagnostics button for one-click bug reports
+- ✨ 30-second fetch timeout to prevent hangs
+- ✨ Concurrent update guard prevents stacking requests
+- ✨ Per-event error isolation for resilient parsing
+- ✨ Enhanced debug logging (500-entry buffer, error filtering)
 
 ### v2.3.0 (2026)
 - ✨ Named Calendars with friendly names
