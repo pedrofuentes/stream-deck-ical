@@ -21,7 +21,8 @@
     "streamdeck:validate": "streamdeck validate dist/com.pedrofuentes.ical.sdPlugin",
     "streamdeck:pack": "npm run build:production && streamdeck pack release/com.pedrofuentes.ical.sdPlugin --output release",
     "streamdeck:dev": "streamdeck dev",
-    "streamdeck:dev:disable": "streamdeck dev --disable"
+    "streamdeck:dev:disable": "streamdeck dev --disable",
+    "content:assets": "npx tsx scripts/convert-content-assets.ts"
   },
   "repository": {
     "type": "git",
@@ -45,6 +46,7 @@
   },
   "homepage": "https://github.com/pedrofuentes/stream-deck-ical#readme",
   "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
     "@rollup/plugin-commonjs": "^25.0.0",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^15.2.0",
@@ -56,6 +58,7 @@
     "rimraf": "^5.0.0",
     "rollup": "^4.9.0",
     "rollup-plugin-copy": "^3.5.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.3.0",
     "vitest": "^1.2.0"
   },

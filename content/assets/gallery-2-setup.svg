@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 960" width="1920" height="960">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1920" height="960" fill="url(#bg)"/>
+
+  <!-- Title -->
+  <text x="960" y="80" text-anchor="middle" font-family="system-ui, sans-serif" font-size="40" font-weight="700" fill="#ffffff">Quick Setup in 3 Steps</text>
+  <text x="960" y="120" text-anchor="middle" font-family="system-ui, sans-serif" font-size="20" fill="#9ca3af">From install to live countdown in under a minute</text>
+
+  <!-- Step 1: Add Calendar -->
+  <rect x="80" y="180" width="540" height="680" rx="20" fill="#1c2128" stroke="#30363d" stroke-width="2"/>
+
+  <!-- Step 1 number circle -->
+  <circle cx="180" cy="240" r="30" fill="#3b82f6"/>
+  <text x="180" y="250" text-anchor="middle" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#ffffff">1</text>
+  <text x="230" y="250" font-family="system-ui, sans-serif" font-size="22" font-weight="600" fill="#ffffff">Add Your Calendar</text>
+
+  <!-- Settings panel mockup -->
+  <rect x="120" y="290" width="460" height="520" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+
+  <!-- Settings header -->
+  <rect x="120" y="290" width="460" height="44" rx="12" fill="#161b22"/>
+  <rect x="120" y="322" width="460" height="12" fill="#161b22"/>
+  <text x="350" y="318" text-anchor="middle" font-family="system-ui, sans-serif" font-size="15" font-weight="600" fill="#ffffff">Settings</text>
+
+  <!-- Calendar name field -->
+  <text x="150" y="370" font-family="system-ui, sans-serif" font-size="13" fill="#9ca3af">Calendar Name</text>
+  <rect x="150" y="380" width="400" height="36" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="166" y="404" font-family="system-ui, sans-serif" font-size="14" fill="#c9d1d9">Work Calendar</text>
+
+  <!-- URL field -->
+  <text x="150" y="445" font-family="system-ui, sans-serif" font-size="13" fill="#9ca3af">iCal URL</text>
+  <rect x="150" y="455" width="400" height="36" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="166" y="479" font-family="system-ui, sans-serif" font-size="14" fill="#6b7280">https://calendar.google.com/...</text>
+
+  <!-- Time Window -->
+  <text x="150" y="520" font-family="system-ui, sans-serif" font-size="13" fill="#9ca3af">Time Window</text>
+  <rect x="150" y="530" width="120" height="36" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+  <text x="166" y="554" font-family="system-ui, sans-serif" font-size="14" fill="#c9d1d9">3 days</text>
+
+  <!-- Save button -->
+  <rect x="150" y="600" width="400" height="40" rx="8" fill="#3b82f6"/>
+  <text x="350" y="626" text-anchor="middle" font-family="system-ui, sans-serif" font-size="15" font-weight="600" fill="#ffffff">Save Calendar</text>
+
+  <!-- Arrow between step 1 and 2 -->
+  <text x="650" y="530" font-family="system-ui, sans-serif" font-size="48" fill="#30363d">→</text>
+
+  <!-- Step 2: Select Calendar on Button -->
+  <rect x="690" y="180" width="540" height="680" rx="20" fill="#1c2128" stroke="#30363d" stroke-width="2"/>
+
+  <circle cx="790" cy="240" r="30" fill="#f97316"/>
+  <text x="790" y="250" text-anchor="middle" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#ffffff">2</text>
+  <text x="840" y="250" font-family="system-ui, sans-serif" font-size="22" font-weight="600" fill="#ffffff">Pick for Each Key</text>
+
+  <!-- Property Inspector mockup -->
+  <rect x="730" y="290" width="460" height="520" rx="12" fill="#0d1117" stroke="#30363d" stroke-width="1"/>
+
+  <!-- PI header -->
+  <rect x="730" y="290" width="460" height="44" rx="12" fill="#161b22"/>
+  <rect x="730" y="322" width="460" height="12" fill="#161b22"/>
+  <text x="960" y="318" text-anchor="middle" font-family="system-ui, sans-serif" font-size="15" font-weight="600" fill="#ffffff">Smart Calendar</text>
+
+  <!-- Calendar dropdown -->
+  <text x="760" y="370" font-family="system-ui, sans-serif" font-size="13" fill="#9ca3af">Calendar</text>
+  <rect x="760" y="380" width="400" height="36" rx="6" fill="#0d1117" stroke="#3b82f6" stroke-width="2"/>
+  <text x="776" y="404" font-family="system-ui, sans-serif" font-size="14" fill="#c9d1d9">Work Calendar</text>
+  <text x="1130" y="404" text-anchor="end" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">▾</text>
+
+  <!-- Dropdown options shown -->
+  <rect x="760" y="420" width="400" height="100" rx="6" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
+  <rect x="760" y="420" width="400" height="32" fill="#1c2128" rx="6"/>
+  <text x="776" y="443" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#3b82f6">✓ Work Calendar</text>
+  <rect x="760" y="452" width="400" height="32" fill="transparent"/>
+  <text x="776" y="475" font-family="system-ui, sans-serif" font-size="14" fill="#c9d1d9">   Personal</text>
+  <rect x="760" y="484" width="400" height="32" fill="transparent"/>
+  <text x="776" y="507" font-family="system-ui, sans-serif" font-size="14" fill="#c9d1d9">   Family</text>
+
+  <!-- Settings button -->
+  <rect x="760" y="560" width="400" height="40" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1"/>
+  <text x="960" y="586" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#c9d1d9">⚙ Settings</text>
+
+  <!-- Arrow between step 2 and 3 -->
+  <text x="1260" y="530" font-family="system-ui, sans-serif" font-size="48" fill="#30363d">→</text>
+
+  <!-- Step 3: Done! -->
+  <rect x="1300" y="180" width="540" height="680" rx="20" fill="#1c2128" stroke="#30363d" stroke-width="2"/>
+
+  <circle cx="1400" cy="240" r="30" fill="#22c55e"/>
+  <text x="1400" y="250" text-anchor="middle" font-family="system-ui, sans-serif" font-size="24" font-weight="700" fill="#ffffff">3</text>
+  <text x="1450" y="250" font-family="system-ui, sans-serif" font-size="22" font-weight="600" fill="#ffffff">Ready to Go!</text>
+
+  <!-- Stream Deck key mockup - large -->
+  <rect x="1395" y="340" width="250" height="250" rx="20" fill="#000000" stroke="#30363d" stroke-width="2"/>
+  <rect x="1395" y="340" width="250" height="6" rx="3" fill="#22c55e"/>
+  <text x="1520" y="420" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Smart Calendar</text>
+  <text x="1520" y="475" text-anchor="middle" font-family="system-ui, sans-serif" font-size="48" font-weight="700" fill="#ffffff">2:45:30</text>
+  <text x="1520" y="515" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Next Meeting</text>
+
+  <!-- Success message -->
+  <text x="1520" y="650" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" fill="#22c55e">✓ Live countdown active</text>
+  <text x="1520" y="680" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Tap for title · Double-tap to refresh</text>
+
+  <!-- Quick tips -->
+  <text x="1520" y="740" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#4b5563">Auto-refreshes every 5 minutes</text>
+  <text x="1520" y="765" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#4b5563">Switches to Time Left during meetings</text>
+</svg>

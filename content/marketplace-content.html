@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iCal Plugin — Elgato Marketplace Content</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    padding: 40px 20px;
+    line-height: 1.6;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    color: #ffffff;
+    font-size: 28px;
+    margin-bottom: 8px;
+  }
+
+  .subtitle {
+    color: #9ca3af;
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+
+  .section {
+    margin-bottom: 40px;
+  }
+
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+
+  .section-header h2 {
+    color: #ffffff;
+    font-size: 20px;
+  }
+
+  .char-counter {
+    font-size: 13px;
+    font-family: monospace;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: #161b22;
+    border: 1px solid #30363d;
+  }
+
+  .char-counter.ok { color: #22c55e; }
+  .char-counter.warn { color: #f97316; }
+  .char-counter.over { color: #ef4444; }
+
+  .instructions {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: #9ca3af;
+  }
+
+  .instructions strong { color: #c9d1d9; }
+  .instructions code {
+    background: #0d1117;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+
+  /* White content boxes for clean copy-paste */
+  .content-box {
+    background: #ffffff;
+    color: #1a1a1a;
+    border-radius: 8px;
+    padding: 28px 32px;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    border: 2px solid #30363d;
+  }
+
+  .content-box h1 {
+    color: #1a1a1a;
+    font-size: 22px;
+    margin-bottom: 12px;
+  }
+
+  .content-box h2 {
+    color: #1a1a1a;
+    font-size: 18px;
+    margin-top: 24px;
+    margin-bottom: 8px;
+  }
+
+  .content-box h3 {
+    color: #1a1a1a;
+    font-size: 16px;
+    margin-top: 20px;
+    margin-bottom: 6px;
+  }
+
+  .content-box p {
+    margin-bottom: 12px;
+  }
+
+  .content-box ul {
+    margin-left: 20px;
+    margin-bottom: 12px;
+  }
+
+  .content-box li {
+    margin-bottom: 4px;
+  }
+
+  .content-box strong {
+    font-weight: 700;
+  }
+
+  .content-box hr {
+    border: none;
+    border-top: 1px solid #e0e0e0;
+    margin: 20px 0;
+  }
+
+  .content-box ol {
+    margin-left: 20px;
+    margin-bottom: 12px;
+  }
+
+  .content-box ol li {
+    margin-bottom: 4px;
+  }
+
+  /* Tabs for release notes */
+  .tabs {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-bottom: 0;
+  }
+
+  .tab-btn {
+    padding: 8px 16px;
+    background: #161b22;
+    color: #9ca3af;
+    border: 1px solid #30363d;
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+
+  .tab-btn:hover {
+    background: #1c2128;
+    color: #c9d1d9;
+  }
+
+  .tab-btn.active {
+    background: #ffffff;
+    color: #1a1a1a;
+    font-weight: 600;
+    border-color: #30363d;
+  }
+
+  .tab-content {
+    display: none;
+  }
+
+  .tab-content.active {
+    display: block;
+  }
+
+  .tab-content .content-box {
+    border-radius: 0 8px 8px 8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+
+  <h1>iCal Plugin — Marketplace Content</h1>
+  <p class="subtitle">Open this file in a browser. Select content in the white boxes, copy, and paste into the Elgato Marketplace WYSIWYG editor.</p>
+
+  <!-- ======================= DESCRIPTION ======================= -->
+  <div class="section">
+    <div class="section-header">
+      <h2>Description</h2>
+      <div class="char-counter ok" id="desc-counter">— / 4,000</div>
+    </div>
+
+    <div class="instructions">
+      <strong>How to copy:</strong> Click inside the white box below → <code>Ctrl+A</code> to select all → <code>Ctrl+C</code> to copy → paste into the Marketplace Description field with <code>Ctrl+V</code>.
+    </div>
+
+    <div class="content-box" id="description-box">
+      <h1>iCal — Live Calendar Countdowns on Stream Deck</h1>
+
+      <p>Never miss a meeting again. <strong>iCal</strong> puts your calendar right on your Stream Deck keys with live countdowns, color-coded warnings, and smart auto-switching between meeting modes.</p>
+
+      <p>Paste any iCal URL — Google Calendar, Outlook, Apple Calendar, or any standard iCal feed — and your upcoming meetings appear instantly on your Stream Deck.</p>
+
+      <hr>
+
+      <h2>Three Powerful Actions</h2>
+
+      <p><strong>Smart Calendar ⭐</strong> — The all-in-one action most users need. Automatically shows your next meeting countdown, then switches to "time remaining" when a meeting starts. One key, zero hassle.</p>
+
+      <p><strong>Next Meeting</strong> — A dedicated countdown to your next event. Tap the key to see the meeting title in a scrolling marquee. Double-tap to force a calendar refresh.</p>
+
+      <p><strong>Time Left</strong> — Shows how much time remains in your current meeting. Supports concurrent meetings — tap to cycle between overlapping events.</p>
+
+      <hr>
+
+      <h2>Visual Warnings Keep You on Track</h2>
+
+      <p>Your keys change color as meetings approach:</p>
+      <ul>
+        <li><strong>Green</strong> — All clear, meeting is far away</li>
+        <li><strong>Orange</strong> — Meeting approaching (default: 5 minutes, configurable)</li>
+        <li><strong>Red</strong> — Meeting imminent (default: 30 seconds, configurable)</li>
+        <li><strong>Flash</strong> — Optional visual flash alert when a meeting starts</li>
+      </ul>
+      <p>You'll never accidentally run over or join late again.</p>
+
+      <hr>
+
+      <h2>Multiple Calendars, One Stream Deck</h2>
+
+      <p>Set up named calendars — Work, Personal, Family — and assign different calendars to different buttons. Each key shows events from its own calendar. Share a single URL across multiple buttons without duplicating configuration.</p>
+
+      <hr>
+
+      <h2>Full Recurring Event Support</h2>
+
+      <p>Daily standups, weekly team syncs, monthly reviews — iCal handles them all. Full RRULE expansion with EXDATE exception support means your recurring events appear correctly, every time.</p>
+
+      <hr>
+
+      <h2>Works With Every Major Calendar</h2>
+
+      <ul>
+        <li><strong>Google Calendar</strong> — Including Google Workspace</li>
+        <li><strong>Microsoft Outlook</strong> — Outlook.com and Office 365</li>
+        <li><strong>Apple Calendar</strong> — iCloud calendar sharing</li>
+        <li><strong>Any iCal URL</strong> — Any RFC 5545 compatible feed</li>
+      </ul>
+
+      <p>Automatic timezone handling converts between Windows and IANA timezones seamlessly.</p>
+
+      <hr>
+
+      <h2>Privacy First</h2>
+
+      <p>Your calendar URL is stored locally on your computer. No data is sent to any third-party server — the plugin fetches directly from your calendar provider.</p>
+
+      <hr>
+
+      <h2>Requirements</h2>
+
+      <ul>
+        <li>Stream Deck software 6.4 or later</li>
+        <li>Windows 10+ or macOS 10.15+</li>
+        <li>An iCal calendar URL (Google, Outlook, Apple, or any iCal feed)</li>
+      </ul>
+
+      <hr>
+
+      <h2>Getting Started</h2>
+
+      <ol>
+        <li>Install the plugin from the Stream Deck Store</li>
+        <li>Drag <strong>Smart Calendar</strong> onto a key</li>
+        <li>Click <strong>Settings</strong> in the Property Inspector</li>
+        <li>Click <strong>Add Calendar</strong> → paste your iCal URL → give it a name → Save</li>
+        <li>Select your calendar from the dropdown on the key</li>
+        <li>Your countdown appears immediately — you're ready to go!</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ======================= RELEASE NOTES ======================= -->
+  <div class="section">
+    <div class="section-header">
+      <h2>Release Notes</h2>
+      <div class="char-counter ok" id="rn-counter">— / 1,500</div>
+    </div>
+
+    <div class="instructions">
+      <strong>How to copy:</strong> Click a version tab → click inside the white box → <code>Ctrl+A</code> to select all → <code>Ctrl+C</code> → paste into the Marketplace "What's New" field.
+    </div>
+
+    <div class="tabs" id="rn-tabs">
+      <button class="tab-btn active" data-tab="v230">v2.3.0</button>
+      <button class="tab-btn" data-tab="v220">v2.2.0</button>
+      <button class="tab-btn" data-tab="v210">v2.1.0</button>
+      <button class="tab-btn" data-tab="v200">v2.0.0</button>
+      <button class="tab-btn" data-tab="v110">v1.1.0</button>
+      <button class="tab-btn" data-tab="v100">v1.0.0</button>
+    </div>
+
+    <!-- v2.3.0 -->
+    <div class="tab-content active" id="tab-v230">
+      <div class="content-box rn-box">
+        <h2>v2.3.0 — Named Calendars &amp; Configurable Thresholds</h2>
+        <ul>
+          <li><strong>Named Calendars</strong> — Create a library of calendars with friendly names (Work, Personal, etc.)</li>
+          <li><strong>Per-button calendar selection</strong> — Each key picks its calendar from a simple dropdown</li>
+          <li><strong>Configurable warning thresholds</strong> — Customize when keys turn orange and red</li>
+          <li><strong>Graceful calendar deletion</strong> — Buttons auto-migrate to the default calendar when a calendar is removed</li>
+          <li><strong>Improved Property Inspector</strong> — Cleaner settings UI with simplified dropdown</li>
+          <li>Fixed calendar selection not persisting after restart</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- v2.2.0 -->
+    <div class="tab-content" id="tab-v220">
+      <div class="content-box rn-box">
+        <h2>v2.2.0 — Smart Calendar</h2>
+        <ul>
+          <li><strong>New Smart Calendar action</strong> — Automatically shows "Next Meeting" countdown, then switches to "Time Left" when a meeting starts</li>
+          <li>Integrated all v2.1 features (title display, flash alerts) into the Smart Calendar action</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- v2.1.0 -->
+    <div class="tab-content" id="tab-v210">
+      <div class="content-box rn-box">
+        <h2>v2.1.0 — Configurable Settings &amp; UX Improvements</h2>
+        <ul>
+          <li><strong>Configurable title display duration</strong> — Choose how long meeting titles show on screen</li>
+          <li><strong>Flash on meeting start</strong> — Optional visual alert when a meeting begins</li>
+          <li>"Please Setup" message on first use instead of "Loading iCal"</li>
+          <li>Fixed title display duration calculation</li>
+          <li>Changed flash on meeting start default to off</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- v2.0.0 -->
+    <div class="tab-content" id="tab-v200">
+      <div class="content-box rn-box">
+        <h2>v2.0.0 — Major Modernization</h2>
+        <ul>
+          <li><strong>Full recurring event support</strong> — Daily, weekly, monthly patterns (RRULE) with exceptions (EXDATE)</li>
+          <li><strong>Configurable time window</strong> — Choose how far ahead to look for events (1, 3, 5, or 7 days)</li>
+          <li><strong>Improved timezone handling</strong> — Automatic Windows-to-IANA timezone conversion for Outlook</li>
+          <li><strong>Force refresh</strong> — Double-tap any key to re-fetch your calendar immediately</li>
+          <li>Modernized to Elgato Stream Deck Node.js SDK v2</li>
+          <li>Complete TypeScript rewrite with strict mode</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- v1.1.0 -->
+    <div class="tab-content" id="tab-v110">
+      <div class="content-box rn-box">
+        <h2>v1.1.0</h2>
+        <ul>
+          <li>Show meeting title when pressing the Next Meeting button</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- v1.0.0 -->
+    <div class="tab-content" id="tab-v100">
+      <div class="content-box rn-box">
+        <h2>v1.0.0 — Initial Release</h2>
+        <ul>
+          <li><strong>Next Meeting action</strong> — Countdown to your next calendar event</li>
+          <li><strong>Time Left action</strong> — Time remaining in your current meeting</li>
+          <li>Supports any iCal URL (Google Calendar, Outlook, Apple Calendar)</li>
+          <li>Color-coded warnings as meetings approach</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // Character counter
+  function countChars(el) {
+    // Get text content (what WYSIWYG editors typically count)
+    return el.innerText.replace(/\s+/g, ' ').trim().length;
+  }
+
+  function updateCounter(counterId, count, limit) {
+    const el = document.getElementById(counterId);
+    el.textContent = count.toLocaleString() + ' / ' + limit.toLocaleString();
+    el.className = 'char-counter ' + (count > limit ? 'over' : count > limit * 0.9 ? 'warn' : 'ok');
+  }
+
+  function updateAllCounters() {
+    // Description counter
+    const descBox = document.getElementById('description-box');
+    updateCounter('desc-counter', countChars(descBox), 4000);
+
+    // Release notes counter (active tab)
+    const activeTab = document.querySelector('.tab-content.active .rn-box');
+    if (activeTab) {
+      updateCounter('rn-counter', countChars(activeTab), 1500);
+    }
+  }
+
+  // Tab switching
+  document.getElementById('rn-tabs').addEventListener('click', function(e) {
+    const btn = e.target.closest('.tab-btn');
+    if (!btn) return;
+
+    const tabId = btn.dataset.tab;
+
+    // Deactivate all tabs and content
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+    // Activate clicked tab
+    btn.classList.add('active');
+    document.getElementById('tab-' + tabId).classList.add('active');
+
+    updateAllCounters();
+  });
+
+  // Initial count
+  updateAllCounters();
+</script>
+
+</body>
+</html>

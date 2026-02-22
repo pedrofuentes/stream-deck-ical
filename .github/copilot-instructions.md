@@ -314,6 +314,8 @@ const flashEnabled = settings.flashOnMeetingStart === true;
 - **PI HTML**: `pi/setup.html` - Settings popup (Named Calendars management)
 - **PI JS**: `pi/setup.js` - Settings logic (not TypeScript)
 - **Tests**: `tests/` - Vitest test files
+- **Marketplace Content**: `content/` - Description, release notes, assets (see `content/CONTENT-GUIDE.md`)
+- **Asset Converter**: `scripts/convert-content-assets.ts` - SVG → PNG for marketplace assets
 
 ## Release Process
 
@@ -466,6 +468,21 @@ git push origin --delete feature/vX.Y.Z-branch-name
 # Re-link development plugin if needed
 streamdeck link "dist/com.pedrofuentes.ical.sdPlugin"
 ```
+
+#### 10. Update Elgato Marketplace Content
+
+After every release, update the marketplace listing:
+
+1. Write release notes in `content/release-notes.md`
+2. Review `content/description.md` — update if features changed
+3. Update `content/marketplace-content.html` with matching HTML
+4. Update gallery SVGs in `content/assets/` if key display changed
+5. Run `npm run content:assets` to regenerate PNGs
+6. Commit content changes with the version bump
+7. After GitHub Release: open HTML file in browser, copy, paste into Elgato Marketplace WYSIWYG
+8. After GitHub Release: upload new asset PNGs if changed
+
+See `content/CONTENT-GUIDE.md` for full details.
 
 ### Quick Reference Commands
 

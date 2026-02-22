@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 288 288" width="288" height="288">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="calGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="288" height="288" rx="48" fill="url(#bg)"/>
+
+  <!-- Calendar body -->
+  <rect x="54" y="72" width="180" height="160" rx="16" fill="#1c2128" stroke="#30363d" stroke-width="2"/>
+
+  <!-- Calendar header bar -->
+  <rect x="54" y="72" width="180" height="44" rx="16" fill="url(#calGrad)"/>
+  <rect x="54" y="100" width="180" height="16" fill="url(#calGrad)"/>
+
+  <!-- Calendar rings -->
+  <rect x="100" y="58" width="12" height="28" rx="6" fill="#ffffff"/>
+  <rect x="176" y="58" width="12" height="28" rx="6" fill="#ffffff"/>
+
+  <!-- Calendar grid dots (representing days) -->
+  <!-- Row 1 -->
+  <circle cx="90" cy="145" r="8" fill="#30363d"/>
+  <circle cx="120" cy="145" r="8" fill="#30363d"/>
+  <circle cx="150" cy="145" r="8" fill="#22c55e"/>
+  <circle cx="180" cy="145" r="8" fill="#30363d"/>
+  <circle cx="210" cy="145" r="8" fill="#30363d"/>
+
+  <!-- Row 2 -->
+  <circle cx="90" cy="175" r="8" fill="#30363d"/>
+  <circle cx="120" cy="175" r="8" fill="#f97316"/>
+  <circle cx="150" cy="175" r="8" fill="#30363d"/>
+  <circle cx="180" cy="175" r="8" fill="#30363d"/>
+  <circle cx="210" cy="175" r="8" fill="#ef4444"/>
+
+  <!-- Row 3 -->
+  <circle cx="90" cy="205" r="8" fill="#30363d"/>
+  <circle cx="120" cy="205" r="8" fill="#30363d"/>
+  <circle cx="150" cy="205" r="8" fill="#3b82f6"/>
+  <circle cx="180" cy="205" r="8" fill="#30363d"/>
+  <circle cx="210" cy="205" r="8" fill="#30363d"/>
+
+  <!-- Countdown indicator -->
+  <text x="144" y="262" text-anchor="middle" font-family="system-ui, sans-serif" font-size="22" font-weight="700" fill="#ffffff">iCal</text>
+</svg>

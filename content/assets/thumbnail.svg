@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 960" width="1920" height="960">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+    <linearGradient id="calGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1920" height="960" fill="url(#bg)"/>
+
+  <!-- Left side: Text content -->
+  <text x="120" y="300" font-family="system-ui, sans-serif" font-size="72" font-weight="800" fill="#ffffff">iCal</text>
+  <text x="120" y="370" font-family="system-ui, sans-serif" font-size="32" font-weight="400" fill="#9ca3af">Live Calendar Countdowns</text>
+  <text x="120" y="415" font-family="system-ui, sans-serif" font-size="32" font-weight="400" fill="#9ca3af">on Stream Deck</text>
+
+  <!-- Tagline highlights -->
+  <text x="120" y="500" font-family="system-ui, sans-serif" font-size="22" fill="#22c55e">✦</text>
+  <text x="148" y="500" font-family="system-ui, sans-serif" font-size="20" fill="#c9d1d9">Google · Outlook · Apple · Any iCal</text>
+
+  <text x="120" y="540" font-family="system-ui, sans-serif" font-size="22" fill="#f97316">✦</text>
+  <text x="148" y="540" font-family="system-ui, sans-serif" font-size="20" fill="#c9d1d9">Color-coded warnings &amp; countdowns</text>
+
+  <text x="120" y="580" font-family="system-ui, sans-serif" font-size="22" fill="#3b82f6">✦</text>
+  <text x="148" y="580" font-family="system-ui, sans-serif" font-size="20" fill="#c9d1d9">Multiple calendars per Stream Deck</text>
+
+  <!-- Right side: Stream Deck key mockups -->
+  <!-- Key grid: 3 keys showing the 3 actions -->
+
+  <!-- Key 1: Smart Calendar (green state) -->
+  <rect x="1050" y="200" width="220" height="220" rx="16" fill="#000000" stroke="#30363d" stroke-width="2"/>
+  <rect x="1050" y="200" width="220" height="5" rx="2" fill="#22c55e"/>
+  <text x="1160" y="280" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Smart Calendar</text>
+  <text x="1160" y="330" text-anchor="middle" font-family="system-ui, sans-serif" font-size="42" font-weight="700" fill="#ffffff">2:45:30</text>
+  <text x="1160" y="370" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Next Meeting</text>
+
+  <!-- Key 2: Next Meeting (orange warning) -->
+  <rect x="1310" y="200" width="220" height="220" rx="16" fill="#000000" stroke="#30363d" stroke-width="2"/>
+  <rect x="1310" y="200" width="220" height="5" rx="2" fill="#f97316"/>
+  <text x="1420" y="280" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Next Meeting</text>
+  <text x="1420" y="330" text-anchor="middle" font-family="system-ui, sans-serif" font-size="42" font-weight="700" fill="#f97316">4:12</text>
+  <text x="1420" y="370" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Team Standup</text>
+
+  <!-- Key 3: Time Left (red alert) -->
+  <rect x="1570" y="200" width="220" height="220" rx="16" fill="#000000" stroke="#30363d" stroke-width="2"/>
+  <rect x="1570" y="200" width="220" height="5" rx="2" fill="#ef4444"/>
+  <text x="1680" y="280" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Time Left</text>
+  <text x="1680" y="330" text-anchor="middle" font-family="system-ui, sans-serif" font-size="42" font-weight="700" fill="#ef4444">0:28</text>
+  <text x="1680" y="370" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Sprint Review</text>
+
+  <!-- Second row of keys: different states -->
+  <!-- Key 4: No meetings -->
+  <rect x="1050" y="460" width="220" height="220" rx="16" fill="#000000" stroke="#30363d" stroke-width="2"/>
+  <rect x="1050" y="460" width="220" height="5" rx="2" fill="#22c55e"/>
+  <text x="1160" y="570" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" fill="#9ca3af">No Meetings</text>
+  <text x="1160" y="600" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#4b5563">Today</text>
+
+  <!-- Key 5: In meeting -->
+  <rect x="1310" y="460" width="220" height="220" rx="16" fill="#000000" stroke="#30363d" stroke-width="2"/>
+  <rect x="1310" y="460" width="220" height="5" rx="2" fill="#3b82f6"/>
+  <text x="1420" y="540" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Time Left</text>
+  <text x="1420" y="590" text-anchor="middle" font-family="system-ui, sans-serif" font-size="42" font-weight="700" fill="#ffffff">23:15</text>
+  <text x="1420" y="625" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Design Review</text>
+
+  <!-- Key 6: Calendar icon -->
+  <rect x="1570" y="460" width="220" height="220" rx="16" fill="#000000" stroke="#30363d" stroke-width="2"/>
+  <rect x="1570" y="460" width="220" height="5" rx="2" fill="#22c55e"/>
+  <text x="1680" y="540" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Smart Calendar</text>
+  <text x="1680" y="590" text-anchor="middle" font-family="system-ui, sans-serif" font-size="42" font-weight="700" fill="#ffffff">1:02:48</text>
+  <text x="1680" y="625" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">1:1 w/ Manager</text>
+
+  <!-- Bottom feature strip -->
+  <rect x="0" y="860" width="1920" height="100" fill="#0a0e14"/>
+
+  <text x="200" y="920" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#22c55e">3 Actions</text>
+  <text x="560" y="920" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#f97316">Color Warnings</text>
+  <text x="920" y="920" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#3b82f6">Recurring Events</text>
+  <text x="1280" y="920" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#c9d1d9">Multiple Calendars</text>
+  <text x="1680" y="920" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" font-weight="600" fill="#9ca3af">Privacy First</text>
+
+  <!-- Separator dots -->
+  <circle cx="380" cy="916" r="3" fill="#30363d"/>
+  <circle cx="740" cy="916" r="3" fill="#30363d"/>
+  <circle cx="1100" cy="916" r="3" fill="#30363d"/>
+  <circle cx="1480" cy="916" r="3" fill="#30363d"/>
+</svg>

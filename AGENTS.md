@@ -16,6 +16,9 @@ This is a Stream Deck plugin that displays iCal calendar events. See `.github/co
 | `src/services/recurrence-expander.ts` | RRULE expansion and RECURRENCE-ID handling |
 | `tests/` | Vitest test files |
 | `__fixtures__/` | Test fixtures organized by provider |
+| `content/` | Elgato Marketplace listing content (description, release notes, assets) |
+| `content/CONTENT-GUIDE.md` | Agent instructions for marketplace content maintenance |
+| `scripts/convert-content-assets.ts` | SVG → PNG converter for marketplace assets |
 
 ## Testing Requirements
 
@@ -25,6 +28,15 @@ Every code change MUST include corresponding tests:
 - **Refactoring**: Ensure existing tests pass
 
 Always run `npm test` before completing work.
+
+## Useful Commands
+
+| Command | Purpose |
+|---------|--------|
+| `npm test` | Run all Vitest tests |
+| `npm run build` | Development build |
+| `npm run build:production` | Production build |
+| `npm run content:assets` | Convert SVGs in `content/assets/` to PNGs |
 
 ## Template Collaboration Protocol
 
@@ -109,6 +121,22 @@ The template also maintains merged guides that this plugin may benefit from:
 |-------|-----|
 | Testing Protocol | `https://raw.githubusercontent.com/pedrofuentes/stream-deck-template/main/scaffold/.github/TESTING-PROTOCOL.md` |
 | UI/UX Design Guide | `https://raw.githubusercontent.com/pedrofuentes/stream-deck-template/main/scaffold/.github/UI-DESIGN-GUIDE.md` |
+| Marketplace Content | `content/CONTENT-GUIDE.md` (local) |
 
 Read these before writing tests or making UI changes — they contain hardware-tested
 patterns and failure logs from multiple plugins.
+
+## Post-Release — Update Elgato Marketplace Content
+
+After every release, update the marketplace listing content:
+
+1. Write release notes in `content/release-notes.md`
+2. Review `content/description.md` — update if features changed
+3. Update `content/marketplace-content.html` with matching HTML
+4. Update gallery SVGs in `content/assets/` if key display changed
+5. Run `npm run content:assets` to regenerate PNGs
+6. Commit content changes with the version bump
+7. After GitHub Release: open HTML file in browser, copy, paste into Elgato Marketplace WYSIWYG
+8. After GitHub Release: upload new asset PNGs if changed
+
+See `content/CONTENT-GUIDE.md` for full details on asset requirements and procedures.

@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 960" width="1920" height="960">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1920" height="960" fill="url(#bg)"/>
+
+  <!-- Title -->
+  <text x="960" y="80" text-anchor="middle" font-family="system-ui, sans-serif" font-size="40" font-weight="700" fill="#ffffff">Color-Coded Status States</text>
+  <text x="960" y="120" text-anchor="middle" font-family="system-ui, sans-serif" font-size="20" fill="#9ca3af">Keys change color as meetings approach — never miss a beat</text>
+
+  <!-- State 1: All clear (green) -->
+  <rect x="80" y="180" width="400" height="540" rx="20" fill="#1c2128" stroke="#30363d" stroke-width="2"/>
+  <text x="280" y="230" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" font-weight="600" fill="#22c55e">● All Clear</text>
+  <text x="280" y="260" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Meeting is far away</text>
+
+  <!-- Key mockup -->
+  <rect x="140" y="290" width="280" height="280" rx="20" fill="#000000" stroke="#30363d" stroke-width="2"/>
+  <rect x="140" y="290" width="280" height="6" rx="3" fill="#22c55e"/>
+  <text x="280" y="380" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Next Meeting</text>
+  <text x="280" y="440" text-anchor="middle" font-family="system-ui, sans-serif" font-size="52" font-weight="700" fill="#ffffff">2:45:30</text>
+  <text x="280" y="480" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Team Standup</text>
+
+  <text x="280" y="630" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#4b5563">Green accent bar</text>
+  <text x="280" y="655" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#4b5563">White countdown text</text>
+
+  <!-- State 2: Warning (orange) -->
+  <rect x="520" y="180" width="400" height="540" rx="20" fill="#1c2128" stroke="#30363d" stroke-width="2"/>
+  <text x="720" y="230" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" font-weight="600" fill="#f97316">● Approaching</text>
+  <text x="720" y="260" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Default: under 5 minutes</text>
+
+  <rect x="580" y="290" width="280" height="280" rx="20" fill="#000000" stroke="#30363d" stroke-width="2"/>
+  <rect x="580" y="290" width="280" height="6" rx="3" fill="#f97316"/>
+  <text x="720" y="380" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Next Meeting</text>
+  <text x="720" y="440" text-anchor="middle" font-family="system-ui, sans-serif" font-size="52" font-weight="700" fill="#f97316">3:42</text>
+  <text x="720" y="480" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Team Standup</text>
+
+  <text x="720" y="630" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#4b5563">Orange accent bar</text>
+  <text x="720" y="655" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#4b5563">Orange countdown text</text>
+
+  <!-- State 3: Urgent (red) -->
+  <rect x="960" y="180" width="400" height="540" rx="20" fill="#1c2128" stroke="#30363d" stroke-width="2"/>
+  <text x="1160" y="230" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" font-weight="600" fill="#ef4444">● Imminent</text>
+  <text x="1160" y="260" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Default: under 30 seconds</text>
+
+  <rect x="1020" y="290" width="280" height="280" rx="20" fill="#000000" stroke="#30363d" stroke-width="2"/>
+  <rect x="1020" y="290" width="280" height="6" rx="3" fill="#ef4444"/>
+  <text x="1160" y="380" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Next Meeting</text>
+  <text x="1160" y="440" text-anchor="middle" font-family="system-ui, sans-serif" font-size="52" font-weight="700" fill="#ef4444">0:12</text>
+  <text x="1160" y="480" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Starting NOW</text>
+
+  <text x="1160" y="630" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#4b5563">Red accent bar</text>
+  <text x="1160" y="655" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#4b5563">Red countdown text</text>
+
+  <!-- State 4: In meeting (active) -->
+  <rect x="1400" y="180" width="400" height="540" rx="20" fill="#1c2128" stroke="#30363d" stroke-width="2"/>
+  <text x="1600" y="230" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18" font-weight="600" fill="#3b82f6">● In Meeting</text>
+  <text x="1600" y="260" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Meeting in progress</text>
+
+  <rect x="1460" y="290" width="280" height="280" rx="20" fill="#000000" stroke="#30363d" stroke-width="2"/>
+  <rect x="1460" y="290" width="280" height="6" rx="3" fill="#3b82f6"/>
+  <text x="1600" y="380" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Time Left</text>
+  <text x="1600" y="440" text-anchor="middle" font-family="system-ui, sans-serif" font-size="52" font-weight="700" fill="#ffffff">23:15</text>
+  <text x="1600" y="480" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#9ca3af">Design Review</text>
+
+  <text x="1600" y="630" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#4b5563">Blue accent bar</text>
+  <text x="1600" y="655" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" fill="#4b5563">White countdown text</text>
+
+  <!-- Bottom: Threshold customization note -->
+  <rect x="80" y="770" width="1760" height="130" rx="16" fill="#1c2128" stroke="#30363d" stroke-width="1"/>
+  <text x="960" y="825" text-anchor="middle" font-family="system-ui, sans-serif" font-size="20" font-weight="600" fill="#ffffff">Fully Customizable Thresholds</text>
+  <text x="960" y="860" text-anchor="middle" font-family="system-ui, sans-serif" font-size="16" fill="#9ca3af">Set your own orange and red warning times in Settings — from 10 seconds to 60 minutes</text>
+</svg>
