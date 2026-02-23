@@ -115,9 +115,13 @@ export async function updateCalendarCache(
   }
   
   isUpdating = true;
+  const isBackgroundRefresh = calendarCache.status === 'LOADED' || calendarCache.status === 'NO_EVENTS';
   try {
-    calendarCache.status = 'LOADING';
-    logger.info(`🔄 Updating calendar cache (${timeWindowDays} day window, excludeAllDay=${excludeAllDay})...`);
+    // Only show LOADING on initial fetch — background refreshes stay silent
+    if (!isBackgroundRefresh) {
+      calendarCache.status = 'LOADING';
+    }
+    logger.info(`🔄 Updating calendar cache (${timeWindowDays} day window, excludeAllDay=${excludeAllDay})${isBackgroundRefresh ? ' [background]' : ''}...`);
     
     // Fetch the feed
     const icsContent = await fetchICalFeed(url);
@@ -163,16 +167,21 @@ export async function updateCalendarCache(
     const errorMessage = error instanceof Error ? error.message : String(error);
     logger.error(`❌ Failed to update calendar cache: ${errorMessage}`);
     
-    // Determine error type
-    if (error instanceof TypeError && error.message.includes('fetch')) {
-      calendarCache.status = 'NETWORK_ERROR';
-    } else if (error instanceof Error && error.message.includes('parse')) {
-      calendarCache.status = 'PARSE_ERROR';
+    if (isBackgroundRefresh) {
+      // Background refresh failed — keep showing stale cached data
+      logger.warn(`Background refresh failed, keeping cached data`);
     } else {
-      calendarCache.status = 'NETWORK_ERROR';
+      // Initial load failed — show error state
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        calendarCache.status = 'NETWORK_ERROR';
+      } else if (error instanceof Error && error.message.includes('parse')) {
+        calendarCache.status = 'PARSE_ERROR';
+      } else {
+        calendarCache.status = 'NETWORK_ERROR';
+      }
+      
+      calendarCache.events = [];
     }
-    
-    calendarCache.events = [];
   } finally {
     isUpdating = false;
   }

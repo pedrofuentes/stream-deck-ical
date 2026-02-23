@@ -245,6 +245,99 @@ END:VCALENDAR`;
     await updateCalendarCache('https://example.com/cal.ics', 3);
     expect(calendarCache.version).toBe(2);
   });
+
+  describe('silent background refresh', () => {
+    it('should NOT set LOADING status when cache already has data (background refresh)', async () => {
+      const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VEVENT
+UID:test-123
+DTSTART:${formatICSDate(new Date(Date.now() + 3600000))}
+DTEND:${formatICSDate(new Date(Date.now() + 7200000))}
+SUMMARY:Test Event
+END:VEVENT
+END:VCALENDAR`;
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(icsContent)
+      });
+
+      // First load — should go through LOADING
+      await updateCalendarCache('https://example.com/cal.ics', 3);
+      expect(calendarCache.status).toBe('LOADED');
+      expect(calendarCache.events.length).toBeGreaterThanOrEqual(1);
+
+      // Track status changes during second (background) refresh
+      let sawLoading = false;
+      const originalStatus = Object.getOwnPropertyDescriptor(
+        calendarCache, 'status'
+      );
+      let currentStatus = calendarCache.status;
+      Object.defineProperty(calendarCache, 'status', {
+        get() { return currentStatus; },
+        set(val) {
+          if (val === 'LOADING') sawLoading = true;
+          currentStatus = val;
+        },
+        configurable: true
+      });
+
+      // Background refresh — should NOT go through LOADING
+      await updateCalendarCache('https://example.com/cal.ics', 3);
+
+      // Restore original property
+      delete (calendarCache as any).status;
+      calendarCache.status = currentStatus;
+
+      expect(sawLoading).toBe(false);
+      expect(calendarCache.status).toBe('LOADED');
+    });
+
+    it('should preserve cached events when background refresh fails', async () => {
+      const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VEVENT
+UID:test-123
+DTSTART:${formatICSDate(new Date(Date.now() + 3600000))}
+DTEND:${formatICSDate(new Date(Date.now() + 7200000))}
+SUMMARY:Test Event
+END:VEVENT
+END:VCALENDAR`;
+
+      global.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(icsContent)
+      });
+
+      // First load — success
+      await updateCalendarCache('https://example.com/cal.ics', 3);
+      expect(calendarCache.status).toBe('LOADED');
+      const eventCount = calendarCache.events.length;
+      expect(eventCount).toBeGreaterThanOrEqual(1);
+
+      // Background refresh — network error
+      global.fetch = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
+      await updateCalendarCache('https://example.com/cal.ics', 3);
+
+      // Should keep stale events and LOADED status
+      expect(calendarCache.status).toBe('LOADED');
+      expect(calendarCache.events.length).toBe(eventCount);
+    });
+
+    it('should still show errors on initial load failure', async () => {
+      // Cache starts at INIT — not a background refresh
+      global.fetch = vi.fn().mockRejectedValue(new TypeError('fetch failed'));
+      await updateCalendarCache('https://example.com/cal.ics', 3);
+
+      expect(calendarCache.status).toBe('NETWORK_ERROR');
+      expect(calendarCache.events).toEqual([]);
+    });
+  });
 });
 
 describe('startPeriodicUpdates', () => {

@@ -195,6 +195,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ## Changelog
 
+### v2.4.1 (2026)
+- 🐛 Fixed buttons showing "Loading iCal" on every background calendar refresh
+- 🐛 Background refresh failures now preserve cached data instead of clearing events
+
 ### v2.4.0 (2026)
 - 🐛 Fixed CPU spike from unbounded RRULE expansion (#26)
 - 🐛 Fixed RECURRENCE-ID mismatch across DST boundaries (#27)

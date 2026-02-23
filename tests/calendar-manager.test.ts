@@ -328,7 +328,7 @@ describe('CalendarManager', () => {
   });
 
   describe('error handling', () => {
-    it('should handle network errors', async () => {
+    it('should handle network errors on initial load', async () => {
       mockFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
       
       const url = 'https://calendar.google.com/test.ics';
@@ -341,7 +341,7 @@ describe('CalendarManager', () => {
       expect(status).toBe('NETWORK_ERROR');
     });
 
-    it('should handle HTTP errors', async () => {
+    it('should handle HTTP errors on initial load', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: false,
         status: 404,
@@ -367,6 +367,62 @@ describe('CalendarManager', () => {
       
       const status = manager.getStatusForAction('action1');
       expect(status).toBe('INVALID_URL');
+    });
+  });
+
+  describe('silent background refresh', () => {
+    it('should NOT set LOADING status during background refresh', async () => {
+      const url = 'https://calendar.google.com/test.ics';
+      manager.registerAction('action1', url);
+      
+      // Wait for initial load to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const calendar = manager.getCalendarForAction('action1');
+      expect(calendar).toBeDefined();
+      expect(calendar!.cache.status).toBe('LOADED');
+      
+      // Force a background refresh
+      await manager.refreshCalendarForAction('action1');
+      
+      // Status should still be LOADED, never went through LOADING
+      expect(calendar!.cache.status).toBe('LOADED');
+    });
+
+    it('should preserve cached events when background refresh fails', async () => {
+      const url = 'https://calendar.google.com/test.ics';
+      manager.registerAction('action1', url);
+      
+      // Wait for initial load
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      const calendar = manager.getCalendarForAction('action1');
+      expect(calendar!.cache.status).toBe('LOADED');
+      const eventCount = calendar!.cache.events.length;
+      expect(eventCount).toBeGreaterThan(0);
+      
+      // Make next fetch fail
+      mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+      
+      // Background refresh fails
+      await manager.refreshCalendarForAction('action1');
+      
+      // Should keep stale events and LOADED status
+      expect(calendar!.cache.status).toBe('LOADED');
+      expect(calendar!.cache.events.length).toBe(eventCount);
+    });
+
+    it('should still show error on initial load failure', async () => {
+      mockFetch.mockRejectedValueOnce(new TypeError('fetch failed'));
+      
+      const url = 'https://calendar.google.com/test-initial.ics';
+      manager.registerAction('action1', url);
+      
+      // Wait for async update
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Initial load failure should show error
+      expect(manager.getStatusForAction('action1')).toBe('NETWORK_ERROR');
     });
   });
 

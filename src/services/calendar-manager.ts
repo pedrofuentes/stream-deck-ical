@@ -376,9 +376,13 @@ class CalendarManager {
     }
 
     calendar.isUpdating = true;
+    const isBackgroundRefresh = cache.status === 'LOADED' || cache.status === 'NO_EVENTS';
     try {
-      cache.status = 'LOADING';
-      logger.info(`[CalendarManager] Updating ${calendar.id} (${timeWindow} day window, excludeAllDay=${excludeAllDay})`);
+      // Only show LOADING on initial fetch — background refreshes stay silent
+      if (!isBackgroundRefresh) {
+        cache.status = 'LOADING';
+      }
+      logger.info(`[CalendarManager] Updating ${calendar.id} (${timeWindow} day window, excludeAllDay=${excludeAllDay})${isBackgroundRefresh ? ' [background]' : ''}`);
       
       // Fetch the feed
       const icsContent = await fetchICalFeed(url);
@@ -431,15 +435,21 @@ class CalendarManager {
       const errorMessage = error instanceof Error ? error.message : String(error);
       logger.error(`[CalendarManager] ❌ Failed to update ${calendar.id}: ${errorMessage}`);
       
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        cache.status = 'NETWORK_ERROR';
-      } else if (error instanceof Error && error.message.includes('parse')) {
-        cache.status = 'PARSE_ERROR';
+      if (isBackgroundRefresh) {
+        // Background refresh failed — keep showing stale cached data
+        logger.warn(`[CalendarManager] Background refresh failed for ${calendar.id}, keeping cached data`);
       } else {
-        cache.status = 'NETWORK_ERROR';
+        // Initial load failed — show error state
+        if (error instanceof TypeError && error.message.includes('fetch')) {
+          cache.status = 'NETWORK_ERROR';
+        } else if (error instanceof Error && error.message.includes('parse')) {
+          cache.status = 'PARSE_ERROR';
+        } else {
+          cache.status = 'NETWORK_ERROR';
+        }
+        
+        cache.events = [];
       }
-      
-      cache.events = [];
     } finally {
       calendar.isUpdating = false;
     }
