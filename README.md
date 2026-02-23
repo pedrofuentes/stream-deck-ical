@@ -195,6 +195,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ## Changelog
 
+### v2.4.2 (2026)
+- 🐛 Fixed Export Diagnostics not copying to clipboard (caused "No response from plugin" false alarm)
+- 🔧 Robust clipboard fallback: execCommand → Clipboard API → manual textarea
+
 ### v2.4.1 (2026)
 - 🐛 Fixed buttons showing "Loading iCal" on every background calendar refresh
 - 🐛 Background refresh failures now preserve cached data instead of clearing events

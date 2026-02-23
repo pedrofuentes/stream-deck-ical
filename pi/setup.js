@@ -11,6 +11,9 @@
 let calendars = [];
 let defaultCalendarId = null;
 
+// Store for pending diagnostic text (set when clipboard copy needs a user-gesture retry)
+let pendingDiagnosticText = null;
+
 /**
  * Generate a unique ID for calendars
  */
@@ -466,7 +469,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('save')?.addEventListener('click', saveUrl);
     document.getElementById('refresh')?.addEventListener('click', refreshIcal);
     document.getElementById('refresh-debug')?.addEventListener('click', requestDebugInfo);
-    document.getElementById('export-diagnostics')?.addEventListener('click', requestDiagnostics);
+    document.getElementById('export-diagnostics')?.addEventListener('click', handleDiagnosticsClick);
     
     // Auto-save on settings changes
     const settingsInputs = ['timeWindow', 'excludeAllDay', 'titleDisplayDuration', 'flashOnMeetingStart', 'orangeThreshold', 'redThreshold'];
@@ -489,6 +492,81 @@ document.addEventListener('DOMContentLoaded', function() {
     // Request debug info on load
     requestDebugInfo();
 });
+
+/**
+ * Try to copy text to clipboard using multiple methods.
+ * Returns true if copy succeeded, false otherwise.
+ */
+function copyToClipboard(text) {
+    // Method 1: textarea + execCommand (most reliable in WebView/CEF contexts)
+    try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        textarea.style.top = '-9999px';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        if (success) {
+            console.log('[SETUP] Clipboard copy succeeded via execCommand');
+            return true;
+        }
+    } catch (e) {
+        console.log('[SETUP] execCommand copy failed:', e);
+    }
+
+    // Method 2: Clipboard API (requires secure context + user gesture)
+    try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            navigator.clipboard.writeText(text).then(() => {
+                console.log('[SETUP] Clipboard copy succeeded via Clipboard API');
+            }).catch((err) => {
+                console.log('[SETUP] Clipboard API writeText rejected:', err);
+            });
+            // Clipboard API is async, assume success for now
+            return true;
+        }
+    } catch (e) {
+        console.log('[SETUP] Clipboard API failed:', e);
+    }
+
+    return false;
+}
+
+/**
+ * Handle diagnostics button click — either copy pending text or request a new report
+ */
+function handleDiagnosticsClick() {
+    const btn = document.getElementById('export-diagnostics');
+
+    // If we have pending text from a previous request, copy it now (in user-gesture context)
+    if (pendingDiagnosticText) {
+        const text = pendingDiagnosticText;
+        pendingDiagnosticText = null;
+
+        if (copyToClipboard(text)) {
+            if (btn) {
+                btn.textContent = '✅ Copied!';
+                setTimeout(() => { btn.textContent = '📋 Export Diagnostics'; }, 3000);
+            }
+            showAlert('Diagnostics copied to clipboard! Paste into a GitHub issue.', 'notice', 5);
+        } else {
+            // Last resort: show in a textarea the user can manually copy
+            showDiagnosticTextarea(text);
+            if (btn) {
+                btn.textContent = '📋 Export Diagnostics';
+            }
+        }
+        return;
+    }
+
+    // Otherwise, request a fresh report from the plugin
+    requestDiagnostics();
+}
 
 /**
  * Request diagnostic report from plugin and copy to clipboard
@@ -527,6 +605,49 @@ function requestDiagnostics() {
         }
         showAlert('Error: Cannot communicate with plugin.');
     }
+}
+
+/**
+ * Show diagnostic text in a visible, selectable textarea as a last-resort fallback
+ */
+function showDiagnosticTextarea(text) {
+    // Remove any existing fallback textarea
+    const existing = document.getElementById('diagnostics-fallback');
+    if (existing) existing.remove();
+
+    const container = document.createElement('div');
+    container.id = 'diagnostics-fallback';
+    container.style.cssText = 'margin: 10px 15px; text-align: center;';
+
+    const label = document.createElement('div');
+    label.textContent = 'Could not copy automatically. Select all and copy manually:';
+    label.style.cssText = 'color: #ccc; font-size: 11px; margin-bottom: 5px;';
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.readOnly = true;
+    textarea.style.cssText = 'width: 100%; height: 200px; background: #1a1a1a; color: #ccc; border: 1px solid #3a3a3a; border-radius: 4px; padding: 8px; font-family: monospace; font-size: 10px; resize: vertical;';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '✕ Close';
+    closeBtn.style.cssText = 'margin-top: 5px; background: #3a3a3a; color: #ccc; border: none; border-radius: 4px; padding: 4px 12px; font-size: 11px; cursor: pointer;';
+    closeBtn.addEventListener('click', () => container.remove());
+
+    container.appendChild(label);
+    container.appendChild(textarea);
+    container.appendChild(closeBtn);
+
+    // Insert after the export-diagnostics button's parent
+    const btnParent = document.getElementById('export-diagnostics')?.parentElement;
+    if (btnParent && btnParent.parentElement) {
+        btnParent.parentElement.insertBefore(container, btnParent.nextSibling);
+    } else {
+        document.body.appendChild(container);
+    }
+
+    // Auto-select text for easy copying
+    textarea.focus();
+    textarea.select();
 }
 
 /**
@@ -623,28 +744,24 @@ function handlePluginMessage(message) {
         const btn = document.getElementById('export-diagnostics');
         const text = message.data && message.data.text;
         if (text) {
-            // Copy to clipboard
-            navigator.clipboard.writeText(text).then(() => {
+            // Try to copy immediately (may fail since we're in a message handler, not a user gesture)
+            if (copyToClipboard(text)) {
                 if (btn) {
                     btn.textContent = '✅ Copied!';
                     btn.disabled = false;
                     setTimeout(() => { btn.textContent = '📋 Export Diagnostics'; }, 3000);
                 }
                 showAlert('Diagnostics copied to clipboard! Paste into a GitHub issue.', 'notice', 5);
-            }).catch(() => {
-                // Fallback: open in a new window
-                const w = window.open('', '_blank', 'width=700,height=500');
-                if (w) {
-                    w.document.write('<pre style="white-space:pre-wrap;font-size:12px;">' +
-                        text.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</pre>');
-                    w.document.title = 'Diagnostic Report';
-                }
+            } else {
+                // Clipboard failed — store text and prompt user to click again (user gesture required)
+                console.log('[SETUP] Clipboard copy failed in message handler, storing for user-gesture retry');
+                pendingDiagnosticText = text;
                 if (btn) {
-                    btn.textContent = '📋 Export Diagnostics';
+                    btn.textContent = '📋 Click to Copy';
                     btn.disabled = false;
                 }
-                showAlert('Clipboard not available. Report opened in a new window.', 'notice', 5);
-            });
+                showAlert('Diagnostics ready! Click the button again to copy to clipboard.', 'notice', 8);
+            }
         } else {
             if (btn) {
                 btn.textContent = '📋 Export Diagnostics';
