@@ -305,7 +305,9 @@
     </div>
 
     <div class="tabs" id="rn-tabs">
-      <button class="tab-btn active" data-tab="v230">v2.3.0</button>
+      <button class="tab-btn active" data-tab="v241">v2.4.1</button>
+      <button class="tab-btn" data-tab="v240">v2.4.0</button>
+      <button class="tab-btn" data-tab="v230">v2.3.0</button>
       <button class="tab-btn" data-tab="v220">v2.2.0</button>
       <button class="tab-btn" data-tab="v210">v2.1.0</button>
       <button class="tab-btn" data-tab="v200">v2.0.0</button>
@@ -313,8 +315,35 @@
       <button class="tab-btn" data-tab="v100">v1.0.0</button>
     </div>
 
+    <!-- v2.4.1 -->
+    <div class="tab-content active" id="tab-v241">
+      <div class="content-box rn-box">
+        <h2>v2.4.1 — Background Refresh Stability Fix</h2>
+        <ul>
+          <li>Fixed buttons showing <strong>"Loading iCal"</strong> on every background calendar refresh — keys now stay on their current display during silent refreshes</li>
+          <li>Background refresh failures now <strong>preserve cached events</strong> instead of clearing them — stale data is better than no data</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- v2.4.0 -->
+    <div class="tab-content" id="tab-v240">
+      <div class="content-box rn-box">
+        <h2>v2.4.0 — Reliability &amp; Diagnostics</h2>
+        <ul>
+          <li>Fixed <strong>CPU spike</strong> from unbounded recurring event expansion</li>
+          <li>Fixed recurring event mismatch across <strong>daylight saving time</strong> boundaries</li>
+          <li><strong>Export Diagnostics</strong> button for one-click bug reports</li>
+          <li>30-second fetch timeout to prevent hangs on unresponsive servers</li>
+          <li>Concurrent update guard prevents stacking calendar requests</li>
+          <li>Per-event error isolation — one bad event no longer breaks the entire feed</li>
+          <li>Enhanced debug logging with 500-entry buffer and error filtering</li>
+        </ul>
+      </div>
+    </div>
+
     <!-- v2.3.0 -->
-    <div class="tab-content active" id="tab-v230">
+    <div class="tab-content" id="tab-v230">
       <div class="content-box rn-box">
         <h2>v2.3.0 — Named Calendars &amp; Configurable Thresholds</h2>
         <ul>
