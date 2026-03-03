@@ -44,7 +44,7 @@
       "UUID": "com.pedrofuentes.ical.combined"
     }
   ], 
-  "SDKVersion": 2,
+  "SDKVersion": 3,
   "Author": "Pedro Fuentes", 
   "CodePath": "bin/plugin.js",
   "Description": "Display information from your calendar using an iCal URL. Visual cues and a countdown will help you end meetings on time and be ready for the next one. Supports recurring events and configurable time windows.", 
@@ -54,7 +54,7 @@
   "CategoryIcon": "assets/icalIcon",
   "URL": "https://github.com/pedrofuentes/stream-deck-ical#readme",
   "PropertyInspectorPath": "pi.html",
-  "Version": "2.4.2.0",
+  "Version": "2.4.3.0",
   "Nodejs": {
     "Version": "20",
     "Debug": "enabled"
@@ -71,6 +71,6 @@
   ],
   "Software": 
     {
-        "MinimumVersion" : "6.4"
+        "MinimumVersion" : "6.9"
     }
 }
