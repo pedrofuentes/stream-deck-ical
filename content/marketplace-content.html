@@ -273,7 +273,7 @@
       <h2>Requirements</h2>
 
       <ul>
-        <li>Stream Deck software 6.4 or later</li>
+        <li>Stream Deck software 6.9 or later</li>
         <li>Windows 10+ or macOS 10.15+</li>
         <li>An iCal calendar URL (Google, Outlook, Apple, or any iCal feed)</li>
       </ul>
@@ -305,7 +305,8 @@
     </div>
 
     <div class="tabs" id="rn-tabs">
-      <button class="tab-btn active" data-tab="v241">v2.4.1</button>
+      <button class="tab-btn active" data-tab="v244">v2.4.4</button>
+      <button class="tab-btn" data-tab="v241">v2.4.1</button>
       <button class="tab-btn" data-tab="v240">v2.4.0</button>
       <button class="tab-btn" data-tab="v230">v2.3.0</button>
       <button class="tab-btn" data-tab="v220">v2.2.0</button>
@@ -315,8 +316,19 @@
       <button class="tab-btn" data-tab="v100">v1.0.0</button>
     </div>
 
+    <!-- v2.4.4 -->
+    <div class="tab-content active" id="tab-v244">
+      <div class="content-box rn-box">
+        <h2>v2.4.4 — SDK Upgrade for DRM Compatibility</h2>
+        <ul>
+          <li>Upgraded <strong>@elgato/streamdeck SDK</strong> from v1.4.1 to v2.0.2 for DRM compatibility</li>
+          <li>Fixed Marketplace rejection caused by manifest reading in <strong>DRM-encrypted plugins</strong></li>
+        </ul>
+      </div>
+    </div>
+
     <!-- v2.4.1 -->
-    <div class="tab-content active" id="tab-v241">
+    <div class="tab-content" id="tab-v241">
       <div class="content-box rn-box">
         <h2>v2.4.1 — Background Refresh Stability Fix</h2>
         <ul>

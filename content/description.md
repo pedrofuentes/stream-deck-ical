@@ -1,5 +1,5 @@
 <!--
-  Last updated: v2.4.1
+  Last updated: v2.4.4
   Character limit: 4,000
   Current character count: ~2,850
 -->
@@ -66,7 +66,7 @@ Your calendar URL is stored locally on your computer. No data is sent to any thi
 
 ## Requirements
 
-- Stream Deck software 6.4 or later
+- Stream Deck software 6.9 or later
 - Windows 10+ or macOS 10.15+
 - An iCal calendar URL (Google, Outlook, Apple, or any iCal feed)
 
