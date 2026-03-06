@@ -195,6 +195,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ## Changelog
 
+### v2.4.4 (2026)
+- 🔧 Upgraded @elgato/streamdeck SDK from v1.4.1 to v2.0.2 for DRM compatibility
+- 🐛 Fixed Elgato Marketplace rejection due to manifest reading in DRM-encrypted plugins
+
 ### v2.4.2 (2026)
 - 🐛 Fixed Export Diagnostics not copying to clipboard (caused "No response from plugin" false alarm)
 - 🔧 Robust clipboard fallback: execCommand → Clipboard API → manual textarea

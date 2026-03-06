@@ -7,7 +7,7 @@
  * @license MIT
  */
 
-import streamDeck, { LogLevel } from '@elgato/streamdeck';
+import streamDeck from '@elgato/streamdeck';
 import { NextMeetingAction } from './actions/next-meeting.js';
 import { TimeLeftAction } from './actions/time-left.js';
 import { CombinedAction } from './actions/combined-action.js';
@@ -34,7 +34,7 @@ let updateIntervalId: NodeJS.Timeout | null = null;
  * In production: only INFO and above
  * In debug mode: TRACE (everything)
  */
-streamDeck.logger.setLevel(isDebugMode() ? LogLevel.TRACE : LogLevel.INFO);
+streamDeck.logger.setLevel(isDebugMode() ? 'trace' : 'info');
 
 /**
  * Register actions - MUST be done before connect()
@@ -207,39 +207,38 @@ streamDeck.settings.getGlobalSettings().then((settings: any) => {
 /**
  * Handle sendToPlugin events from Property Inspector
  */
-streamDeck.ui.onSendToPlugin((ev) => {
+streamDeck.ui.onSendToPlugin(async (ev) => {
   logger.info('sendToPlugin received:', ev.payload);
   const payload = ev.payload as any;
   
   if (payload && payload.action === 'getDebugInfo') {
     logger.info('Debug info requested from PI');
-    logger.info('streamDeck.ui.current:', streamDeck.ui.current ? 'available' : 'undefined');
+    logger.info('streamDeck.ui.action:', streamDeck.ui.action ? 'available' : 'undefined');
     
     // Send debug info back to Property Inspector
-    // In SDK v1.x, use streamDeck.ui.current?.sendToPropertyInspector
-    if (streamDeck.ui.current) {
+    if (streamDeck.ui.action) {
       const debugInfo = getDebugInfo();
       logger.info('Sending debug info:', debugInfo);
-      streamDeck.ui.current.sendToPropertyInspector({
+      await streamDeck.ui.sendToPropertyInspector({
         action: 'debugInfo',
         data: debugInfo
-      } as any);
+      });
     } else {
-      logger.warn('Cannot send debug info: streamDeck.ui.current is undefined');
+      logger.warn('Cannot send debug info: streamDeck.ui.action is undefined');
     }
   }
 
   if (payload && payload.action === 'getDiagnostics') {
     logger.info('Diagnostics export requested from PI');
-    if (streamDeck.ui.current) {
+    if (streamDeck.ui.action) {
       const report = compileDiagnosticReport();
       const text = formatDiagnosticText(report);
-      streamDeck.ui.current.sendToPropertyInspector({
+      await streamDeck.ui.sendToPropertyInspector({
         action: 'diagnosticReport',
         data: { text }
-      } as any);
+      });
     } else {
-      logger.warn('Cannot send diagnostics: streamDeck.ui.current is undefined');
+      logger.warn('Cannot send diagnostics: streamDeck.ui.action is undefined');
     }
   }
 });

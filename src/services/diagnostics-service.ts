@@ -55,7 +55,7 @@ interface ErrorSummary {
 }
 
 /** Plugin version — updated at build or set from manifest */
-let pluginVersion = '2.4.2';
+let pluginVersion = '2.4.4';
 
 /**
  * Set the plugin version (called during initialization)

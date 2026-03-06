@@ -57,7 +57,7 @@
   "CategoryIcon": "assets/icalIcon",
   "URL": "https://github.com/pedrofuentes/stream-deck-ical#readme",
   "PropertyInspectorPath": "pi.html",
-  "Version": "2.4.3.0",
+  "Version": "2.4.4.0",
   "Nodejs": {
     "Version": "20",
     "Debug": "enabled"
