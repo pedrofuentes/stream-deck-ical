@@ -8,6 +8,7 @@
  */
 
 import { RRule, RRuleSet, rrulestr } from 'rrule';
+import { DateTime } from 'luxon';
 import { CalendarEvent, ExpandedEvent } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 
@@ -60,6 +61,32 @@ function toDateKey(dateOrIso: Date | string): string {
 }
 
 /**
+ * Convert a real Date to "fake UTC" in the given timezone.
+ * The returned Date has UTC components equal to the wall-clock components in the timezone.
+ * This allows RRule (which operates in UTC) to expand occurrences at consistent local times.
+ */
+function toFakeUTC(date: Date, timezone: string): Date {
+  const dt = DateTime.fromJSDate(date, { zone: timezone });
+  return new Date(Date.UTC(dt.year, dt.month - 1, dt.day, dt.hour, dt.minute, dt.second, dt.millisecond));
+}
+
+/**
+ * Convert a "fake UTC" Date back to a real Date in the given timezone.
+ * The input Date's UTC components are interpreted as wall-clock components in the timezone.
+ */
+function fromFakeUTC(fakeDate: Date, timezone: string): Date {
+  const dt = DateTime.fromObject({
+    year: fakeDate.getUTCFullYear(),
+    month: fakeDate.getUTCMonth() + 1,
+    day: fakeDate.getUTCDate(),
+    hour: fakeDate.getUTCHours(),
+    minute: fakeDate.getUTCMinutes(),
+    second: fakeDate.getUTCSeconds()
+  }, { zone: timezone });
+  return dt.toJSDate();
+}
+
+/**
  * Expand a recurring event into individual occurrences
  * @param event - Calendar event with RRULE
  * @param rruleString - RRULE string
@@ -73,25 +100,36 @@ export function expandRecurringEvent(
   rruleString: string,
   exdates: Date[] = [],
   startWindow: Date,
-  endWindow: Date
+  endWindow: Date,
+  eventTimezone?: string
 ): ExpandedEvent[] {
   try {
     const expansionStart = Date.now();
 
+    // DST-safe expansion (#30): when eventTimezone is available, expand in
+    // "fake UTC" — wall-clock time stored as UTC components — so that RRule
+    // produces occurrences at the same local time regardless of DST state.
+    const useTzExpansion = !!eventTimezone;
+
     // Create RRuleSet to handle RRULE and EXDATE together
     const rruleSet = new RRuleSet();
-    
-    // Parse and add the RRULE
-    const rrule = parseRRule(rruleString, event.start);
+
+    // Parse and add the RRULE (in fake UTC if timezone-aware)
+    const dtstart = useTzExpansion ? toFakeUTC(event.start, eventTimezone!) : event.start;
+    const rrule = parseRRule(rruleString, dtstart);
     rruleSet.rrule(rrule);
-    
-    // Add EXDATEs
+
+    // Add EXDATEs (also in fake UTC if using timezone expansion)
     for (const exdate of exdates) {
-      rruleSet.exdate(exdate);
+      rruleSet.exdate(useTzExpansion ? toFakeUTC(exdate, eventTimezone!) : exdate);
     }
-    
+
+    // Convert window boundaries to the same space as the expansion
+    const windowStart = useTzExpansion ? toFakeUTC(startWindow, eventTimezone!) : startWindow;
+    const windowEnd = useTzExpansion ? toFakeUTC(endWindow, eventTimezone!) : endWindow;
+
     // Get all occurrences within the time window
-    const occurrences = rruleSet.between(startWindow, endWindow, true);
+    const occurrences = rruleSet.between(windowStart, windowEnd, true);
 
     // Guard: cap occurrences to prevent CPU spikes (#26)
     if (occurrences.length > MAX_OCCURRENCES) {
@@ -100,20 +138,22 @@ export function expandRecurringEvent(
       );
       occurrences.length = MAX_OCCURRENCES;
     }
-    
+
     // Calculate event duration
     const duration = event.end.getTime() - event.start.getTime();
-    
+
     // Create expanded events
     const expandedEvents: ExpandedEvent[] = occurrences.map(occurrence => {
-      const endTime = new Date(occurrence.getTime() + duration);
-      
+      // Convert back from fake UTC to real UTC if using timezone expansion
+      const realStart = useTzExpansion ? fromFakeUTC(occurrence, eventTimezone!) : occurrence;
+      const endTime = new Date(realStart.getTime() + duration);
+
       return {
         uid: event.uid,
         summary: event.summary,
-        start: occurrence,
+        start: realStart,
         end: endTime,
-        recurrenceId: occurrence,
+        recurrenceId: realStart,
         isRecurring: true,
         isAllDay: event.isAllDay
       };
@@ -203,7 +243,8 @@ export function processRecurringEvents(
           event.rrule,
           event.exdate || [],
           startWindow,
-          endWindow
+          endWindow,
+          event.eventTimezone
         );
         
         // Convert expanded events to CalendarEvent format

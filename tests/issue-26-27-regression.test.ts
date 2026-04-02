@@ -344,6 +344,112 @@ describe('Issue #27 — RECURRENCE-ID matching', () => {
   });
 });
 
+// ─────────────────────────────────────────────────────────────
+// Issue #30: DST boundary crossing — recurring events shift by 1 hour
+// ─────────────────────────────────────────────────────────────
+
+describe('Issue #30 — DST boundary crossing for recurring events', () => {
+  it('should keep wall-clock time consistent across spring-forward DST boundary', () => {
+    // Europe/Berlin: CET (UTC+1) → CEST (UTC+2) on March 29 2026
+    // A weekly Monday 10:00 event should stay at 10:00 local time on both sides.
+    const events: CalendarEvent[] = [
+      {
+        uid: 'dst-spring-forward',
+        summary: 'Weekly Standup',
+        // Monday Jan 5 2026, 10:00 CET = 09:00 UTC
+        start: new Date('2026-01-05T09:00:00Z'),
+        end: new Date('2026-01-05T10:00:00Z'),
+        isRecurring: true,
+        rrule: 'FREQ=WEEKLY;BYDAY=MO',
+        eventTimezone: 'Europe/Berlin'
+      }
+    ];
+
+    // Window spanning the DST boundary (March 29 2026)
+    const startWindow = new Date('2026-03-01T00:00:00Z');
+    const endWindow = new Date('2026-04-15T00:00:00Z');
+
+    const processed = processRecurringEvents(events, startWindow, endWindow);
+
+    // March 23 (last Monday before DST): 10:00 CET = 09:00 UTC
+    const mar23 = processed.find(e => e.start.toISOString().startsWith('2026-03-23'));
+    expect(mar23).toBeDefined();
+    expect(mar23!.start.getUTCHours()).toBe(9); // 10:00 CET = 09:00 UTC
+
+    // March 30 (first Monday after DST): 10:00 CEST = 08:00 UTC
+    const mar30 = processed.find(e => e.start.toISOString().startsWith('2026-03-30'));
+    expect(mar30).toBeDefined();
+    expect(mar30!.start.getUTCHours()).toBe(8); // 10:00 CEST = 08:00 UTC
+
+    // April 6: still CEST, should also be 08:00 UTC
+    const apr6 = processed.find(e => e.start.toISOString().startsWith('2026-04-06'));
+    expect(apr6).toBeDefined();
+    expect(apr6!.start.getUTCHours()).toBe(8); // 10:00 CEST = 08:00 UTC
+  });
+
+  it('should keep wall-clock time consistent across fall-back DST boundary', () => {
+    // Europe/Berlin: CEST (UTC+2) → CET (UTC+1) on October 25 2026
+    const events: CalendarEvent[] = [
+      {
+        uid: 'dst-fall-back',
+        summary: 'Weekly Review',
+        // Monday July 6 2026, 14:00 CEST = 12:00 UTC
+        start: new Date('2026-07-06T12:00:00Z'),
+        end: new Date('2026-07-06T13:00:00Z'),
+        isRecurring: true,
+        rrule: 'FREQ=WEEKLY;BYDAY=MO',
+        eventTimezone: 'Europe/Berlin'
+      }
+    ];
+
+    const startWindow = new Date('2026-10-01T00:00:00Z');
+    const endWindow = new Date('2026-11-15T00:00:00Z');
+
+    const processed = processRecurringEvents(events, startWindow, endWindow);
+
+    // Oct 19 (before fall-back): 14:00 CEST = 12:00 UTC
+    const oct19 = processed.find(e => e.start.toISOString().startsWith('2026-10-19'));
+    expect(oct19).toBeDefined();
+    expect(oct19!.start.getUTCHours()).toBe(12); // 14:00 CEST = 12:00 UTC
+
+    // Oct 26 (after fall-back): 14:00 CET = 13:00 UTC
+    const oct26 = processed.find(e => e.start.toISOString().startsWith('2026-10-26'));
+    expect(oct26).toBeDefined();
+    expect(oct26!.start.getUTCHours()).toBe(13); // 14:00 CET = 13:00 UTC
+
+    // Nov 2: still CET, should also be 13:00 UTC
+    const nov2 = processed.find(e => e.start.toISOString().startsWith('2026-11-02'));
+    expect(nov2).toBeDefined();
+    expect(nov2!.start.getUTCHours()).toBe(13); // 14:00 CET = 13:00 UTC
+  });
+
+  it('should fall back to UTC expansion when eventTimezone is not set', () => {
+    // Events without eventTimezone should behave as before (UTC-based expansion)
+    const events: CalendarEvent[] = [
+      {
+        uid: 'no-tz',
+        summary: 'UTC Event',
+        start: new Date('2026-01-05T10:00:00Z'),
+        end: new Date('2026-01-05T11:00:00Z'),
+        isRecurring: true,
+        rrule: 'FREQ=WEEKLY;BYDAY=MO;COUNT=4'
+        // no eventTimezone
+      }
+    ];
+
+    const startWindow = new Date('2026-01-01T00:00:00Z');
+    const endWindow = new Date('2026-02-01T00:00:00Z');
+
+    const processed = processRecurringEvents(events, startWindow, endWindow);
+    expect(processed.length).toBe(4);
+
+    // All should be at 10:00 UTC
+    processed.forEach(e => {
+      expect(e.start.getUTCHours()).toBe(10);
+    });
+  });
+});
+
 // Logger enhancement exports are tested in diagnostics-service.test.ts
 // (the mock in this file overrides the real module, so direct import tests
 // would fail — they are verified via the diagnostics service instead).
