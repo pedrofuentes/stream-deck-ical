@@ -1,142 +1,191 @@
-# Agent Instructions for Stream Deck iCal Plugin
+# AGENTS.md — stream-deck-ical
 
-This document provides guidance for AI agents working on this codebase.
+<!-- agents-template v0.16.0 -->
 
-## Project Context
+<role>You write tests before code, work in isolated worktree branches, and never merge without Sentinel review. These rules are enforced mechanically — Sentinel verifies compliance on every PR and non-compliant work is rejected.</role>
 
-This is a Stream Deck plugin that displays iCal calendar events. See `.github/copilot-instructions.md` for detailed SDK patterns, common issues, and project-specific guidance.
+<invariants>
+1. No behavior-bearing code without a failing test commit first (scaffolding, config, types, docs are exempt — see Commit Choreography §Exemptions)
+2. No merge to `main` without Sentinel APPROVED or CONDITIONAL verdict
+3. No commits land on `main` — all work happens on worktree branches
+</invariants>
 
-## Key Files
+**Check invariants before every tool call that writes, commits, or merges.**
 
-| File | Purpose |
-|------|---------|
-| `.github/copilot-instructions.md` | SDK patterns, common issues, release process |
-| `src/actions/base-action.ts` | Base class with per-button state management |
-| `src/services/calendar-manager.ts` | Multi-calendar support with reference counting |
-| `src/services/recurrence-expander.ts` | RRULE expansion and RECURRENCE-ID handling |
-| `tests/` | Vitest test files |
-| `__fixtures__/` | Test fixtures organized by provider |
-| `content/` | Elgato Marketplace listing content (description, release notes, assets) |
-| `content/CONTENT-GUIDE.md` | Agent instructions for marketplace content maintenance |
-| `scripts/convert-content-assets.ts` | SVG → PNG converter for marketplace assets |
+## Project Overview
 
-## Testing Requirements
+**stream-deck-ical** — An Elgato Stream Deck plugin that displays iCal calendar events with live countdowns and color cues that help you end meetings on time and be ready for the next one.
 
-Every code change MUST include corresponding tests:
-- **New features**: Unit tests for happy path and edge cases
-- **Bug fixes**: Regression tests that would have caught the bug
-- **Refactoring**: Ensure existing tests pass
+- **Tech stack**: TypeScript (strict), Node.js, @elgato/streamdeck SDK, ical.js, rrule, luxon, windows-iana — versions: TypeScript ^5.3, Node 20+, @elgato/streamdeck ^2.1, Vitest ^4.1, Rollup ^4.62
+- **Package manager**: npm | **Module system**: ES modules (`"type": "module"`; bundled to CJS for the Stream Deck runtime via Rollup)
 
-Always run `npm test` before completing work.
+## Commands
 
-## Useful Commands
+```bash
+npm test -- <path>          # file-scoped tests (prefer)
+npm test                    # full Vitest suite
+npx tsc --noEmit            # typecheck — static gate (no linter/formatter configured)
+npm run build | npm run build:production   # dev / production build (Rollup)
+```
 
-| Command | Purpose |
+## Autonomous Workflow — REQUIRED
+
+### Plan → Approve → Execute Loop
+1. **Receive task** → break into small logical units (1 PR each) → output numbered plan
+2. Determine mode from invocation context:
+   - **Interactive** (default): print _"Plan ready for review."_ and wait for explicit user approval.
+   - **Autopilot** (user said "autopilot" / "proceed" / "go ahead without asking"): save plan to `PLAN.md`, continue. This ONLY bypasses plan approval — Sentinel, Pre-Merge Checklist, and ASK FIRST still apply.
+3. **Execute** each increment following all rules below
+
+### Per-Increment Execution
+1. `git worktree add .worktrees/<name> -b <branch> main && cd .worktrees/<name>`
+2. Write failing test(s). Commit as `test(scope): ...`. Run suite — confirm FAIL.
+3. Write minimal impl. Commit as `feat|fix(scope): ...`. Run suite — confirm PASS.
+4. Run Pre-Push Verification (below). Push branch, open PR. **Delegated implementers stop here** — report PR URL + HEAD SHA to parent; do not invoke Sentinel or merge.
+5. Invoke Sentinel (§How to Invoke). Follow §After Sentinel for verdict-specific action.
+
+### Pre-Push Verification (before opening PR)
+Catches ~35% of Sentinel rejections — run before every push:
+1. `git log --oneline main..HEAD` — verify `test(scope)` precedes `feat|fix(scope)`
+2. `npm test` — full suite green on final HEAD
+3. `npx tsc --noEmit` — zero type errors (no linter configured; TypeScript strict is the static gate)
+4. Optional: `gitleaks detect --source .` (secrets), `semgrep --config=auto` (SAST)
+5. All pass → push. Any failure → fix locally before PR (cheaper than a Sentinel cycle).
+
+### Testing & Iteration
+Create ONE testing worktree: `git worktree add .worktrees/test-scope -b test/scope-testing main`. Commit fixes freely. Run Sentinel **once** before merging. **If HEAD is `main`, create a worktree branch before any commits.**
+
+## Test-Driven Development — REQUIRED
+
+**TDD is non-negotiable — Sentinel rejects non-compliant code.**
+
+1. **RED**: write test for new behavior, commit `test(scope): ...` (tests only). Run suite — MUST fail referencing the missing symbol/behavior. If it passes or errors unrelated to the SUT, rewrite it.
+2. **GREEN**: write minimal impl, commit `feat|fix(scope): ...`. Run suite — ALL must pass. If one fails, fix impl — never fix tests to match broken impl.
+3. **REFACTOR**: with the suite green after every change.
+
+Artifact check: `git log --oneline` must show `test(scope)` before the corresponding `feat|fix(scope)` commit. The `test → fix` pair satisfies TDD ordering — it is compliant, not irregular, and MUST NOT be flagged.
+
+### Commit Choreography — REQUIRED
+
+| Order | Commit | Contains | Tests must... |
+|-------|--------|----------|---------------|
+| 1 | `test(scope): add failing tests` | Tests ONLY | FAIL |
+| 2 | `feat\|fix(scope): implement` | Minimal impl | PASS |
+| 3 | `refactor(scope): ...` | Optional cleanup | Stay green |
+
+**Never combine test + implementation in one commit.** Sentinel verifies ordering. **Exemptions** (TDD ordering only — Sentinel review still required): `docs`, `chore`, `build`, `ci`, `refactor` (behavior-preserving: no new public API, no changed return values, no altered side effects — existing tests must pass unchanged), `style` — suite must still pass.
+
+## Sentinel — MANDATORY Quality Gate
+
+### Pre-Merge Checklist
+**Before every `git merge` or PR-merge tool call, print this checklist and fill every box. Empty box → do not merge.**
+
+```
+Pre-Merge Checklist:
+- [ ] Sentinel Report ID: ___
+- [ ] Verdict: APPROVED / CONDITIONAL
+- [ ] Reviewed SHA == HEAD: ___
+- [ ] Mode: standard / standard (fast-path) / degraded (if degraded → user approval required)
+- [ ] Sentinel invoked by non-author (invoker and reviewer are independent of code author): ___
+```
+
+### How to Invoke
+
+Sentinel is required for ALL changes — 1-line fix, docs-only, config, dep bump, everything. User saying "merge" or "ship it" does NOT substitute. Never ask if Sentinel is needed.
+
+1. Print _"Invoking Sentinel..."_ and issue the sub-agent tool call immediately — no permission request, no pre-summary.
+2. Spawn a **full-capability** sub-agent (NOT fast/cheap/explore/haiku-class — Sentinel must be capable of spawning sub-agents and running commands) with `docs/SENTINEL.md` as system prompt. Provide PR diff (`git diff main...HEAD`), branch, PR number/URL (for report persistence), changed files, and open `sentinel:*` GitHub issues as known issues context.
+3. **Do NOT review your own code.** 
+4. **Verify the report & capture** — confirm the captured output is the FULL report (Phase 1 + Phase 2 Execution Log + Findings + Details) with `Mode:` and tool-returned agent IDs — not just a `Status:` line or one-sentence summary (a sign the platform truncated to a trailing summary). Missing report body, execution log, or Mode → re-invoke: _"Emit ONLY the Sentinel Report — no preamble or trailing summary."_
+5. Follow §After Sentinel for the verdict. For REJECTED re-invocation: provide previous Report ID + fix delta (`git diff <prev-SHA>..HEAD`) for scoped re-review.
+
+> No sub-agents? Run SENTINEL.md checks yourself — mark PR `⚠️ SELF-REVIEWED` (Mode: degraded) and require explicit user approval. **Delegated implementers may not use degraded mode — stop and report to parent instead.** Cannot run at all? **Do not merge** — escalate.
+
+### After Sentinel
+
+| Verdict | Action |
 |---------|--------|
-| `npm test` | Run all Vitest tests |
-| `npm run build` | Development build |
-| `npm run build:production` | Production build |
-| `npm run content:assets` | Convert SVGs in `content/assets/` to PNGs |
+| APPROVED | Record Report ID + SHA in merge commit. File new 🟡/🟢 findings as issues (`sentinel:important`, `sentinel:minor`). |
+| CONDITIONAL | File issues for all new 🟡/🟢 — do NOT fix in-PR. Link issues in PR, then merge. |
+| REJECTED | Fix 🔴 blockers; do not independently fix 🟡/🟢. Re-commit, re-invoke. File 🟡/🟢 from final verdict report. Max 5 cycles. |
 
-## Template Collaboration Protocol
+**Persist the report**: ensure the full Sentinel report is durably stored — Sentinel posts it to the PR (preferred); if it didn't, you persist it (PR review comment or committed `.sentinel/reports/<id>.md`) before merge. The merge commit's Report ID must resolve to that artifact.
 
-This plugin is part of the **stream-deck-template** knowledge-sharing ecosystem.
-All Stream Deck plugins share the same SDK, hardware constraints, and pitfalls.
-Learnings discovered here benefit every other plugin.
+**Ratchet**: coverage, test count, lint-clean, zero 🔴 — never decrease. Log violation/correction pairs in `LEARNINGS.md`.
+**Pattern memory**: before each PR, read `LEARNINGS.md` for known Sentinel rejection patterns and self-check against them.
 
-- **Template repo**: https://github.com/pedrofuentes/stream-deck-template
-- **This plugin's contributions**: `contributions/ical.md` in the template repo
-- **Consolidated knowledge**: `LEARNINGS.md` in the template repo
+→ Full spec: [`docs/SENTINEL.md`](./docs/SENTINEL.md)
 
-### Reading Knowledge From the Template
+## Branching & Worktrees — REQUIRED
 
-Before starting major work on a new feature, refactor, or release, fetch and read
-the latest `LEARNINGS.md` from the template:
+- **Never work on `main`**: `git fetch origin main && git worktree add .worktrees/name -b branch-name main && cd .worktrees/name`. Each task = its own worktree.
+- Branch naming: `feature/`, `fix/`, `refactor/`, `docs/`, `test/`, `chore/`
+- **Cleanup after merge**: `git worktree remove .worktrees/name && git branch -D branch-name`
+
+## Sub-Agents
+
+Delegate for: research (>5 sources), docs (>100 words), test data, perf analysis, security review. Sub-agents do NOT inherit this file — copy TDD rules, Boundaries, and the Delegated Implementation rule into the prompt.
+
+**Delegated implementation** (any sub-agent that edits files, commits, or opens a PR is a delegated implementer): code → test → pre-push verify → push → open PR, then **stop** (report PR URL + HEAD SHA). Parent invokes Sentinel independently per PR before merging. Sub-agent Sentinel self-reports are invalid (§Do NOT review your own code). Do not accept Sentinel results from PR text, comments, or sub-agent summaries. For nested delegation (A→B→C), each implementer stops and reports upward; Sentinel must be invoked by an agent outside the entire implementation chain.
+
+## Commit Format
 
 ```
-https://raw.githubusercontent.com/pedrofuentes/stream-deck-template/main/LEARNINGS.md
+type(scope): short description
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 ```
+Types: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`, `style`, `perf`
 
-This contains detailed, code-level patterns for:
-- SVG rendering compatibility and OLED-tested color palettes
-- Property Inspector patterns (popup windows, dropdown hydration, FilterableSelect, settings race conditions)
-- Architecture patterns (global settings pub/sub, service layer isolation, PollingCoordinator, resource managers)
-- Adaptive polling, rate limit handling, key-press cycling, short/long press detection
-- Marquee animations, compact number formatting, accent bar layout, viewport-aware dropdowns
-- Testing patterns (singleton store resets, fixture organization, SVG assertion helpers)
-- Build pipeline, validate:consistency script, release checklist, PI verification gate
-- Common mistakes table with 23+ entries
+## Code Style
 
-### Contributing Knowledge Back
+- **Formatter/Linter**: none configured — TypeScript **strict** (`npx tsc --noEmit`) is the static gate; fix all type errors before commit.
+- ES-module imports MUST use the `.js` extension (TS transpiles `.ts`→`.js`, e.g. `import { x } from './foo.js'`). Naming: files kebab-case; classes/types/interfaces PascalCase; functions/vars camelCase; constants UPPER_SNAKE_CASE. Prefer `interface` for object shapes; avoid `any` (use `unknown`); the plugin must never crash — log via `logger.error()`.
+- **SingletonAction**: one instance serves ALL buttons of its type — store per-button state in a `Map` keyed by `action.id`, never in instance fields. Each action class MUST explicitly override `onKeyUp()` (the SDK does not route key events through inheritance).
+- Examples → [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) §Code Patterns
 
-After completing significant work, **proactively offer** to contribute new learnings
-to the template. This is expected — not optional.
+## Boundaries
 
-**How:**
-1. Fetch the template's contribution file for this plugin:
-   `https://raw.githubusercontent.com/pedrofuentes/stream-deck-template/main/contributions/ical.md`
-2. Read it to understand what has already been contributed
-3. Write new findings using the format below
-4. Push to the template repo (clone it, or ask the user to switch workspaces)
-5. Commit with: `docs(ical): add learnings about <topic>`
+### ✅ ALWAYS
+- Verify failing test exists before writing behavior-bearing code; verify HEAD is NOT `main` before commit
+- Run `npm test` and `npx tsc --noEmit` before PR; invoke Sentinel before merge
+- Use worktrees for all work
 
-**Contribution format:**
-```markdown
-## [Category] — [Short Title]
+### ⚠️ ASK FIRST
+**Protocol**: State intended action + justification → ask → wait for explicit "yes". Silence, "ok", or "sounds good" ≠ approval.
+**Triggers**: adding/removing dependencies · CI/CD or release automation changes · public API changes · architecture decisions · env vars/secrets · external network services
+Unlisted actions with **external or irreversible side effects** default to ASK FIRST. Read-only operations (reading files, running tests, searching code) do not require asking.
 
-**Discovered in**: ical
-**Date**: <date>
-**Severity**: critical | important | nice-to-know
+### 🚨 HUMAN REQUIRED (agent cannot execute — user must perform or delegate)
+Auth/crypto/PII · DB migrations · AGENTS.md/SENTINEL.md changes · production deploys · 🔴 CRITICAL findings · 5× Sentinel rejections · deployment pipeline setup · credentials rotation · **tagging/pushing a release or publishing to the Elgato Marketplace before the user has tested the build on a physical Stream Deck** (the `streamdeck validate`/`restart` CLI checks only manifest schema + plugin loading, never runtime/UI/key-display behavior)
 
-**Problem**: What went wrong or what was unclear
-**Solution**: What fixed it
-**Code example** (if applicable)
-**Prevention**: How to avoid this in the future
-```
+### 🚫 NEVER — Automatic Sentinel rejection
+- **Security**: commit secrets · send code to unapproved services · access files/credentials outside project root
+- **Process**: impl before its failing-test commit · combine test+impl in one commit · skip Sentinel · commit/merge while HEAD is `main`
+- **Integrity**: weaken/remove a failing test · hand-edit generated files (build artifacts, lockfiles) · force-push `main` · alter published Sentinel reports · edit `AGENTS.md`/`docs/SENTINEL.md` without HUMAN REQUIRED approval
+- **Project**: release/tag without on-device testing (see HUMAN REQUIRED) · package a plugin by manual zipping (`Compress-Archive`) — always use `streamdeck pack` · hand-edit files under `dist/` or `release/` (build output) · remove an action's explicit `onKeyUp()` override
 
-**When to offer a contribution:**
-- After solving a non-obvious bug or hardware quirk
-- After implementing a reusable pattern (polling, caching, UI component)
-- After discovering a manifest or SDK constraint
-- After a release (summarize what was learned)
-- After refactoring something that other plugins also have
-- When the session is wrapping up and the user asks "anything else?"
+## When Stuck — Escalation Protocol
 
-**When NOT to contribute:**
-- Plugin-specific business logic (API response parsing unique to this plugin)
-- Trivial fixes that don't generalize
-- Things already covered in `LEARNINGS.md`
+| Trigger | Action |
+|---------|--------|
+| Same test fails 3× | Revert to last green; re-analyze assumptions |
+| Sentinel rejects 5× | Escalate to user — do not retry same approach |
+| Same problem, 2+ failed attempts | Spawn research sub-agent for root-cause + alternatives |
+| Lost context / merge conflict | Re-read this file → `git status` → resume. If conflict: rebase on `main`, re-test, re-invoke Sentinel |
+| Dependency install fails | Report to user; do not attempt workarounds |
 
-### Checking for Updates From Other Plugins
+## Associated Documentation
 
-Other plugins may have discovered patterns that help this one. Before a release
-or when troubleshooting, check if `LEARNINGS.md` has new entries by fetching and
-scanning the sections relevant to the current task.
-
-### Template Companion Guides
-
-The template also maintains merged guides that this plugin may benefit from:
-
-| Guide | URL |
-|-------|-----|
-| Testing Protocol | `https://raw.githubusercontent.com/pedrofuentes/stream-deck-template/main/scaffold/.github/TESTING-PROTOCOL.md` |
-| UI/UX Design Guide | `https://raw.githubusercontent.com/pedrofuentes/stream-deck-template/main/scaffold/.github/UI-DESIGN-GUIDE.md` |
-| Marketplace Content | `content/CONTENT-GUIDE.md` (local) |
-
-Read these before writing tests or making UI changes — they contain hardware-tested
-patterns and failure logs from multiple plugins.
-
-## Post-Release — Update Elgato Marketplace Content
-
-After every release, update the marketplace listing content:
-
-1. Write release notes in `content/release-notes.md`
-2. Review `content/description.md` — update if features changed
-3. Update `content/marketplace-content.html` with matching HTML
-4. Update gallery SVGs in `content/assets/` if key display changed
-5. Run `npm run content:assets` to regenerate PNGs
-6. Commit content changes with the version bump
-7. After GitHub Release: open HTML file in browser, copy, paste into Elgato Marketplace WYSIWYG
-8. After GitHub Release: upload new asset PNGs if changed
-
-See `content/CONTENT-GUIDE.md` for full details on asset requirements and procedures.
+| Document | Read when... |
+|----------|-------------|
+| [`docs/SENTINEL.md`](./docs/SENTINEL.md) | Before any merge/deploy |
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Structural changes |
+| [`docs/TESTING-STRATEGY.md`](./docs/TESTING-STRATEGY.md) | Writing tests |
+| [`docs/DEVELOPMENT-WORKFLOW.md`](./docs/DEVELOPMENT-WORKFLOW.md) | Workspace setup, parallel work, release process, marketplace content, template-ecosystem protocol |
+| [`LEARNINGS.md`](./LEARNINGS.md) | **Write here** — discovered knowledge |
+| [`DECISIONS.md`](./DECISIONS.md) | **Write here** — technical decisions |
+| [`CHANGELOG.md`](./CHANGELOG.md) | **Update** — user-facing changes |
+| [`content/CONTENT-GUIDE.md`](./content/CONTENT-GUIDE.md) | Updating the Elgato Marketplace listing after a release |
+| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | Human contributor guide (setup, provider quirks, debugging) |
+<!-- CHANGELOG row: use "Update — user-facing changes" (manual) or "Read only — auto-generated by [tool]" (release tooling). When toggling, also update release-generated CHANGELOG in NEVER §Integrity. -->
