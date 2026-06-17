@@ -31,6 +31,7 @@ User-controlled values flowing into dangerous sinks without context-appropriate 
 - **SSRF** — user-controlled URLs in server-side HTTP requests, including `file://`, `gopher://` schemes.
 - **Deserialization** — untrusted data deserialized without validation (`pickle.loads`, `JSON.parse` of user input into typed objects, `ObjectInputStream`).
 - **Log/header injection** — unescaped newlines (`\r\n`) in user input written to logs or HTTP headers; enables log forging, response splitting.
+- **Terminal/ANSI/OSC escape injection** — untrusted content (user input, file/DB/prompt contents, summaries, log lines) written to stdout/stderr/TTY without stripping control characters. Enables output spoofing, cursor/title/clipboard manipulation, and hidden-command injection in some terminals. Safe: strip/escape C0/C1 control bytes and ANSI/OSC sequences before display.
 - **Open redirect** — `redirect(request.params.next)` without URL allowlist. Common in auth flows.
 - **Prototype pollution** (JS) — `Object.assign({}, untrusted)`, recursive merges, `_.merge` with user-controlled keys. Check for `__proto__`, `constructor.prototype`.
 - **ReDoS** — user-controlled input matched against regex with catastrophic backtracking (e.g., `(a+)+$`). Flag user-compiled regex.
