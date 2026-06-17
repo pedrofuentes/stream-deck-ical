@@ -86,7 +86,7 @@ The orchestrator MUST evaluate fast-path eligibility for every PR that passes Ph
 **Tier 2 skip criteria (ALL must be true):**
 - Quick scan found zero 🔴
 - Diff ≤ 150 non-test/non-lockfile lines changed
-- No files in security-sensitive paths (`auth/`, `crypto/`, `middleware/`, `migrations/`)
+- No files in security-sensitive paths (`auth/`, `crypto/`, `middleware/`, `migrations/`) or project-defined sensitive surfaces (AGENTS.md §NEVER), incl. modules rendering untrusted input to a terminal/UI
 - No new dependencies added
 - Commit types are `fix`, `refactor`, `docs`, `test`, `style`, or `chore`
 
@@ -178,6 +178,8 @@ Aggregate findings from all Phase 2 sub-agents, then classify using exactly thes
 Produce a single report in this structure:
 
 ```markdown
+Status: APPROVED | CONDITIONAL | REJECTED
+
 ## Sentinel Review Report
 
 Ref: {{branch}} → main
@@ -187,7 +189,6 @@ Sentinel ruleset: v1
 Reviewed at: {{timestamp}}
 Mode: standard | standard (fast-path) | degraded (serialized) | degraded (no sub-agents)
 Review depth: Tier 1 (fast-path) | Tier 2 (full)
-Status: APPROVED | CONDITIONAL | REJECTED
 Required action: MERGE | FILE_ISSUES_AND_MERGE | FIX_AND_REINVOKE
 
 ### Phase 1 — TDD / Test Evidence
