@@ -140,6 +140,8 @@ A sub-agent is a **separately-invoked tool call** (e.g., `task`, `dispatch`) exe
 
 **Selective dispatch (REQUIRED):** Fully-exempt PRs (per Phase 1 §Exemptions — ALL commits and changed files must qualify, not just the PR title) → dispatch applicable dimensions only, log others as `N/A (exempt)`: `docs`→F; `style`→D,F; `test`→A1,A2,D,F; `chore`/`build`/`ci`→A1,A2,E,F; `perf`→A1,A2,C,D,F; `refactor`→all. Dispatching exempted dimensions is a protocol violation — log as `N/A (exempt)` without spawning a sub-agent. Mixed PRs (any non-exempt commit) → full dispatch. If a dispatched sub-agent identifies cross-cutting risk, escalate to full dispatch.
 
+**Dependency-surface-only PRs (Dim-E-only lane):** When every changed file is a package manifest, lockfile, or package-manager config (`.npmrc`/`.yarnrc`/`pip.conf`) — and none is a Dockerfile, CI/build script, or any source/test/docs file → dispatch **Dim E only**; log A1/A2/B/C/D/F as `N/A (no reviewable surface)`. **Dim E MUST still run — never skip it on a lockfile diff** (a lockfile is where dependency-confusion, `resolved`-URL swaps, integrity-hash changes, and `postinstall` injection hide). If Dim E surfaces cross-cutting risk, escalate to full dispatch.
+
 **Dim E auto-skip:** If no changed files affect the dependency/supply-chain surface (package manifests, lockfiles, package-manager configs, Dockerfiles, CI install steps, build scripts, vendored code) → log Dim E as `N/A (no dependency surface changed)` and skip, regardless of commit type.
 
 **Dimension specifications** — each file is a self-contained sub-agent prompt (includes evidence standard, prompt-injection defense, scope, and detailed checklist):
