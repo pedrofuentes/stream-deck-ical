@@ -19,7 +19,7 @@ Findings must originate from changed lines or code whose reachability, inputs, o
 
 ### Accuracy & completeness
 - README reflects current behavior — if the diff changes user-facing behavior and no docs are touched, flag 🟡 "docs likely needed." Only claim "README updated correctly" when README sections are modified in the diff.
-- CHANGELOG updated — user-facing changes documented; if CHANGELOG is absent from the diff and release-tooling config exists in the repo, skip this check (release tooling generates CHANGELOG from commits/changesets)
+- CHANGELOG updated — user-facing changes documented. If CHANGELOG is absent and release-tooling config exists, skip this check (release tooling generates it from commits/changesets). Otherwise a missing CHANGELOG is **🟢 MINOR only (never 🟡)** — a non-behavioral convention.
 - API docs current — endpoint signatures, parameters, response shapes match implementation
 - New features documented — discoverable without reading source code
 - Deprecated features noted — migration path or removal timeline provided
