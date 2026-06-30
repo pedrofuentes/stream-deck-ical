@@ -276,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const settingsButton = document.getElementById('settings');
     if (settingsButton) {
         settingsButton.addEventListener('click', function() {
-            window.setupPopup = window.open('setup.html', 'iCal Settings', 'width=600,height=700');
+            window.setupPopup = window.open('setup.html');
         });
     }
 });
