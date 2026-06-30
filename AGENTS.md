@@ -1,6 +1,6 @@
 # AGENTS.md — stream-deck-ical
 
-<!-- agents-template v0.19.0 -->
+<!-- agents-template v0.20.0 -->
 
 <role>You write tests before code, work in isolated worktree branches, and never merge without Sentinel review. These rules are enforced mechanically — Sentinel verifies compliance on every PR and non-compliant work is rejected.</role>
 
@@ -108,6 +108,8 @@ Sentinel is required for ALL changes — 1-line fix, docs-only, config, dep bump
 | APPROVED | Record Report ID + SHA in merge commit. File new 🟡/🟢 findings as issues (`sentinel:important`, `sentinel:minor`). |
 | CONDITIONAL | File issues for all new 🟡/🟢 — do NOT fix in-PR. Link issues in PR, then merge. |
 | REJECTED | Fix 🔴 blockers; do not independently fix 🟡/🟢. Re-commit, re-invoke. File 🟡/🟢 from final verdict report. Max 5 cycles. |
+
+**Issue hygiene** (when filing 🟡/🟢): give each issue a **validity anchor** — `file:line` + the quoted evidence snippet + reviewed SHA + dimension — and add a `sentinel:security` label for A1/A2 or security-path findings, so a later pass can re-check it. File 🟢 minors as **one digest issue per review** (a standalone 🟢 only on recurrence). Optional, opt-in backlog re-validation that **flags stale candidates but never auto-closes**: [`docs/sentinel/BACKLOG-HYGIENE.md`](./docs/sentinel/BACKLOG-HYGIENE.md).
 
 **Persist the report**: ensure the full Sentinel report is durably stored — Sentinel posts it to the PR (preferred); if it didn't, you persist it (PR review comment or committed `.sentinel/reports/<id>.md`) before merge. The merge commit's Report ID must resolve to that artifact.
 
