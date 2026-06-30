@@ -169,7 +169,7 @@ Aggregate findings from all Phase 2 sub-agents, then classify using exactly thes
 **Cross-dimension findings:** Findings prefixed `[Cross: Dim X]` from one sub-agent that duplicate a finding from the target dimension → consolidate. If the target dimension missed it → adopt the cross-referenced finding at the target dimension's severity default.
 
 **De-duplication (when known issues provided):** apply severity reclassification before matching.
-- Finding matches an open `sentinel:*` issue (same defect mechanism + fix — cite issue #) → **Known** — in report but excluded from verdict. **🔴 can NEVER be Known.**
+- Finding matches an open `sentinel:*` issue (same defect mechanism + fix — cite issue #) → **Known** — in report but excluded from verdict. **🔴 can NEVER be Known.** A match **more severe or newly reachable** than the open issue is NOT Known — carry it at the higher severity (escalate; never silently downgrade a worse new manifestation to Known).
 - Identical root cause (same mechanism + fix) → consolidate into one finding (cite all locations).
 
 ### Phase 4 — Decision rules
