@@ -50,10 +50,10 @@ regardless of which agent orchestrates. Applied AFTER sub-agent findings aggrega
   normal-usage-incorrect behavior.
 - **🟡 → 🟢** when there is no trigger, no reachable mechanism, or an immaterial consequence.
 - **Pre-existing** issue the diff neither introduces nor newly reaches → 🟢 max (never 🔴/🟡).
-- Finding matches an open `sentinel:*` issue (same mechanism + fix) → **Known** (excluded
+- Finding matches an open `sentinel:*` issue (same specific mechanism + fix) → **Known** (excluded
   from verdict). 🔴 can **NEVER** be Known. A match **more severe or newly reachable** than the
   open issue is NOT Known — carry it at the higher severity (escalate).
 
 ## Version
-Rubric **v1** — bound to SENTINEL.md ruleset v1 (agents-template v0.20.0). Bump this version
+Rubric **v1** — bound to SENTINEL.md ruleset v1. Bump this version
 whenever severity semantics change, so verdicts stay reproducible against a pinned rubric.
