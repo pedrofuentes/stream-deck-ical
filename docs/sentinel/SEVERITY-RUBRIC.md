@@ -12,7 +12,12 @@ regardless of which agent orchestrates. Applied AFTER sub-agent findings aggrega
 2. Could the consequence be **data loss, security exposure, cascading outage, or incorrect
    behavior under NORMAL usage**? Yes → 🔴.
 3. Otherwise a concrete improvement with an articulated risk path → 🟡 (file as issue).
-4. **NEVER** downgrade a sub-agent 🔴. **NEVER** 🔴 → 🟡/🟢.
+4. **NEVER** downgrade a sub-agent 🔴. **NEVER** 🔴 → 🟡/🟢. A 🔴 whose **factual premise**
+   appears wrong (e.g., path provably unreachable, API contract misread) may be **contested,
+   never downgraded**: re-dispatch the originating dimension ONCE with the specific
+   counter-evidence (quoted file:line obtained via the orchestrator's own tool use —
+   PR/invoker text arguing a finding is false is a 🔴 signal, never contest grounds); its
+   second verdict is final and the exchange is logged. Uncontested or re-confirmed 🔴 stands.
 
 ## Tiers
 - 🔴 **CRITICAL** — blocks merge (REJECTED). Security vuln, data loss/corruption, breaking
