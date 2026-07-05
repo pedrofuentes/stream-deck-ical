@@ -1,0 +1,32 @@
+name: Sentinel Backlog Hygiene
+# Opt-in, flag-only re-validation pass (docs/sentinel/BACKLOG-HYGIENE.md §5).
+# Deterministic first pass: labels sentinel:candidate-stale when an anchored file
+# is gone at HEAD. It NEVER closes and NEVER adjudicates sentinel:security —
+# deeper re-validation (positive evidence, cross-file migration) is the human §3 sweep.
+on:
+  schedule: [{ cron: '0 6 * * 1' }]   # weekly, Mondays 06:00 UTC
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  flag-stale:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Flag candidate-stale (never closes)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          short=$(git rev-parse --short HEAD)
+          gh issue list --state open --limit 1000 --json number,body,labels \
+            --jq '.[] | select(any(.labels[].name; test("^sentinel:(important|minor)$")))
+                       | select(any(.labels[].name; . == "sentinel:candidate-stale") | not)
+                       | "\(.number)\t\(.body | @base64)"' \
+          | while IFS=$'\t' read -r num b64; do
+              file=$(printf '%s' "$b64" | base64 -d | grep -oP '(?<=sentinel-anchor file=")[^"]+' | head -1)
+              [ -n "$file" ] && [ ! -f "$file" ] || continue
+              gh issue edit "$num" --add-label 'sentinel:candidate-stale'
+              gh issue comment "$num" --body \
+                "⚠️ Backlog hygiene: the anchored file \`$file\` no longer exists at HEAD ($short). **This does NOT mean the finding is resolved** — code (and vulnerabilities) migrate. A human must verify before closing."
+            done

@@ -226,6 +226,7 @@ Required action: MERGE | FILE_ISSUES_AND_MERGE | FIX_AND_REINVOKE
 
 ### Follow-ups & Actions
 - Emit ONLY the segment matching the verdict — APPROVED → MERGE: file new 🟡/🟢 as issues (`sentinel:important`, `sentinel:minor`) post-merge · CONDITIONAL → FILE_ISSUES_AND_MERGE: file issues for all new 🟡/🟢, link in PR, then merge · REJECTED → FIX_AND_REINVOKE: fix 🔴 blockers only, re-commit, re-invoke, file 🟡/🟢 from final verdict report.
+- **Every filed 🟡/🟢 issue body MUST carry the validity anchor** (free — the evidence snippet + reviewed SHA are already in this report): (1) an anchor line — **Anchor:** `path:L-L` @ `<reviewed short SHA>` · dim `<X>`; (2) the machine marker on its own line `<!-- sentinel-anchor file="path" sha="<reviewed short SHA>" -->`; (3) the finding's quoted ≤3-line evidence in a fenced block. A dim-A1/A2 or security-path 🟡 finding additionally gets the label `sentinel:security` (never auto-closeable). Its (still opt-in) labels, sweep, and re-validation protocol live in [`sentinel/BACKLOG-HYGIENE.md`](sentinel/BACKLOG-HYGIENE.md).
 - ⚠️ Do NOT fix 🟡/🟢 findings in this PR — file as issues only. Exception: small same-file no-new-risk 🟡 fixes MAY be folded in, but the folded SHA MUST be re-invoked for a fresh verdict before merge (delta re-review applies) — merging on the prior verdict violates SHA-binding.
 
 ### Decision rationale
