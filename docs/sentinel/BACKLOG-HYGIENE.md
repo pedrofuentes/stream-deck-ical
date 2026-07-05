@@ -72,13 +72,15 @@ The cheapest backlog item is the one never filed — keep the gate's existing le
 ## 5. Optional example Action (copy in only if you want scheduled flagging)
 A deterministic, **flag-only** first pass: it labels `sentinel:candidate-stale` when an anchored file is gone
 at HEAD. **It never closes and never adjudicates `sentinel:security`** — deeper re-validation (positive
-evidence, cross-file migration) is left to the human/agent §3 sweep. Pin the action to a full SHA.
+evidence, cross-file migration) is left to the human/agent §3 sweep. Pin the action to a full SHA. **When you
+copy it in, format the file to your repo's conventions (Prettier/ESLint/etc.) so your CI's lint/format check
+passes — keep the pinned action SHA and the logic intact.**
 
 ```yaml
 # .github/workflows/sentinel-backlog-hygiene.yml   (OPTIONAL — adopter opt-in)
 name: Sentinel Backlog Hygiene
 on:
-  schedule: [{ cron: '0 6 * * 1' }]   # weekly, Mondays 06:00 UTC
+  schedule: [{ cron: '0 6 * * 1' }] # weekly, Mondays 06:00 UTC
   workflow_dispatch:
 permissions:
   contents: read
