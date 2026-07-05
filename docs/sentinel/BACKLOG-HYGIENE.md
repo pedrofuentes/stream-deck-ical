@@ -1,8 +1,9 @@
-# Sentinel — Backlog Hygiene (opt-in)
+# Sentinel — Backlog Hygiene
 
-> Companion to [`../SENTINEL.md`](../SENTINEL.md). **Opt-in.** The Sentinel merge-gate is unchanged and stays
-> read-only; **nothing here runs per-PR**. This doc keeps the **issues Sentinel produces** trustworthy over
-> time — without ever letting automation silently drop a real finding.
+> Companion to [`../SENTINEL.md`](../SENTINEL.md). The **§1 validity anchor is REQUIRED** by SENTINEL.md
+> §Follow-ups & Actions in every filed issue; the **§2–§5** labels, sweep, and workflow stay **opt-in**. The
+> Sentinel merge-gate is unchanged and stays read-only; **nothing here runs per-PR**. This doc keeps the
+> **issues Sentinel produces** trustworthy over time — without ever letting automation silently drop a real finding.
 
 ## Why this exists
 Sentinel files a GitHub issue for every new 🟡/🟢 finding and **never revisits it**, so issues accrete
@@ -13,9 +14,10 @@ own failure mode: real findings (including security) hide in the noise.
 **The one rule — division of labor:** Sentinel/automation **emits signals**; a **human decides what closes.**
 Staleness is a *signal to re-check*, never proof of resolution. **"Stale" ≠ "resolved."**
 
-## 1. Validity anchor (required in every filed `sentinel:*` issue)
-So any issue can be re-checked cheaply, the orchestrator writes an anchor into the issue body when filing —
-the data already exists in the Sentinel report (Evidence Standard snippet + Reviewed SHA). Each issue body carries:
+## 1. Validity anchor — REQUIRED by SENTINEL.md §Follow-ups (in every filed `sentinel:*` issue)
+[`SENTINEL.md`](../SENTINEL.md) §Follow-ups & Actions **requires** this anchor in every filed issue — it is
+**not** opt-in. So any issue can be re-checked cheaply, the orchestrator writes the anchor into the issue body
+when filing — the data already exists in the Sentinel report (Evidence Standard snippet + Reviewed SHA). Each issue body carries:
 
 1. a **human + machine readable anchor** (the HTML comment lets the optional sweep/Action parse it):
 
