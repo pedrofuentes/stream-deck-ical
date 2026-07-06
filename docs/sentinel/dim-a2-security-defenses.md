@@ -8,6 +8,8 @@
 
 **Bypass-class completeness rule:** When you flag a sanitize/escape/encode/validate defect, enumerate the **entire bypass class** the same code path mishandles in that one finding — not just the first instance. Cover every variant: all Unicode line/paragraph separators (U+2028, U+2029, U+0085, …), all prompt role-marker families, all dangerous magic-byte signatures, all metacharacters for the target sink. Partial enumeration causes one-cycle-later re-rejection on the same surface.
 
+**Differential probe rule (when command execution is available):** When the diff adds or modifies a **hand-rolled parser, tokenizer, matcher, or sanitizer/escaper/validator** on an untrusted-input path, do not rely on static enumeration alone — on **first review**, not only re-review, probe it empirically in a **throwaway worktree** (`.worktrees/` scratch pattern — NEVER the real working tree): run the changed code against a reference implementation for the same format (a real parser/serializer) or a generated adversarial corpus covering the bypass class, and compare accept/reject/transform behavior. Bounded probe — hundreds of generated cases suffice; the goal is class coverage, not exhaustiveness. Any divergence where the hand-rolled code is more permissive than the reference is a 🔴 finding (quote the diverging input). No isolated execution available → report the static bypass-class finding flagged `(unverified — no execution)`. The probe upgrades evidence; it never excuses omitting a static finding.
+
 If deterministic tool output (e.g., gitleaks, trufflehog, semgrep) is provided alongside the diff, treat those findings as pre-verified evidence — focus LLM analysis on items not already covered by tool output.
 
 ## Evidence standard
