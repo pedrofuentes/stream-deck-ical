@@ -361,12 +361,40 @@ describe('CalendarManager', () => {
     it('should handle invalid URL', async () => {
       const url = 'not-a-valid-url';
       manager.registerAction('action1', url);
-      
+
       // Wait for async update
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       const status = manager.getStatusForAction('action1');
       expect(status).toBe('INVALID_URL');
+    });
+
+    it('should normalize webcal:// URLs to https:// before fetching (#43)', async () => {
+      const url = 'webcal://example.com/cal.ics';
+      manager.registerAction('action1', url);
+
+      // Wait for async update
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://example.com/cal.ics',
+        expect.anything()
+      );
+
+      const status = manager.getStatusForAction('action1');
+      expect(['LOADED', 'NO_EVENTS']).toContain(status);
+    });
+
+    it('should set INVALID_URL status for unsupported schemes like ftp:// (#43)', async () => {
+      const url = 'ftp://example.com/cal.ics';
+      manager.registerAction('action1', url);
+
+      // Wait for async update
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const status = manager.getStatusForAction('action1');
+      expect(status).toBe('INVALID_URL');
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 

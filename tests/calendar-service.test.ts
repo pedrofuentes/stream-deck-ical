@@ -58,6 +58,19 @@ describe('isValidURL', () => {
     expect(isValidURL('example.com/calendar.ics')).toBe(false);
     expect(isValidURL('/path/to/calendar.ics')).toBe(false);
   });
+
+  it('should return true for webcal:// URLs (#43)', () => {
+    expect(isValidURL('webcal://p50-caldav.icloud.com/published/2/abc123')).toBe(true);
+  });
+
+  it('should return true for webcals:// URLs (#43)', () => {
+    expect(isValidURL('webcals://p50-caldav.icloud.com/published/2/abc123')).toBe(true);
+  });
+
+  it('should return false for unsupported schemes like ftp:// and file:// (#43)', () => {
+    expect(isValidURL('ftp://example.com/calendar.ics')).toBe(false);
+    expect(isValidURL('file:///etc/passwd')).toBe(false);
+  });
 });
 
 describe('getStatusText', () => {
@@ -219,6 +232,44 @@ END:VCALENDAR`;
 
     expect(calendarCache.status).toBe('NO_EVENTS');
     expect(calendarCache.events).toEqual([]);
+  });
+
+  it('should normalize webcal:// URLs to https:// before fetching (#43)', async () => {
+    const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Test//Test//EN
+BEGIN:VEVENT
+UID:test-webcal
+DTSTART:${formatICSDate(new Date(Date.now() + 3600000))}
+DTEND:${formatICSDate(new Date(Date.now() + 7200000))}
+SUMMARY:Webcal Event
+END:VEVENT
+END:VCALENDAR`;
+
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(icsContent)
+    });
+
+    await updateCalendarCache('webcal://example.com/cal.ics', 3);
+
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://example.com/cal.ics',
+      expect.anything()
+    );
+    expect(calendarCache.status).toBe('LOADED');
+    expect(calendarCache.events.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('should set INVALID_URL status for unsupported schemes like ftp:// (#43)', async () => {
+    global.fetch = vi.fn();
+
+    await updateCalendarCache('ftp://example.com/cal.ics', 3);
+
+    expect(calendarCache.status).toBe('INVALID_URL');
+    expect(calendarCache.events).toEqual([]);
+    expect(global.fetch).not.toHaveBeenCalled();
   });
 
   it('should increment version on each successful update', async () => {
