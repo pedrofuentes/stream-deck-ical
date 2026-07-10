@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (e.g. Saturday-evening events in the Americas, #39), and occurrences keep
   their local wall-clock time across DST switches instead of shifting by an
   hour (#30).
+- Prevent sustained 100%+ CPU after macOS wake-from-sleep (#29): a global 60s
+  orphan-reconciliation sweep reaps button states the Stream Deck no longer
+  reports (clearing their leaked per-second timers and calendar refcounts),
+  `setTitle` and per-tick debug logs are now only emitted when their content
+  changes, and the debug-info log line no longer embeds the full log buffer.
 
 ### Removed
 

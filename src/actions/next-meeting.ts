@@ -106,8 +106,8 @@ export class NextMeetingAction extends BaseAction {
         displayText += paddedTitle[charIndex];
       }
       
-      await action.setTitle(displayText);
-      
+      await this.setTitleForButton(actionId, action, displayText);
+
       nmState.marqueePosition++;
       if (nmState.marqueePosition >= paddedTitle.length) {
         nmState.marqueePosition = 0;
@@ -161,21 +161,20 @@ export class NextMeetingAction extends BaseAction {
     const status = this.getCacheStatusForButton(actionId);
     if (status !== 'LOADED' && status !== 'NO_EVENTS') {
       const statusText = getStatusText(status);
-      logger.debug(`[NextMeeting:${actionId}] Cache status: ${status}, showing: ${statusText}`);
-      await action.setTitle(statusText);
+      this.debugForButton(actionId, `[NextMeeting:${actionId}] Cache status: ${status}, showing: ${statusText}`);
+      await this.setTitleForButton(actionId, action, statusText);
       await this.setImage(actionId, action, 'nextMeeting');
       return;
     }
-    
+
     // Find next event
     const events = this.getEventsForButton(actionId);
     const nextEvent = findNextEvent(events);
-    
-    logger.debug(`[NextMeeting:${actionId}] Cache has ${events.length} total events, next=${nextEvent ? nextEvent.summary : 'none'}`);
-    
+
+    this.debugForButton(actionId, `[NextMeeting:${actionId}] Cache has ${events.length} total events, next=${nextEvent ? nextEvent.summary : 'none'}`);
+
     if (!nextEvent) {
-      logger.debug(`[NextMeeting:${actionId}] No upcoming events in cache`);
-      await action.setTitle('No\nUpcoming\nMeeting');
+      await this.setTitleForButton(actionId, action, 'No\nUpcoming\nMeeting');
       await this.setImage(actionId, action, 'nextMeeting');
       return;
     }
@@ -207,7 +206,7 @@ export class NextMeetingAction extends BaseAction {
     // Update title with countdown
     const timeText = sec2time(secondsRemaining);
     logger.debug(`[NextMeeting:${actionId}] Display: ${timeText}, image=${imageState}`);
-    await action.setTitle(timeText);
+    await this.setTitleForButton(actionId, action, timeText);
   }
   
   /**

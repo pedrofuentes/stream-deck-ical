@@ -79,6 +79,27 @@ export function isDebugMode(): boolean {
   return DEBUG_MODE;
 }
 
+/**
+ * Build a compact one-line summary of a debug-info payload for logging.
+ *
+ * The full payload embeds the recent log buffer; logging it verbatim would nest
+ * previous logs into the buffer on every request, causing unbounded string churn
+ * and memory growth (#29). This summary captures status/counts/size only.
+ */
+export function summarizeDebugInfo(info: unknown): string {
+  const data = (info ?? {}) as { cache?: { status?: unknown; eventCount?: unknown }; logs?: unknown };
+  const status = data.cache?.status ?? 'unknown';
+  const eventCount = data.cache?.eventCount ?? 0;
+  const logCount = Array.isArray(data.logs) ? data.logs.length : 0;
+  let byteSize = -1;
+  try {
+    byteSize = JSON.stringify(info).length;
+  } catch {
+    byteSize = -1;
+  }
+  return `status=${status}, events=${eventCount}, logs=${logCount}, bytes=${byteSize}`;
+}
+
 export const logger = {
   debug: (...args: any[]): void => {
     const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');

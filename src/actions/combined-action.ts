@@ -122,8 +122,8 @@ export class CombinedAction extends BaseAction {
         displayText += paddedTitle[charIndex];
       }
       
-      await action.setTitle(displayText);
-      
+      await this.setTitleForButton(actionId, action, displayText);
+
       cbState.marqueePosition++;
       if (cbState.marqueePosition >= paddedTitle.length) {
         cbState.marqueePosition = 0;
@@ -174,20 +174,20 @@ export class CombinedAction extends BaseAction {
     const status = this.getCacheStatusForButton(actionId);
     if (status !== 'LOADED' && status !== 'NO_EVENTS') {
       const statusText = getStatusText(status);
-      logger.debug(`[Combined:${actionId}] Cache status: ${status}, showing: ${statusText}`);
-      await action.setTitle(statusText);
+      this.debugForButton(actionId, `[Combined:${actionId}] Cache status: ${status}, showing: ${statusText}`);
+      await this.setTitleForButton(actionId, action, statusText);
       await this.setImage(actionId, action, 'nextMeeting');
       cbState.currentMode = 'no-events';
       return;
     }
-    
+
     // Find active and upcoming events
     const events = this.getEventsForButton(actionId);
     const activeEvents = findActiveEvents(events);
     const nextEvent = findNextEvent(events);
-    
-    logger.debug(`[Combined:${actionId}] Active events: ${activeEvents.length}, next event: ${nextEvent?.summary || 'none'}`);
-    
+
+    this.debugForButton(actionId, `[Combined:${actionId}] Active events: ${activeEvents.length}, next event: ${nextEvent?.summary || 'none'}`);
+
     if (activeEvents.length > 0) {
       // Show Time Left mode
       await this.updateTimeLeftDisplay(actionId, action, activeEvents);
@@ -197,7 +197,7 @@ export class CombinedAction extends BaseAction {
     } else {
       // No events
       cbState.currentMode = 'no-events';
-      await action.setTitle('No\nMeetings');
+      await this.setTitleForButton(actionId, action, 'No\nMeetings');
       await this.setImage(actionId, action, 'nextMeeting');
     }
   }
@@ -245,13 +245,13 @@ export class CombinedAction extends BaseAction {
     
     // Update title
     const timeText = sec2time(secondsRemaining);
-    const titleText = activeEvents.length > 1 
+    const titleText = activeEvents.length > 1
       ? `${timeText}\n(${cbState.currentMeetingIndex + 1}/${activeEvents.length})`
       : timeText;
-    
-    await action.setTitle(titleText);
+
+    await this.setTitleForButton(actionId, action, titleText);
   }
-  
+
   /**
    * Update display in Next Meeting mode
    */
@@ -280,9 +280,9 @@ export class CombinedAction extends BaseAction {
     
     // Update title with countdown
     const timeText = sec2time(secondsRemaining);
-    await action.setTitle(timeText);
+    await this.setTitleForButton(actionId, action, timeText);
   }
-  
+
   /**
    * Override to clean up resources
    */

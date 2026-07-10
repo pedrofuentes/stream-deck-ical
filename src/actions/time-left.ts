@@ -92,23 +92,22 @@ export class TimeLeftAction extends BaseAction {
     const status = this.getCacheStatusForButton(actionId);
     if (status !== 'LOADED' && status !== 'NO_EVENTS') {
       const statusText = getStatusText(status);
-      logger.debug(`[TimeLeft:${actionId}] Cache status: ${status}, showing: ${statusText}`);
-      await action.setTitle(statusText);
+      this.debugForButton(actionId, `[TimeLeft:${actionId}] Cache status: ${status}, showing: ${statusText}`);
+      await this.setTitleForButton(actionId, action, statusText);
       await this.setImage(actionId, action, 'activeMeeting');
       return;
     }
-    
+
     // Find active events
     const events = this.getEventsForButton(actionId);
     const activeEvents = findActiveEvents(events);
-    
-    logger.debug(`[TimeLeft:${actionId}] Cache has ${events.length} total events, ${activeEvents.length} active`);
-    
+
+    this.debugForButton(actionId, `[TimeLeft:${actionId}] Cache has ${events.length} total events, ${activeEvents.length} active`);
+
     if (activeEvents.length === 0) {
       // No active meetings
-      logger.debug(`[TimeLeft:${actionId}] No active meetings, meetingEnded=${tlState.meetingEnded}`);
       if (!tlState.meetingEnded) {
-        await action.setTitle('No\nActive\nMeeting');
+        await this.setTitleForButton(actionId, action, 'No\nActive\nMeeting');
         await this.setImage(actionId, action, 'activeMeeting');
       }
       return;
@@ -148,7 +147,7 @@ export class TimeLeftAction extends BaseAction {
       logger.debug(`[TimeLeft:${actionId}] Meeting ended >5min ago (${secondsRemaining}s), clearing display`);
       tlState.meetingEnded = true;
       tlState.currentMeetingIndex = 0;
-      await action.setTitle('No\nActive\nMeeting');
+      await this.setTitleForButton(actionId, action, 'No\nActive\nMeeting');
       await this.setImage(actionId, action, 'activeMeeting');
       return;
     }
@@ -174,11 +173,11 @@ export class TimeLeftAction extends BaseAction {
     const timeText = sec2time(secondsRemaining);
     
     // Add indicator if multiple meetings
-    const titleText = activeEvents.length > 1 
+    const titleText = activeEvents.length > 1
       ? `${timeText}\n(${tlState.currentMeetingIndex + 1}/${activeEvents.length})`
       : timeText;
-    
-    await action.setTitle(titleText);
+
+    await this.setTitleForButton(actionId, action, titleText);
   }
   
   /**
