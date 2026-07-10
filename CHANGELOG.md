@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - iCloud/Apple Calendar `webcal://` (and `webcals://`) share links are now normalized to
   `https://` before fetching, and unsupported URL schemes (e.g. `ftp://`, `file://`) now
   surface as "Please Setup" (INVALID_URL) instead of a misleading "Network Error" (#43).
+- Recurring events are now expanded in the event's own timezone: weekly `BYDAY`
+  events no longer disappear when their local day differs from the UTC day
+  (e.g. Saturday-evening events in the Americas, #39), and occurrences keep
+  their local wall-clock time across DST switches instead of shifting by an
+  hour (#30).
 
 ### Removed
 
