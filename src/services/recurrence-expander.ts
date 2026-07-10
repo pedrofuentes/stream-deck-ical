@@ -28,6 +28,15 @@ const MAX_OCCURRENCES = 500;
 const WINDOW_PAD_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * Safety pre-cap for the raw (padded) between() result, applied BEFORE the
+ * real-UTC window filter. See the justification comment at the use site: with
+ * a ±1-day pad, 5000 guarantees the 500-occurrence in-window cap can still
+ * fill for any recurrence interval of ~20 seconds or coarser, while keeping
+ * the #26 CPU bound for pathological (SECONDLY-scale) rules.
+ */
+const MAX_RAW_OCCURRENCES = 10 * MAX_OCCURRENCES;
+
+/**
  * Parse RRULE string from iCal format
  * @param rruleString - RRULE string (e.g., "FREQ=WEEKLY;BYDAY=MO,WE,FR")
  * @param dtstart - Formatted DTSTART value (YYYYMMDDTHHMMSS, optionally with trailing Z)
@@ -220,12 +229,21 @@ export function expandRecurringEvent(
       : endWindow;
     const occurrences = rruleSet.between(betweenStart, betweenEnd, true);
 
-    // Guard: cap occurrences to prevent CPU spikes (#26)
-    if (occurrences.length > MAX_OCCURRENCES) {
+    // Coarse safety pre-cap (#26) on the PADDED between() result. This must
+    // NOT be the tight MAX_OCCURRENCES cap: the ±1-day leading pad can hold
+    // occurrences that all precede the real window (e.g. 1440 for a minutely
+    // rule), and a tight pre-cap would truncate to pad-only entries that the
+    // real-UTC filter then discards entirely. Bound justification: the pad is
+    // exactly ±1 day, so a minutely rule contributes at most 1440 occurrences
+    // per pad side (2880 total); MAX_RAW_OCCURRENCES = 5000 therefore leaves
+    // ≥ 2120 slots for the real window — enough to fill the final 500 cap for
+    // any interval of ~20 seconds or coarser (86400s / 4500 ≈ 19.2s). Finer
+    // (SECONDLY-scale) pathological rules stay CPU-bounded by this pre-cap.
+    if (occurrences.length > MAX_RAW_OCCURRENCES) {
       logger.warn(
-        `⚠️ Recurring event "${event.summary}" produced ${occurrences.length} occurrences — capping at ${MAX_OCCURRENCES}`
+        `⚠️ Recurring event "${event.summary}" produced ${occurrences.length} raw occurrences — pre-capping at ${MAX_RAW_OCCURRENCES}`
       );
-      occurrences.length = MAX_OCCURRENCES;
+      occurrences.length = MAX_RAW_OCCURRENCES;
     }
 
     // Calculate event duration
@@ -238,16 +256,29 @@ export function expandRecurringEvent(
     // occurrences are also filtered by exact real-UTC timestamp.
     const exdateTimes = new Set(exdates.map(exdate => exdate.getTime()));
 
-    // Create expanded events: convert wall-clock occurrences back to real UTC,
-    // enforce the exact real-UTC window (see padding note above), and drop
-    // real-UTC exdate matches.
-    const expandedEvents: ExpandedEvent[] = occurrences
+    // Convert wall-clock occurrences back to real UTC, enforce the exact
+    // real-UTC window (see padding note above), and drop real-UTC exdate
+    // matches.
+    const inWindowStarts = occurrences
       .map(occurrence => (zone ? fromWallClockDate(occurrence, zone) : occurrence))
       .filter(start =>
         start >= startWindow &&
         start <= endWindow &&
         !exdateTimes.has(start.getTime())
-      )
+      );
+
+    // Guard: cap IN-WINDOW occurrences to prevent CPU spikes downstream (#26).
+    // Applied after the real-UTC filter so pad-only occurrences never consume
+    // the cap budget.
+    if (inWindowStarts.length > MAX_OCCURRENCES) {
+      logger.warn(
+        `⚠️ Recurring event "${event.summary}" produced ${inWindowStarts.length} occurrences — capping at ${MAX_OCCURRENCES}`
+      );
+      inWindowStarts.length = MAX_OCCURRENCES;
+    }
+
+    // Create expanded events
+    const expandedEvents: ExpandedEvent[] = inWindowStarts
       .map(start => {
         const endTime = new Date(start.getTime() + duration);
 
