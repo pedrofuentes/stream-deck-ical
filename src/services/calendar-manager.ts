@@ -15,6 +15,7 @@ import { parseICalFeed } from './ical-parser.js';
 import { processRecurringEvents } from './recurrence-expander.js';
 import { sortEventsByStartTime } from '../utils/event-utils.js';
 import { logger } from '../utils/logger.js';
+import { normalizeICalUrl, isSupportedICalUrl } from '../utils/url-utils.js';
 
 /**
  * Generate a unique ID for a calendar based on its URL
@@ -32,15 +33,13 @@ function generateCalendarId(url: string): string {
 }
 
 /**
- * Validate URL format
+ * Validate URL format.
+ * Supports webcal(s):// (normalized to https:// before checking) in
+ * addition to http:// and https:// — other schemes (ftp://, file://, etc.)
+ * are rejected since fetch() cannot handle them (#43).
  */
 function isValidURL(url: string): boolean {
-  try {
-    new URL(url);
-    return true;
-  } catch (e) {
-    return false;
-  }
+  return isSupportedICalUrl(url);
 }
 
 /**
@@ -53,15 +52,18 @@ const FETCH_TIMEOUT_MS = 30_000;
  * Fetch iCal feed from URL
  */
 async function fetchICalFeed(url: string): Promise<string> {
+  // Normalize webcal(s):// (used by Apple/iCloud share links) to https:// —
+  // fetch() cannot dereference the webcal(s) scheme (#43).
+  const normalizedUrl = normalizeICalUrl(url);
   const startTime = Date.now();
-  const urlPreview = url.length > 60 ? url.substring(0, 60) + '...' : url;
+  const urlPreview = normalizedUrl.length > 60 ? normalizedUrl.substring(0, 60) + '...' : normalizedUrl;
   logger.info(`📥 [CalendarManager] Fetching: ${urlPreview}`);
-  
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, {
+    const response = await fetch(normalizedUrl, {
       headers: {
         'Accept': 'text/calendar, text/plain, */*'
       },
