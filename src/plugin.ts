@@ -13,8 +13,8 @@ import { TimeLeftAction } from './actions/time-left.js';
 import { CombinedAction } from './actions/combined-action.js';
 import { startPeriodicUpdates, stopPeriodicUpdates, calendarCache, getDebugInfo, setFeedConfig, setActionSettings } from './services/calendar-service.js';
 import { calendarManager } from './services/calendar-manager.js';
-import { setGlobalCalendarConfig, setNamedCalendars, migrateDeletedCalendars } from './actions/base-action.js';
-import { logger, isDebugMode } from './utils/logger.js';
+import { setGlobalCalendarConfig, setNamedCalendars, migrateDeletedCalendars, startOrphanSweep } from './actions/base-action.js';
+import { logger, isDebugMode, summarizeDebugInfo } from './utils/logger.js';
 import { compileDiagnosticReport, formatDiagnosticText } from './services/diagnostics-service.js';
 import { NamedCalendar } from './types/index.js';
 
@@ -218,7 +218,9 @@ streamDeck.ui.onSendToPlugin(async (ev) => {
     // Send debug info back to Property Inspector
     if (streamDeck.ui.action) {
       const debugInfo = getDebugInfo();
-      logger.info('Sending debug info:', debugInfo);
+      // Log a compact summary only — embedding the full payload nests the log
+      // buffer into itself on every request, causing unbounded growth (#29).
+      logger.info('Sending debug info:', summarizeDebugInfo(debugInfo));
       await streamDeck.ui.sendToPropertyInspector({
         action: 'debugInfo',
         data: debugInfo
@@ -247,6 +249,11 @@ streamDeck.ui.onSendToPlugin(async (ev) => {
  * Connect to Stream Deck
  */
 streamDeck.connect();
+
+// Start the single global orphan-reconciliation sweep to reap button states the
+// Stream Deck no longer reports as visible (e.g. after macOS wake-from-sleep),
+// which would otherwise leak per-second display timers and pin CPU (#29).
+startOrphanSweep();
 
 logger.info('Stream Deck iCal Plugin initialized');
 

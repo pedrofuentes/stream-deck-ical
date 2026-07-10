@@ -75,6 +75,10 @@ interface ButtonState {
   calendarRetryInterval?: NodeJS.Timeout;
   cacheVersion: number;
   currentImage: string;
+  /** Last title sent to the SDK — used to skip redundant setTitle calls (#29) */
+  currentTitle?: string;
+  /** Last per-tick debug line — used to skip redundant debug buffering (#29) */
+  lastDebugMessage?: string;
   lastKeyPress: number;
   actionRef: any;
   flashInterval?: NodeJS.Timeout;
@@ -93,9 +97,63 @@ const actionInstances: BaseAction[] = [];
  */
 export function migrateDeletedCalendars(currentCalendarIds: string[]): void {
   logger.info(`[BaseAction] Checking for buttons using deleted calendars. Valid IDs: ${currentCalendarIds.join(', ')}`);
-  
+
   for (const action of actionInstances) {
     action.migrateButtonsWithDeletedCalendar(currentCalendarIds);
+  }
+}
+
+/** Default cadence for the orphan reconciliation sweep (#29). */
+const ORPHAN_SWEEP_INTERVAL_MS = 60_000;
+let orphanSweepInterval: NodeJS.Timeout | undefined;
+
+/**
+ * Reap button states the Stream Deck no longer reports as visible.
+ *
+ * On macOS wake-from-sleep the Stream Deck app can re-emit onWillAppear with new
+ * context IDs without a matching onWillDisappear for the old ones, leaking button
+ * states that keep their 1-second display timers (and calendar refcounts) alive
+ * forever — pinning CPU (#29). This single sweep reconciles every tracked button
+ * across all action instances against the SDK's action store and runs the exact
+ * onWillDisappear cleanup for any that are gone.
+ *
+ * @returns The action IDs that were reaped.
+ */
+export function reapOrphanedButtons(): string[] {
+  const reaped: string[] = [];
+  for (const instance of actionInstances) {
+    reaped.push(...instance.reapOrphans());
+  }
+  if (reaped.length > 0) {
+    logger.info(`[BaseAction] Orphan sweep reaped ${reaped.length} stale button state(s): ${reaped.join(', ')}`);
+  }
+  return reaped;
+}
+
+/**
+ * Start the single global orphan-reconciliation sweep. Idempotent.
+ */
+export function startOrphanSweep(intervalMs: number = ORPHAN_SWEEP_INTERVAL_MS): void {
+  if (orphanSweepInterval) {
+    return;
+  }
+  orphanSweepInterval = setInterval(() => {
+    try {
+      reapOrphanedButtons();
+    } catch (error) {
+      logger.error('[BaseAction] Orphan sweep failed:', error);
+    }
+  }, intervalMs);
+  logger.info(`[BaseAction] Orphan sweep started (every ${Math.round(intervalMs / 1000)}s)`);
+}
+
+/**
+ * Stop the global orphan-reconciliation sweep (primarily for teardown/testing).
+ */
+export function stopOrphanSweep(): void {
+  if (orphanSweepInterval) {
+    clearInterval(orphanSweepInterval);
+    orphanSweepInterval = undefined;
   }
 }
 
@@ -164,7 +222,10 @@ export abstract class BaseAction extends SingletonAction {
     // Get or create button state
     const state = this.getButtonState(actionId);
     state.actionRef = ev.action;
-    
+    // Reset change-guards so the first tick after (re)appearing always paints (#29)
+    state.currentTitle = undefined;
+    state.lastDebugMessage = undefined;
+
     // Check for per-action settings
     const settings = ev.payload.settings as ActionSettings | undefined;
     
@@ -622,6 +683,59 @@ export abstract class BaseAction extends SingletonAction {
    */
   protected abstract setInitialImage(action: any): Promise<void>;
   
+  /**
+   * Set the button title, skipping the SDK call when the title is unchanged (#29).
+   *
+   * The per-second display timer previously called setTitle every tick regardless
+   * of whether the text changed. Marquee frames differ each tick so they still
+   * render; a stable countdown/status only paints when it actually changes.
+   */
+  protected async setTitleForButton(actionId: string, action: any, title: string): Promise<void> {
+    const state = this.buttonStates.get(actionId);
+    if (state) {
+      if (state.currentTitle === title) {
+        return;
+      }
+      state.currentTitle = title;
+    }
+    await action.setTitle(title);
+  }
+
+  /**
+   * Emit a per-tick debug line only when its content changed since the previous
+   * tick for this button (#29). The logger always builds the string and pushes it
+   * into the 500-entry buffer, so an unchanging per-second line is pure churn.
+   */
+  protected debugForButton(actionId: string, message: string): void {
+    const state = this.buttonStates.get(actionId);
+    if (state) {
+      if (state.lastDebugMessage === message) {
+        return;
+      }
+      state.lastDebugMessage = message;
+    }
+    logger.debug(message);
+  }
+
+  /**
+   * Reap this instance's button states that the Stream Deck no longer reports as
+   * visible, running the exact onWillDisappear cleanup for each (#29).
+   *
+   * @returns The action IDs that were reaped.
+   */
+  public reapOrphans(): string[] {
+    const reaped: string[] = [];
+    for (const actionId of Array.from(this.buttonStates.keys())) {
+      const stillVisible = streamDeck.actions.getActionById(actionId);
+      if (!stillVisible) {
+        // Reuse the exact cleanup path, including subclass onWillDisappear overrides.
+        void this.onWillDisappear({ action: { id: actionId } } as WillDisappearEvent<any>);
+        reaped.push(actionId);
+      }
+    }
+    return reaped;
+  }
+
   /**
    * Set action image by name
    */
