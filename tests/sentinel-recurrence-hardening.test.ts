@@ -370,6 +370,51 @@ describe('#59.3 — real-UTC window filtering near a DST transition', () => {
   });
 });
 
+describe('#59.3 — occurrence cap interacts correctly with the padded window', () => {
+  it('should return MAX_OCCURRENCES in-window occurrences for a zoned minutely event with a past DTSTART', () => {
+    // The ±1-day padding places up to 1440 minutely occurrences BEFORE the
+    // real window start. If the 500-occurrence cap (#26) is applied to the
+    // padded between() result before the real-UTC window filter, the cap
+    // truncates to 500 entries that all sit inside the leading pad and the
+    // filter then yields ZERO — the event silently vanishes. The cap must
+    // count occurrences that are actually inside the caller's window.
+    const minutelyEvent: CalendarEvent = {
+      uid: 'prague-minutely-past-dtstart',
+      summary: 'Minutely Past DTSTART',
+      start: new Date('2026-06-01T08:00:00Z'), // 10:00 CEST, weeks before window
+      end: new Date('2026-06-01T08:05:00Z'),
+      isRecurring: true,
+      eventTimezone: 'Europe/Prague'
+    };
+
+    const startWindow = new Date('2026-07-06T00:00:00Z');
+    const endWindow = new Date('2026-07-07T00:00:00Z');
+
+    const expanded = expandRecurringEvent(
+      minutelyEvent,
+      'FREQ=MINUTELY',
+      [],
+      startWindow,
+      endWindow,
+      'Europe/Prague'
+    );
+
+    // Exactly the cap, filled from the REAL window (not the leading pad)
+    expect(expanded.length).toBe(500);
+    expect(expanded[0].start.toISOString()).toBe('2026-07-06T00:00:00.000Z');
+    expect(expanded[499].start.toISOString()).toBe('2026-07-06T08:19:00.000Z');
+
+    // All occurrences inside the real-UTC window and in ascending order
+    for (let i = 0; i < expanded.length; i++) {
+      expect(expanded[i].start.getTime()).toBeGreaterThanOrEqual(startWindow.getTime());
+      expect(expanded[i].start.getTime()).toBeLessThanOrEqual(endWindow.getTime());
+      if (i > 0) {
+        expect(expanded[i].start.getTime()).toBeGreaterThan(expanded[i - 1].start.getTime());
+      }
+    }
+  });
+});
+
 // ─────────────────────────────────────────────────────────────
 // #59 item 4 — EXDATE matching in the spring-forward gap
 // ─────────────────────────────────────────────────────────────
