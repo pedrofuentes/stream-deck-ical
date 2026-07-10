@@ -284,13 +284,13 @@ export class CombinedAction extends BaseAction {
   }
 
   /**
-   * Override to clean up resources
+   * Override the shared cleanup hook so Combined-specific state (marquee) is torn
+   * down for both SDK disappearances and reaped orphans (#50).
    */
-  async onWillDisappear(ev: any): Promise<void> {
-    const actionId = ev.action.id;
+  protected async cleanupButtonState(actionId: string): Promise<void> {
     this.stopMarquee(actionId);
     // Clean up Combined-specific state
     this.combinedStates.delete(actionId);
-    await super.onWillDisappear(ev);
+    await super.cleanupButtonState(actionId);
   }
 }

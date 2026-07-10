@@ -92,6 +92,19 @@ interface ButtonState {
 const actionInstances: BaseAction[] = [];
 
 /**
+ * Test-only: clear the module-level action-instance registry.
+ *
+ * `actionInstances` accumulates one entry per `new BaseAction()` and is never
+ * pruned, so across a test file previously-constructed instances leak into the
+ * orphan sweep (which iterates every registered instance) and can reap another
+ * test's button (#55). Call this from `beforeEach` in tests that exercise the
+ * sweep to guarantee an isolated registry. Not used by production code.
+ */
+export function __resetActionInstancesForTest(): void {
+  actionInstances.length = 0;
+}
+
+/**
  * Migrate buttons using deleted calendars to the default calendar.
  * Called when named calendars are updated.
  */
@@ -105,6 +118,15 @@ export function migrateDeletedCalendars(currentCalendarIds: string[]): void {
 
 /** Default cadence for the orphan reconciliation sweep (#29). */
 const ORPHAN_SWEEP_INTERVAL_MS = 60_000;
+
+/** Env override for the sweep cadence (positive integer ms), e.g. for tests/tuning (#56.1). */
+const ORPHAN_SWEEP_INTERVAL_ENV = 'ICAL_ORPHAN_SWEEP_MS';
+
+// Single global sweep timer. Held at module scope because there is exactly one
+// sweep for the whole plugin (it reconciles every action instance). Lifecycle is
+// managed only through startOrphanSweep()/stopOrphanSweep(); tests that call
+// startOrphanSweep() MUST call stopOrphanSweep() in afterEach to avoid a leaked
+// interval bleeding across tests (#56.3).
 let orphanSweepInterval: NodeJS.Timeout | undefined;
 
 /**
@@ -119,10 +141,10 @@ let orphanSweepInterval: NodeJS.Timeout | undefined;
  *
  * @returns The action IDs that were reaped.
  */
-export function reapOrphanedButtons(): string[] {
+export async function reapOrphanedButtons(): Promise<string[]> {
   const reaped: string[] = [];
   for (const instance of actionInstances) {
-    reaped.push(...instance.reapOrphans());
+    reaped.push(...await instance.reapOrphans());
   }
   if (reaped.length > 0) {
     logger.info(`[BaseAction] Orphan sweep reaped ${reaped.length} stale button state(s): ${reaped.join(', ')}`);
@@ -131,20 +153,44 @@ export function reapOrphanedButtons(): string[] {
 }
 
 /**
- * Start the single global orphan-reconciliation sweep. Idempotent.
+ * Resolve the sweep cadence: explicit param > env override > default.
+ * The env override must be a positive integer number of milliseconds; anything
+ * else is ignored with a warning so a typo can't silently disable the sweep.
  */
-export function startOrphanSweep(intervalMs: number = ORPHAN_SWEEP_INTERVAL_MS): void {
+function resolveOrphanSweepInterval(intervalMs?: number): number {
+  if (intervalMs !== undefined) {
+    return intervalMs;
+  }
+  const raw = process.env[ORPHAN_SWEEP_INTERVAL_ENV];
+  if (raw !== undefined) {
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+    logger.warn(`[BaseAction] Ignoring invalid ${ORPHAN_SWEEP_INTERVAL_ENV}="${raw}" (expected positive integer ms)`);
+  }
+  return ORPHAN_SWEEP_INTERVAL_MS;
+}
+
+/**
+ * Start the single global orphan-reconciliation sweep. Idempotent.
+ *
+ * @param intervalMs Explicit cadence (ms). When omitted, the ICAL_ORPHAN_SWEEP_MS
+ *                   env override is used if valid, otherwise the 60s default.
+ */
+export function startOrphanSweep(intervalMs?: number): void {
   if (orphanSweepInterval) {
     return;
   }
+  const resolvedMs = resolveOrphanSweepInterval(intervalMs);
   orphanSweepInterval = setInterval(() => {
-    try {
-      reapOrphanedButtons();
-    } catch (error) {
+    // reapOrphanedButtons is async; a rejected promise would otherwise escape this
+    // synchronous callback with no unhandledRejection handler and crash the plugin (#50).
+    reapOrphanedButtons().catch(error => {
       logger.error('[BaseAction] Orphan sweep failed:', error);
-    }
-  }, intervalMs);
-  logger.info(`[BaseAction] Orphan sweep started (every ${Math.round(intervalMs / 1000)}s)`);
+    });
+  }, resolvedMs);
+  logger.info(`[BaseAction] Orphan sweep started (every ${Math.round(resolvedMs / 1000)}s)`);
 }
 
 /**
@@ -449,32 +495,46 @@ export abstract class BaseAction extends SingletonAction {
   async onWillDisappear(ev: WillDisappearEvent<any>): Promise<void> {
     const actionId = ev.action.id;
     logger.debug(`${this.constructor.name} will disappear: ${actionId}`);
-    
+    await this.cleanupButtonState(actionId);
+  }
+
+  /**
+   * Tear down all per-button resources for an action ID and forget its state.
+   *
+   * This is the single, polymorphic cleanup hook shared by the SDK disappear
+   * path (onWillDisappear) and the orphan sweep (reapOrphans) — no synthetic
+   * event, no unsafe cast (#50). Subclasses that own extra per-button state
+   * (e.g. marquee intervals) override this, do their cleanup, then call
+   * `super.cleanupButtonState(actionId)`; overriding here (instead of
+   * onWillDisappear) guarantees the subclass cleanup also runs for reaped
+   * orphans, not just for SDK-reported disappearances.
+   */
+  protected async cleanupButtonState(actionId: string): Promise<void> {
     const state = this.buttonStates.get(actionId);
     if (state) {
       // Stop button's timer
       if (state.interval) {
         clearInterval(state.interval);
       }
-      
+
       // Clear waiting interval
       if (state.waitingForCacheInterval) {
         clearInterval(state.waitingForCacheInterval);
       }
-      
+
       // Clear calendar retry interval
       if (state.calendarRetryInterval) {
         clearInterval(state.calendarRetryInterval);
       }
-      
+
       // Stop any flash
       if (state.flashInterval) {
         clearInterval(state.flashInterval);
       }
-      
+
       // Unregister from CalendarManager
       calendarManager.unregisterAction(actionId);
-      
+
       // Remove state for this button
       this.buttonStates.delete(actionId);
       this.buttonSettings.delete(actionId);
@@ -692,13 +752,19 @@ export abstract class BaseAction extends SingletonAction {
    */
   protected async setTitleForButton(actionId: string, action: any, title: string): Promise<void> {
     const state = this.buttonStates.get(actionId);
-    if (state) {
-      if (state.currentTitle === title) {
-        return;
-      }
-      state.currentTitle = title;
+    if (state && state.currentTitle === title) {
+      return;
     }
-    await action.setTitle(title);
+    try {
+      await action.setTitle(title);
+      // Commit the change-guard only after the SDK actually painted, so a rejected
+      // (transient IPC) call doesn't freeze stale text — the next tick retries (#51).
+      if (state) {
+        state.currentTitle = title;
+      }
+    } catch (error) {
+      logger.warn(`[${this.constructor.name}] setTitle failed for ${actionId}, will retry next tick:`, error);
+    }
   }
 
   /**
@@ -719,18 +785,24 @@ export abstract class BaseAction extends SingletonAction {
 
   /**
    * Reap this instance's button states that the Stream Deck no longer reports as
-   * visible, running the exact onWillDisappear cleanup for each (#29).
+   * visible, running the shared cleanupButtonState cleanup for each (#29).
    *
-   * @returns The action IDs that were reaped.
+   * @returns The action IDs that were successfully reaped.
    */
-  public reapOrphans(): string[] {
+  public async reapOrphans(): Promise<string[]> {
     const reaped: string[] = [];
     for (const actionId of Array.from(this.buttonStates.keys())) {
       const stillVisible = streamDeck.actions.getActionById(actionId);
       if (!stillVisible) {
-        // Reuse the exact cleanup path, including subclass onWillDisappear overrides.
-        void this.onWillDisappear({ action: { id: actionId } } as WillDisappearEvent<any>);
-        reaped.push(actionId);
+        try {
+          // Await the shared, polymorphic cleanup so a rejection is caught here
+          // (not left as an unhandled rejection) and the id is recorded as reaped
+          // only after cleanup actually completes (#50).
+          await this.cleanupButtonState(actionId);
+          reaped.push(actionId);
+        } catch (error) {
+          logger.error(`[${this.constructor.name}] Failed to reap orphaned button ${actionId}:`, error);
+        }
       }
     }
     return reaped;
