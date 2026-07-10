@@ -20,6 +20,14 @@ import { logger } from '../utils/logger.js';
 const MAX_OCCURRENCES = 500;
 
 /**
+ * Coarse padding (±1 day) applied to the wall-clock between() window when
+ * expanding in a zone. The exact real-UTC window is enforced afterwards on
+ * the converted occurrences, so the padding only needs to cover the largest
+ * possible wall-clock/real-UTC divergence around DST transitions.
+ */
+const WINDOW_PAD_MS = 24 * 60 * 60 * 1000;
+
+/**
  * Parse RRULE string from iCal format
  * @param rruleString - RRULE string (e.g., "FREQ=WEEKLY;BYDAY=MO,WE,FR")
  * @param dtstart - Formatted DTSTART value (YYYYMMDDTHHMMSS, optionally with trailing Z)
@@ -90,13 +98,30 @@ function fromWallClockDate(date: Date, zone: string): Date {
  * Rewrite UTC UNTIL values (UNTIL=YYYYMMDDTHHMMSSZ) inside an RRULE string to
  * the equivalent wall-clock time in `zone`, so the inclusive UNTIL boundary is
  * honored during wall-clock expansion. Date-only UNTIL values are left as-is.
+ *
+ * Matching is case-insensitive (rrulestr tolerates lowercase property names)
+ * and the replacement is uppercase-normalized. Malformed stamps (e.g.
+ * UNTIL=20260231T993000Z) keep their original token: the series then expands
+ * as if the token had not been rewritten, instead of aborting the whole
+ * expansion with a literal "UNTIL=Invalid DateTime".
  */
 function rewriteUntilForZone(rruleString: string, zone: string): string {
-  return rruleString.replace(/UNTIL=(\d{8}T\d{6})Z/g, (_match, stamp: string) => {
-    const dt = DateTime.fromFormat(stamp, "yyyyMMdd'T'HHmmss", { zone: 'utc' }).setZone(zone);
+  return rruleString.replace(/UNTIL=(\d{8}T\d{6})Z/gi, (match, stamp: string) => {
+    const dt = DateTime.fromFormat(stamp.toUpperCase(), "yyyyMMdd'T'HHmmss", { zone: 'utc' }).setZone(zone);
+    if (!dt.isValid) {
+      return match;
+    }
     return `UNTIL=${dt.toFormat("yyyyMMdd'T'HHmmss")}`;
   });
 }
+
+/**
+ * Zones already warned about as invalid, so the warning fires once per unique
+ * zone value instead of repeating on every refresh for every event. Capped to
+ * bound memory against feeds carrying unbounded distinct garbage TZIDs.
+ */
+const warnedInvalidZones = new Set<string>();
+const MAX_WARNED_INVALID_ZONES = 100;
 
 /**
  * Resolve the IANA timezone to use for wall-clock expansion.
@@ -108,7 +133,13 @@ function resolveExpansionZone(eventTimezone: string | undefined, summary: string
     return undefined;
   }
   if (!isValidIANATimezone(eventTimezone)) {
-    logger.warn(`Invalid event timezone "${eventTimezone}" for "${summary}" — falling back to UTC expansion`);
+    if (!warnedInvalidZones.has(eventTimezone)) {
+      if (warnedInvalidZones.size >= MAX_WARNED_INVALID_ZONES) {
+        warnedInvalidZones.clear();
+      }
+      warnedInvalidZones.add(eventTimezone);
+      logger.warn(`Invalid event timezone "${eventTimezone}" for "${summary}" — falling back to UTC expansion`);
+    }
     return undefined;
   }
   return eventTimezone;
@@ -138,7 +169,10 @@ function toDateKey(dateOrIso: Date | string): string {
  * @param exdates - Array of excluded dates (real UTC instants)
  * @param startWindow - Start of time window
  * @param endWindow - End of time window
- * @param eventTimezone - IANA timezone of the event (e.g., "America/Chicago")
+ * @param eventTimezone - Optional override for the expansion timezone. When
+ *   omitted, `event.eventTimezone` is used. Only pass this to deliberately
+ *   expand in a zone different from the event's own (e.g., forcing the UTC
+ *   path with "UTC").
  * @returns Array of expanded event occurrences
  */
 export function expandRecurringEvent(
@@ -152,7 +186,7 @@ export function expandRecurringEvent(
   try {
     const expansionStart = Date.now();
 
-    const zone = resolveExpansionZone(eventTimezone, event.summary);
+    const zone = resolveExpansionZone(eventTimezone ?? event.eventTimezone, event.summary);
 
     // Build the DTSTART anchor: wall-clock (naive) in the event's zone, or
     // UTC components when no usable zone is available.
@@ -173,10 +207,17 @@ export function expandRecurringEvent(
       rruleSet.exdate(zone ? toWallClockDate(exdate, zone) : exdate);
     }
 
-    // Get all occurrences within the time window (window converted to
-    // wall-clock time when expanding in a zone)
-    const betweenStart = zone ? toWallClockDate(startWindow, zone) : startWindow;
-    const betweenEnd = zone ? toWallClockDate(endWindow, zone) : endWindow;
+    // Get all occurrences within the time window. When expanding in a zone,
+    // between() runs in fake-UTC wall-clock space while the caller's window is
+    // real UTC; near a DST transition the two orderings diverge by up to an
+    // hour. Pad the wall-clock window by ±1 day as a coarse pre-filter — the
+    // exact real-UTC window is enforced on the converted occurrences below.
+    const betweenStart = zone
+      ? new Date(toWallClockDate(startWindow, zone).getTime() - WINDOW_PAD_MS)
+      : startWindow;
+    const betweenEnd = zone
+      ? new Date(toWallClockDate(endWindow, zone).getTime() + WINDOW_PAD_MS)
+      : endWindow;
     const occurrences = rruleSet.between(betweenStart, betweenEnd, true);
 
     // Guard: cap occurrences to prevent CPU spikes (#26)
@@ -190,21 +231,36 @@ export function expandRecurringEvent(
     // Calculate event duration
     const duration = event.end.getTime() - event.start.getTime();
 
-    // Create expanded events (converting wall-clock occurrences back to real UTC)
-    const expandedEvents: ExpandedEvent[] = occurrences.map(occurrence => {
-      const start = zone ? fromWallClockDate(occurrence, zone) : occurrence;
-      const endTime = new Date(start.getTime() + duration);
+    // Real-UTC exdate instants. The wall-clock exdates fed to rruleSet above
+    // cannot match an occurrence whose nominal wall time falls in a
+    // spring-forward gap (the parser resolves such an EXDATE forward, e.g.
+    // 02:30 → 03:30, while rrule generates the nominal 02:30), so converted
+    // occurrences are also filtered by exact real-UTC timestamp.
+    const exdateTimes = new Set(exdates.map(exdate => exdate.getTime()));
 
-      return {
-        uid: event.uid,
-        summary: event.summary,
-        start,
-        end: endTime,
-        recurrenceId: start,
-        isRecurring: true,
-        isAllDay: event.isAllDay
-      };
-    });
+    // Create expanded events: convert wall-clock occurrences back to real UTC,
+    // enforce the exact real-UTC window (see padding note above), and drop
+    // real-UTC exdate matches.
+    const expandedEvents: ExpandedEvent[] = occurrences
+      .map(occurrence => (zone ? fromWallClockDate(occurrence, zone) : occurrence))
+      .filter(start =>
+        start >= startWindow &&
+        start <= endWindow &&
+        !exdateTimes.has(start.getTime())
+      )
+      .map(start => {
+        const endTime = new Date(start.getTime() + duration);
+
+        return {
+          uid: event.uid,
+          summary: event.summary,
+          start,
+          end: endTime,
+          recurrenceId: start,
+          isRecurring: true,
+          isAllDay: event.isAllDay
+        };
+      });
 
     const elapsed = Date.now() - expansionStart;
     if (elapsed > 100) {
@@ -240,7 +296,7 @@ export function isDateExcluded(date: Date, exdates: Date[]): boolean {
  * @returns Array of all events (both single and expanded recurring)
  */
 export function processRecurringEvents(
-  events: any[],
+  events: CalendarEvent[],
   startWindow: Date,
   endWindow: Date
 ): CalendarEvent[] {
@@ -256,8 +312,8 @@ export function processRecurringEvents(
   // The date-fallback handles the case where RECURRENCE-ID and RRULE-expanded
   // occurrence differ by ±1 hour due to DST transitions. For a given UID, there
   // is almost never more than one occurrence per calendar day.
-  const exactExceptions = new Map<string, any>();
-  const dateExceptions = new Map<string, any>();
+  const exactExceptions = new Map<string, CalendarEvent>();
+  const dateExceptions = new Map<string, CalendarEvent>();
 
   for (const event of events) {
     if (event.recurrenceId) {
@@ -284,14 +340,14 @@ export function processRecurringEvents(
       }
 
       if (event.rrule) {
-        // This is a recurring event - expand it in the event's timezone (#39, #30)
+        // This is a recurring event - expand it in the event's timezone
+        // (#39, #30); expandRecurringEvent reads event.eventTimezone itself.
         const expanded = expandRecurringEvent(
           event,
           event.rrule,
           event.exdate || [],
           startWindow,
-          endWindow,
-          event.eventTimezone
+          endWindow
         );
 
         // Convert expanded events to CalendarEvent format

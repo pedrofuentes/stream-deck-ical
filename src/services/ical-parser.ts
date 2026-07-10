@@ -7,6 +7,7 @@
  * @license MIT
  */
 
+import { randomUUID } from 'node:crypto';
 import ICAL from 'ical.js';
 import { DateTime } from 'luxon';
 import { parseTimezone } from './timezone-service.js';
@@ -221,7 +222,7 @@ export function parseICS(icsContent: string): ParsedCalendar {
       const isAllDay = startTime.isDate === true;
 
       events.push({
-        uid: event.uid || `generated-${Math.random().toString(36)}`,
+        uid: event.uid || `generated-${randomUUID()}`,
         summary: event.summary || '(No title)',
         description: event.description || undefined,
         start,
