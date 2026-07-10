@@ -31,6 +31,7 @@ vi.mock('../src/utils/logger', () => ({
 import { expandRecurringEvent, processRecurringEvents } from '../src/services/recurrence-expander';
 import { parseICS } from '../src/services/ical-parser';
 import { CalendarEvent } from '../src/types/index';
+import { logger } from '../src/utils/logger';
 
 // ─────────────────────────────────────────────────────────────
 // Issue #39: BYDAY weekly event vanishes when UTC day ≠ local day
@@ -279,32 +280,41 @@ describe('No-regression guards — UTC expansion path unchanged', () => {
   });
 
   it('should fall back to UTC expansion for an invalid timezone without crashing', () => {
-    // Same shape as #39: DTSTART is a Sunday in UTC, BYDAY=SA.
-    // With no usable zone the pre-fix UTC behavior applies: 0 occurrences
-    // in the narrow window (first UTC Saturday is Jul 11).
+    // Discriminating oracle: same event shape as the no-zone guard test above,
+    // which yields NONZERO occurrences via the UTC fallback path. If the
+    // invalid-zone guard (isValidIANATimezone) were removed, luxon would
+    // format an "Invalid DateTime" DTSTART, rrulestr would throw, and the
+    // catch path would return [] — failing the 3-occurrence assertion below.
     const event: CalendarEvent = {
+      ...utcEvent,
       uid: 'invalid-zone',
       summary: 'Invalid Zone Event',
-      start: new Date('2026-07-05T00:30:00Z'),
-      end: new Date('2026-07-05T01:30:00Z'),
-      isRecurring: true,
       eventTimezone: 'Invalid/Not_A_Zone'
     };
 
-    const startWindow = new Date('2026-07-03T11:50:10Z');
-    const endWindow = new Date('2026-07-06T11:50:10Z');
+    const startWindow = new Date('2026-01-01T00:00:00Z');
+    const endWindow = new Date('2026-01-31T23:59:59Z');
 
     const expanded = expandRecurringEvent(
       event,
-      'FREQ=WEEKLY;BYDAY=SA',
+      'FREQ=WEEKLY;BYDAY=MO;COUNT=3',
       [],
       startWindow,
       endWindow,
       'Invalid/Not_A_Zone'
     );
 
-    expect(Array.isArray(expanded)).toBe(true);
-    expect(expanded.length).toBe(0);
+    // Exactly the same instants as the no-eventTimezone guard test
+    expect(expanded.map(e => e.start.toISOString())).toEqual([
+      '2026-01-05T10:00:00.000Z',
+      '2026-01-12T10:00:00.000Z',
+      '2026-01-19T10:00:00.000Z'
+    ]);
+
+    // The fallback is logged, not silent
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid event timezone "Invalid/Not_A_Zone"')
+    );
   });
 
   it('pins pre-fix UTC behavior: BYDAY evaluated against the UTC weekday when no zone is set', () => {
