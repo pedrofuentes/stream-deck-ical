@@ -99,7 +99,7 @@ Automatic conversion between Windows and IANA timezones. Works globally.
 1. Open Calendar app on Mac
 2. Right-click calendar → **Share Calendar**
 3. Check "Public Calendar" and copy the URL
-4. Replace `webcal://` with `https://` when pasting
+4. Paste it as-is — the plugin automatically converts `webcal://` links to `https://`
 
 </details>
 

@@ -22,12 +22,24 @@ function generateId() {
 }
 
 /**
- * Validate URL format
+ * Normalize an iCal feed URL: rewrite webcal(s):// (Apple/iCloud share
+ * links) to https://, since the plugin cannot fetch the webcal(s) scheme.
+ * Mirrors src/utils/url-utils.ts normalizeICalUrl — keep in sync manually,
+ * this plain-JS file has no test harness (#43).
+ */
+function normalizeICalUrl(url) {
+    return url.trim().replace(/^webcals?:\/\//i, 'https://');
+}
+
+/**
+ * Validate URL format. Accepts http:// and https:// (after normalizing
+ * webcal(s):// to https://); rejects other schemes such as ftp:// or
+ * file:// (#43).
  */
 function isValidURL(url) {
     try {
-        new URL(url);
-        return true;
+        const parsed = new URL(normalizeICalUrl(url));
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:';
     } catch (e) {
         return false;
     }
@@ -155,10 +167,12 @@ function editCalendar(id) {
 function saveCalendar() {
     const id = document.getElementById('edit-calendar-id').value;
     const name = document.getElementById('calendar-name').value.trim();
-    const url = document.getElementById('calendar-url').value.trim();
+    // Normalize webcal(s):// (e.g. iCloud share links) to https:// so the
+    // stored URL is one the plugin can fetch (#43).
+    const url = normalizeICalUrl(document.getElementById('calendar-url').value.trim());
     const timeWindowVal = document.getElementById('calendar-time-window').value;
     const excludeAllDayVal = document.getElementById('calendar-exclude-allday').value;
-    
+
     // Validate
     if (!name) {
         showAlert('Please enter a calendar name');
@@ -169,7 +183,7 @@ function saveCalendar() {
         return;
     }
     if (!isValidURL(url)) {
-        showAlert('Please enter a valid iCal URL (must start with http:// or https://)');
+        showAlert('Please enter a valid iCal URL (must start with http://, https://, or webcal://)');
         return;
     }
     
