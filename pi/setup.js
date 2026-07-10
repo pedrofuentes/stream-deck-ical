@@ -21,11 +21,18 @@ function generateId() {
     return 'cal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 }
 
+// BEGIN mirror:url-utils
+// This block mirrors src/utils/url-utils.ts (normalizeICalUrl,
+// isSupportedICalUrl) — kept in sync manually since this plain-JS file
+// (loaded directly by the Property Inspector webview) cannot import the
+// TypeScript util. Parity is enforced by tests/pi-url-parity.test.ts,
+// which extracts this exact block via the BEGIN/END markers and evaluates
+// it in isolation, so this block MUST stay self-contained and pure
+// (no DOM access, no references to anything outside this block) (#49 item 1).
+
 /**
  * Normalize an iCal feed URL: rewrite webcal(s):// (Apple/iCloud share
- * links) to https://, since the plugin cannot fetch the webcal(s) scheme.
- * Mirrors src/utils/url-utils.ts normalizeICalUrl — keep in sync manually,
- * this plain-JS file has no test harness (#43).
+ * links) to https://, since the plugin cannot fetch the webcal(s) scheme (#43).
  */
 function normalizeICalUrl(url) {
     return url.trim().replace(/^webcals?:\/\//i, 'https://');
@@ -44,6 +51,7 @@ function isValidURL(url) {
         return false;
     }
 }
+// END mirror:url-utils
 
 /**
  * Show alert message
@@ -70,56 +78,85 @@ function getOpener() {
 /**
  * Render the calendar list
  * First calendar is always the default and cannot be deleted
+ *
+ * Builds DOM nodes directly (createElement/textContent/dataset) instead of
+ * an innerHTML template — calendar name/url/id are user-controlled data
+ * (imported settings, iCloud share links, etc.) and interpolating them into
+ * an HTML string, even with per-field escaping, is a DOM-XSS surface that
+ * CodeQL flags (js/xss-through-dom, code scanning alert #1). Only the
+ * static empty-state string remains innerHTML.
  */
 function renderCalendarList() {
     const listEl = document.getElementById('calendar-list');
     if (!listEl) return;
-    
+
     if (calendars.length === 0) {
         listEl.innerHTML = '<div class="empty-calendars">No calendars configured. Add one below.</div>';
         return;
     }
-    
+
     // First calendar is always the default
     defaultCalendarId = calendars[0].id;
-    
-    listEl.innerHTML = calendars.map((cal, index) => {
-        const isFirst = index === 0;
-        return `
-            <div class="calendar-item ${isFirst ? 'default' : ''}" data-id="${cal.id}">
-                <div class="calendar-header">
-                    <div class="calendar-info">
-                        <div class="calendar-name">
-                            ${escapeHtml(cal.name)}
-                            ${isFirst ? '<span class="default-badge">Default</span>' : ''}
-                        </div>
-                        <div class="calendar-url" title="${escapeHtml(cal.url)}">${escapeHtml(cal.url)}</div>
-                    </div>
-                    <div class="calendar-actions">
-                        <button class="btn-small btn-edit" data-id="${cal.id}">Edit</button>
-                        ${!isFirst ? `<button class="btn-small btn-delete" data-id="${cal.id}">🗑</button>` : ''}
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-    
-    // Attach event listeners (onclick in innerHTML doesn't work in modules)
-    listEl.querySelectorAll('.btn-edit').forEach(btn => {
-        btn.addEventListener('click', () => editCalendar(btn.dataset.id));
-    });
-    listEl.querySelectorAll('.btn-delete').forEach(btn => {
-        btn.addEventListener('click', () => deleteCalendar(btn.dataset.id));
-    });
-}
 
-/**
- * Escape HTML to prevent XSS
- */
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+    // Clear existing content before rebuilding
+    listEl.textContent = '';
+
+    calendars.forEach((cal, index) => {
+        const isFirst = index === 0;
+
+        const item = document.createElement('div');
+        item.className = isFirst ? 'calendar-item default' : 'calendar-item';
+        item.dataset.id = cal.id;
+
+        const header = document.createElement('div');
+        header.className = 'calendar-header';
+
+        const info = document.createElement('div');
+        info.className = 'calendar-info';
+
+        const nameEl = document.createElement('div');
+        nameEl.className = 'calendar-name';
+        nameEl.appendChild(document.createTextNode(cal.name));
+        if (isFirst) {
+            const badge = document.createElement('span');
+            badge.className = 'default-badge';
+            badge.textContent = 'Default';
+            nameEl.appendChild(badge);
+        }
+
+        const urlEl = document.createElement('div');
+        urlEl.className = 'calendar-url';
+        urlEl.title = cal.url;
+        urlEl.textContent = cal.url;
+
+        info.appendChild(nameEl);
+        info.appendChild(urlEl);
+
+        const actions = document.createElement('div');
+        actions.className = 'calendar-actions';
+
+        const editBtn = document.createElement('button');
+        editBtn.className = 'btn-small btn-edit';
+        editBtn.dataset.id = cal.id;
+        editBtn.textContent = 'Edit';
+        editBtn.addEventListener('click', () => editCalendar(cal.id));
+        actions.appendChild(editBtn);
+
+        if (!isFirst) {
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn-small btn-delete';
+            deleteBtn.dataset.id = cal.id;
+            deleteBtn.textContent = '🗑';
+            deleteBtn.addEventListener('click', () => deleteCalendar(cal.id));
+            actions.appendChild(deleteBtn);
+        }
+
+        header.appendChild(info);
+        header.appendChild(actions);
+        item.appendChild(header);
+
+        listEl.appendChild(item);
+    });
 }
 
 /**

@@ -18,10 +18,18 @@
  * Any other URL is returned unchanged, aside from trimming surrounding
  * whitespace.
  *
+ * Non-string input (`null`/`undefined`/other types slipping through at
+ * runtime despite the `string` type) is returned unchanged rather than
+ * throwing — callers such as `CalendarManager` and the Property Inspector
+ * treat an unusable URL as an INVALID_URL state, not a crash (#49 item 3).
+ *
  * @param url - Raw URL as entered/stored by the user
  * @returns Normalized URL safe to pass to fetch()
  */
 export function normalizeICalUrl(url: string): string {
+  if (typeof url !== 'string') {
+    return url;
+  }
   const trimmed = url.trim();
   return trimmed.replace(/^webcals?:\/\//i, 'https://');
 }
@@ -35,12 +43,15 @@ export function normalizeICalUrl(url: string): string {
  * front so callers can surface a clear INVALID_URL state instead of a
  * confusing network error (#43).
  *
+ * Non-string input is safely rejected (returns `false`) rather than
+ * throwing (#49 item 3).
+ *
  * @param url - URL to validate
  * @returns True if the URL (after normalization) is fetchable via http(s)
  */
 export function isSupportedICalUrl(url: string): boolean {
-  const normalized = normalizeICalUrl(url);
   try {
+    const normalized = normalizeICalUrl(url);
     const parsed = new URL(normalized);
     return parsed.protocol === 'http:' || parsed.protocol === 'https:';
   } catch {
