@@ -35,6 +35,11 @@
 
 <!-- Add new learnings below this line, most recent first -->
 
+### [2026-07-11] Log messages built from untrusted data are a CWE-117 forgery vector
+**Context**: PR #86 (logger sanitization, following #71) and the R3 Sentinel review of it (SR-20260711-PR86-39115be) hardened `src/utils/logger.ts`.
+**Learning**: Feed-controlled data (event titles, wrapped error text) reaches the log sink, so untrusted arguments are a CWE-117 log-forgery vector: a raw `\r`/`\n` in a non-Error argument can forge a fresh `[timestamp] [LEVEL]` record, so newlines in non-Error args must be escaped to their two-character literal forms and Error-stack continuation lines marked. Two throw-safety traps also surfaced: `String(x)` is NOT throw-safe for a null-prototype object or a throwing `toString` (fall back to `Object.prototype.toString.call`), and `Error.stack` is not guaranteed to be a string (a number or a throwing getter makes `raw.replace(...)` throw) — both must be guarded so the logger never throws. Redaction that must protect against forensic tampering has to be bounded to a single line (`[^\/\r\n]+`), or a greedy class crosses newlines and silently deletes genuine stack frames.
+**Impact**: Any new log sink carrying feed data must route through the central sanitizer/`buildMessage` (never format-and-append ad hoc): that is the single place where newline escaping, control/spoof stripping, and home-path redaction are applied across all argument shapes. Do not re-add per-branch redaction — it re-opens the bypass the centralization closed.
+
 ### [2026-07-10] Sentinel rejection: fallback-path tests need discriminating oracles
 **Context**: PR #46 (timezone-aware recurrence expansion) was REJECTED by Sentinel review SR-20260709-PR46-9dac11e.
 **Learning**: The invalid-timezone fallback test asserted only `Array.isArray(expanded)` and `expanded.length === 0`; a mutation probe showed it stayed GREEN with the `isValidIANATimezone` guard deleted, because the crash path (invalid DateTime → rrulestr throws → catch) also returns `[]`. A 0-output oracle cannot discriminate "graceful fallback" from "crashed". Correction: assert exact NONZERO expected output through the fallback path (the reworked test pins 3 exact ISO instants + the logger.warn call) and mutation-verify (delete the guard → test must go RED).
