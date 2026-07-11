@@ -464,6 +464,42 @@ describe('JSON backslash-doubling must not defeat home-path redaction (SR-202607
   });
 });
 
+describe('escaping-depth bypass of home-path redaction (SR-20260711-PR105-14f6644)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('redacts a raw string arg whose separators are 3-backslash runs (escaped paste)', () => {
+    // A path copied out of JSON/PowerShell escaping can carry 3+ literal
+    // backslashes per separator; a separator quantifier hard-coded to {1,2}
+    // can never align the users/name tokens across a longer run.
+    logger.error('paste: C:\\\\\\Users\\\\\\pedro\\\\\\cal.ics');
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+  });
+
+  it('redacts a depth-2 nested blob: object arg containing a pre-stringified JSON string', () => {
+    // The leaf already holds doubled backslashes; this stringify doubles them
+    // again (4 in the output text). Must be redacted at the leaf, before doubling.
+    logger.error('blob:', { inner: JSON.stringify({ path: 'C:\\Users\\pedro\\x' }) });
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+    const out = getFormattedLogs();
+    expect(out).toContain('<home>');
+    expect(out).not.toContain('pedro');
+  });
+
+  it('redacts a double-stringified pure string arg (4-backslash separators in text)', () => {
+    logger.debug('settings:', JSON.stringify(JSON.stringify({ path: 'C:\\Users\\pedro\\x' })));
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+  });
+});
+
 describe('spoof-class completeness (#97.3)', () => {
   beforeEach(() => {
     debugLogs.length = 0;
