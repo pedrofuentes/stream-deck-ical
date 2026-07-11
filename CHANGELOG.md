@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `ROADMAP.md` restructured to the agents-template format.
 
 ### Fixed
+- Diagnostics redaction hardened and the logger can no longer throw: home-path
+  redaction is centralized so it applies to every argument shape (interpolated
+  strings, JSON objects, and Error stacks) and now covers `/home/<user>` and
+  `/root` in addition to the Windows/macOS `Users` forms, without crossing a line
+  break (so a genuine trailing stack frame can no longer be swallowed); `formatError`
+  no longer throws on exotic Error objects (non-string `stack`, throwing `stack`
+  getter); serialization-failure fallbacks are tagged `[unserializable …]`; and
+  U+200E/200F and U+2060 are added to the spoof-character strip
+  (#92, #93, #94, #95, #96, #97).
 - Log records can no longer be forged by newline injection from untrusted calendar
   event titles: raw CR/LF in non-Error arguments are escaped, Error-stack
   continuation lines are marked so an injected line cannot present as a fresh record,

@@ -41,8 +41,9 @@ const C0_RE = /[\x00-\x08\x0b-\x1f\x7f]/g;
 // C1 controls
 const C1_RE = /[\x80-\x9f]/g;
 // Line/paragraph separators (U+2028/U+2029), bidi overrides (U+202A–202E,
-// U+2066–2069), and zero-width chars (U+200B–200D, U+FEFF) used for spoofing (#71).
-const SPOOF_RE = /[\u2028\u2029\u202a-\u202e\u2066-\u2069\u200b-\u200d\ufeff]/g;
+// U+2066–2069), directional marks (U+200E/200F), the word joiner (U+2060), and
+// zero-width chars (U+200B–200D, U+FEFF) used for spoofing (#71, #97.3).
+const SPOOF_RE = /[\u2028\u2029\u202a-\u202e\u2066-\u2069\u200b-\u200f\u2060\ufeff]/g;
 // Raw CR/LF in a non-Error argument — escaped so a feed-controlled string cannot
 // start a new line (and thus a forged record) in the log stream (#71/CWE-117).
 const NEWLINE_RE = /[\r\n]/g;
@@ -50,8 +51,12 @@ const NEWLINE_RE = /[\r\n]/g;
 // breaks but prevents any injected line from presenting as a fresh record.
 const STACK_LF_RE = /\n/g;
 // User-profile path prefix — Windows C:\Users\name (or C:/Users/name) and
-// macOS /Users/name; the drive letter is optional, both slash forms match (#78.5).
-const HOME_PATH_RE = /(?:[a-z]:)?[\\/]users[\\/][^\\/]+/gi;
+// macOS /Users/name; the drive letter is optional and both slash forms match. /home/<user> and /root
+// are also covered, and the username class excludes CR/LF so redaction cannot
+// cross a line break and swallow a genuine following stack frame. Applied
+// centrally in sanitizeLogMessage so every argument shape is covered, not just
+// Error instances (#78.5, #93, #94, #95).
+const HOME_PATH_RE = /(?:[a-z]:)?[\\/](?:users|home)[\\/][^\\/\r\n]+|[\\/]root(?=[\\/]|$)/gi;
 
 /**
  * Escape raw CR/LF to their two-character literal forms so a newline injected via
@@ -82,9 +87,16 @@ function safeString(a: unknown): string {
  * a fresh [timestamp] [LEVEL] record (#71).
  */
 function formatError(err: Error): string {
-  const raw = err.stack ?? `${err.name}: ${err.message}`;
-  const redacted = raw.replace(HOME_PATH_RE, '<home>');
-  return redacted.replace(STACK_LF_RE, '\n    | ');
+  let raw: string;
+  try {
+    // A non-string stack (e.g. a number) or a throwing stack getter must not let an
+    // exception escape logger.error and break the never-throws invariant (#92).
+    raw = typeof err.stack === 'string' ? err.stack : `${err.name}: ${err.message}`;
+  } catch {
+    raw = safeString(err);
+  }
+  // Home-path redaction is applied centrally in sanitizeLogMessage (#93).
+  return raw.replace(STACK_LF_RE, '\n    | ');
 }
 
 /**
@@ -104,8 +116,9 @@ function formatArg(a: unknown): string {
     try {
       return escapeNewlines(JSON.stringify(a));
     } catch {
-      // Circular / non-serializable object — fall back to a safe string form.
-      return escapeNewlines(safeString(a));
+      // Circular / non-serializable object — fall back to a tagged safe string form
+      // so a serialization failure is visible, not a bare [object Object] (#96).
+      return escapeNewlines(`[unserializable ${safeString(a)}]`);
     }
   }
   return escapeNewlines(safeString(a));
@@ -124,7 +137,8 @@ function sanitizeLogMessage(message: string): string {
     .replace(ESC_FE_RE, '')
     .replace(C0_RE, '')
     .replace(C1_RE, '')
-    .replace(SPOOF_RE, '');
+    .replace(SPOOF_RE, '')
+    .replace(HOME_PATH_RE, '<home>');
 }
 
 /**
