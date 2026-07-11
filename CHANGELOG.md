@@ -51,6 +51,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   sweep cadence can be tuned via the `ICAL_ORPHAN_SWEEP_MS` env override; and a
   failed debug-info size measurement now logs its cause instead of a silent
   `bytes=-1`.
+- Corrupted calendar settings with non-string URLs now surface as Invalid URL
+  instead of crashing (#65); the Property Inspector's hand-mirrored URL utilities
+  now guard against non-string input the same way, and the parity test between
+  them and `src/utils/url-utils.ts` can no longer pass vacuously if the mirror
+  is shadowed outside its marker block (#66).
 
 ### Removed
 
