@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `ROADMAP.md` restructured to the agents-template format.
 
 ### Fixed
+- Logger redaction hardened (#121, #122, #123, #124): account-bearing
+  `users`/`home` segments inside URLs (Zimbra `/home/<user>/`, CalDAV
+  `/users/<name>/` — logged on every fetch) are redacted again via
+  scheme-aware anchoring, a sanctioned reversal of two #114 URL pins
+  (documented over-redaction of non-account URL paths — privacy over
+  fidelity in a diagnostics log; `root` keeps mid-path behavior in URLs);
+  share-position detection no longer requires backslash evidence, so
+  mixed- and forward-slash UNC forms (`//server\users\pedro`,
+  `//fileserver/users/pedro`) and protocol-relative URLs redact too; the
+  invisible-character strip is rebuilt on Unicode properties
+  (`\p{Cf}` + `\p{Default_Ignorable_Code_Point}`, surrogate-aware `u` flag),
+  closing the whole class — soft hyphen, invisible operators, deprecated
+  format controls, variation selectors incl. supplementary, interlinear
+  annotations, Hangul fillers, plane-14 tag characters, and reserved
+  default-ignorables; and the BSD/Solaris home-layout platform-scope
+  deviation is recorded in the scanner docs.
 - Home-path redaction scanner refined: mid-path `root`/`users`/`home` segments
   (e.g. `deployRoot` values, `/opt/myapp/root/handler.js`, URL path segments)
   are no longer misredacted — a match now requires the token to start an
