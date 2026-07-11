@@ -79,6 +79,10 @@ interface ButtonState {
   currentTitle?: string;
   /** Title currently in flight to the SDK — coalesces duplicate setTitle calls (#74) */
   pendingTitle?: string;
+  /** Monotonic per-button dispatch counter. Each in-flight setTitle captures the
+   *  token it set; commit/clear only proceed when the token is still the latest, so
+   *  an older same-text settlement can't clobber a newer dispatch's marker (#100). */
+  titleDispatchToken?: number;
   /** Whether the current setTitle failure has already been logged — throttles the
    *  per-tick warn during a sustained IPC outage to one entry per outage (#72) */
   titleFailureLogged?: boolean;
@@ -173,22 +177,35 @@ const ORPHAN_SWEEP_MAX_MS = 2_147_483_647;
 
 /**
  * Resolve the sweep cadence: explicit param > env override > default.
- * The env override must be a safe integer number of milliseconds within
- * [1000, 2147483647]; anything else (non-integer, out of range, or a value Node
- * would clamp to a 1ms hot loop) is ignored with a warning so a typo can't
- * silently disable the sweep or pin the CPU (#56.1, #73).
+ *
+ * Both the explicit param and the env override must be a safe integer number of
+ * milliseconds within [1000, 2147483647]; anything else (non-integer, out of range,
+ * or a value Node would clamp to a 1ms hot loop) is ignored with a warning and the
+ * 60s default is used, so a typo or a stray caller can't silently disable the sweep
+ * or pin the CPU. The env string must additionally be a plain decimal integer — hex,
+ * exponent and surrounding-whitespace forms that Number() would otherwise accept are
+ * rejected so the warning text stays truthful (#56.1, #73, #104.1, #104.3).
  */
 function resolveOrphanSweepInterval(intervalMs?: number): number {
   if (intervalMs !== undefined) {
-    return intervalMs;
+    if (Number.isSafeInteger(intervalMs) && intervalMs >= ORPHAN_SWEEP_MIN_MS && intervalMs <= ORPHAN_SWEEP_MAX_MS) {
+      return intervalMs;
+    }
+    // Apply the same bounds to the programmatic param as to the env override — an
+    // out-of-range explicit value is a caller bug, so surface it and fall back to the
+    // default rather than hot-loop or stall the sweep (#104.3).
+    logger.warn(`[BaseAction] Ignoring out-of-range orphan sweep interval ${intervalMs}ms (expected integer ms in [${ORPHAN_SWEEP_MIN_MS}, ${ORPHAN_SWEEP_MAX_MS}]); using ${ORPHAN_SWEEP_INTERVAL_MS}ms default`);
+    return ORPHAN_SWEEP_INTERVAL_MS;
   }
   const raw = process.env[ORPHAN_SWEEP_INTERVAL_ENV];
   if (raw !== undefined) {
+    // Plain decimal digits only: rejects '0x7D0', '1e3', ' 5000 ' etc. that Number()
+    // would coerce, keeping the "integer ms" contract in the warning honest (#104.1).
     const parsed = Number(raw);
-    if (Number.isSafeInteger(parsed) && parsed >= ORPHAN_SWEEP_MIN_MS && parsed <= ORPHAN_SWEEP_MAX_MS) {
+    if (/^\d+$/.test(raw) && Number.isSafeInteger(parsed) && parsed >= ORPHAN_SWEEP_MIN_MS && parsed <= ORPHAN_SWEEP_MAX_MS) {
       return parsed;
     }
-    logger.warn(`[BaseAction] Ignoring invalid ${ORPHAN_SWEEP_INTERVAL_ENV}="${raw}" (expected integer ms in [${ORPHAN_SWEEP_MIN_MS}, ${ORPHAN_SWEEP_MAX_MS}])`);
+    logger.warn(`[BaseAction] Ignoring invalid ${ORPHAN_SWEEP_INTERVAL_ENV}="${raw}" (expected a plain decimal integer of ms in [${ORPHAN_SWEEP_MIN_MS}, ${ORPHAN_SWEEP_MAX_MS}])`);
   }
   return ORPHAN_SWEEP_INTERVAL_MS;
 }
@@ -232,6 +249,22 @@ export function stopOrphanSweep(): void {
     clearInterval(orphanSweepInterval);
     orphanSweepInterval = undefined;
   }
+  // Clear the overlap guard too. A pass whose .finally() never runs (e.g. a subclass
+  // cleanup hook that hangs) would otherwise leave sweepInFlight stuck true, and the
+  // next startOrphanSweep() would no-op every tick until the stale pass settled (#101).
+  sweepInFlight = false;
+}
+
+/**
+ * Test-only: force-clear the module-level orphan-sweep in-flight guard.
+ *
+ * Mirrors the #55 `__resetActionInstancesForTest` pattern: a test that leaves a
+ * sweep pass hung (never resolved) would leak `sweepInFlight = true` into the next
+ * test, silently no-op'ing its `startOrphanSweep()`. Call this from `beforeEach` in
+ * sweep tests to guarantee an isolated guard. Not used by production code (#101).
+ */
+export function __resetSweepInFlightForTest(): void {
+  sweepInFlight = false;
 }
 
 /**
@@ -299,8 +332,14 @@ export abstract class BaseAction extends SingletonAction {
     // Get or create button state
     const state = this.getButtonState(actionId);
     state.actionRef = ev.action;
-    // Reset change-guards so the first tick after (re)appearing always paints (#29)
+    // Reset change-guards so the first tick after (re)appearing always paints (#29).
+    // pendingTitle/titleFailureLogged are cleared too: action.setTitle has no timeout,
+    // so a hung IPC promise from before sleep can leave a stale in-flight marker on the
+    // reused ButtonState — the post-wake repaint of the same text would then silently
+    // no-op (the stale-display class #54 fixed) until the dead promise settled (#99).
     state.currentTitle = undefined;
+    state.pendingTitle = undefined;
+    state.titleFailureLogged = false;
     state.lastDebugMessage = undefined;
 
     // Check for per-action settings
@@ -783,6 +822,8 @@ export abstract class BaseAction extends SingletonAction {
    */
   protected async setTitleForButton(actionId: string, action: any, title: string): Promise<void> {
     const state = this.buttonStates.get(actionId);
+    const hadStateAtEntry = state !== undefined;
+    let token: number | undefined;
     if (state) {
       // Already the last painted title — nothing to do (#29).
       if (state.currentTitle === title) {
@@ -793,43 +834,59 @@ export abstract class BaseAction extends SingletonAction {
       if (state.pendingTitle === title) {
         return;
       }
-      // Mark this as the most-recently dispatched title (used for the out-of-order
-      // commit guard below and to dedupe concurrent callers).
+      // Mark this as the most-recently dispatched title and stamp it with a fresh
+      // per-button generation token. Commit/clear below key off the token rather than
+      // value equality, so an older settlement carrying the SAME text (the x,y,x
+      // overlap) can no longer clear or commit a newer dispatch's marker (#74, #100).
       state.pendingTitle = title;
+      token = (state.titleDispatchToken ?? 0) + 1;
+      state.titleDispatchToken = token;
     }
     try {
       await action.setTitle(title);
-      if (state) {
+      // Re-read after the await: the settle may have raced a cleanupButtonState that
+      // removed this id (or a re-appear that replaced the ButtonState object), so only
+      // act on the state still tracked for this id — never a stale/removed one (#104.2).
+      const live = this.buttonStates.get(actionId) === state ? state : undefined;
+      if (live) {
         // Commit the change-guard only after the SDK actually painted, and only if
-        // this call is still the most recent dispatch — a slower earlier call must
-        // not clobber a newer title with an out-of-order resolution (#51, #74).
-        if (state.pendingTitle === title) {
-          state.currentTitle = title;
+        // this dispatch is still the latest — a slower earlier call must not clobber a
+        // newer title with an out-of-order resolution (#51, #74, #100).
+        if (live.titleDispatchToken === token) {
+          live.currentTitle = title;
         }
         // Recovery: the SDK painted again after a failure — note it once (#72).
-        if (state.titleFailureLogged) {
-          state.titleFailureLogged = false;
+        if (live.titleFailureLogged) {
+          live.titleFailureLogged = false;
           logger.info(`[${this.constructor.name}] setTitle recovered for ${actionId}`);
         }
       }
     } catch (error) {
+      const live = this.buttonStates.get(actionId) === state ? state : undefined;
       // Failure-transition guard: log the first failure of an outage (with the
       // error), then suppress the per-tick repeats so a sustained IPC outage can't
       // flood the 500-entry debug ring (#72). The next tick still retries.
-      if (state) {
-        if (!state.titleFailureLogged) {
-          state.titleFailureLogged = true;
+      if (live) {
+        if (!live.titleFailureLogged) {
+          live.titleFailureLogged = true;
           logger.warn(`[${this.constructor.name}] setTitle failed for ${actionId}, will retry next tick:`, error);
         }
-      } else {
+      } else if (!hadStateAtEntry) {
+        // Never-tracked button (no throttle state to consult) — log the bare failure.
+        // If the state existed at entry but was removed/replaced mid-flight we stay
+        // silent: logging a failure for a button that is already gone is misleading
+        // and, with no throttle flag, could repeat (#104.2).
         logger.warn(`[${this.constructor.name}] setTitle failed for ${actionId}, will retry next tick:`, error);
       }
     } finally {
-      // Clear the in-flight marker on settle (resolve OR reject). Clearing on reject
-      // re-enables the retry on the next tick per #51 semantics; guarding on equality
-      // avoids clobbering a newer dispatch's marker (#74).
-      if (state && state.pendingTitle === title) {
-        state.pendingTitle = undefined;
+      // Clear the in-flight marker on settle (resolve OR reject) only if this dispatch
+      // is still the latest for the still-tracked state. Clearing on reject re-enables
+      // the retry on the next tick per #51; the token guard stops an older settlement
+      // from wiping a newer dispatch's marker (#74, #100), and the identity re-read
+      // avoids touching a removed/replaced state (#104.2).
+      const live = this.buttonStates.get(actionId) === state ? state : undefined;
+      if (live && live.titleDispatchToken === token) {
+        live.pendingTitle = undefined;
       }
     }
   }
