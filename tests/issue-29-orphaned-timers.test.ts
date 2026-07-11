@@ -249,6 +249,25 @@ describe('issue #72 - setTitle failure log throttled to the failure transition',
     expect(vi.mocked(logger.warn)).toHaveBeenCalledTimes(1);
   });
 
+  it('warns exactly once across a mid-outage title change (throttle is per-outage, not per-title) (#103)', async () => {
+    // Both #72 tests reuse one title across failing calls, so a regression that
+    // re-keyed the throttle per-title (log flood on every title change) would pass
+    // unnoticed. Change the title mid-outage: the warn must still fire exactly once.
+    const action = {
+      id: 'chg1',
+      setTitle: vi.fn().mockRejectedValue(new Error('IPC down')),
+      setImage: vi.fn()
+    };
+    const a = new TestAction();
+    a.seed('chg1', action);
+
+    await a.setTitle('chg1', action, 'Title A'); // fails -> warns (outage opens)
+    await a.setTitle('chg1', action, 'Title B'); // DIFFERENT title, same outage -> suppressed
+
+    expect(action.setTitle).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledTimes(1);
+  });
+
   it('logs recovery exactly once when the SDK paints again after a failure', async () => {
     const action = {
       id: 'rec1',
@@ -321,6 +340,50 @@ describe('issue #74 - setTitle in-flight coalescing', () => {
     await pX;
     // The stale 'X' resolution must not overwrite the newer committed 'Y'.
     expect(a.states().get('oo1').currentTitle).toBe('Y');
+  });
+
+  it('does not let an older same-text settlement clear a newer dispatch\'s in-flight marker (#100)', async () => {
+    // x,y,x interleaving during slow IPC. Value-equality coalescing (#74) let the
+    // OLDER x's settlement value-match the NEWER x's pendingTitle and clear it early;
+    // a per-dispatch generation token keys the commit/clear to the exact dispatch so
+    // an older settle can no longer touch a newer dispatch's marker (#100).
+    let resolveX1!: () => void;
+    let resolveY!: () => void;
+    let resolveX2!: () => void;
+    const action = {
+      id: 'xyx1',
+      setTitle: vi.fn()
+        .mockImplementationOnce(() => new Promise<void>(r => { resolveX1 = () => r(); }))
+        .mockImplementationOnce(() => new Promise<void>(r => { resolveY = () => r(); }))
+        .mockImplementationOnce(() => new Promise<void>(r => { resolveX2 = () => r(); })),
+      setImage: vi.fn()
+    };
+    const a = new TestAction();
+    a.seed('xyx1', action);
+
+    const pX1 = a.setTitle('xyx1', action, 'X'); // dispatch 1 (older X)
+    const pY = a.setTitle('xyx1', action, 'Y');  // dispatch 2 (Y breaks the X coalescing)
+    const pX2 = a.setTitle('xyx1', action, 'X'); // dispatch 3 (newer X, now owns pendingTitle)
+
+    // Y differs from X so none of the three dispatches is coalesced away.
+    expect(action.setTitle).toHaveBeenCalledTimes(3);
+    expect(a.states().get('xyx1').pendingTitle).toBe('X');
+
+    // The OLDER X (dispatch 1) settles first: it must NOT clear the newer X dispatch's
+    // in-flight marker (value-equality would have wiped it) (#100).
+    resolveX1();
+    await pX1;
+    expect(a.states().get('xyx1').pendingTitle).toBe('X');
+
+    // Because the marker survived, a further identical X is still coalesced — no
+    // redundant 4th SDK call.
+    await a.setTitle('xyx1', action, 'X');
+    expect(action.setTitle).toHaveBeenCalledTimes(3);
+
+    // Release the remaining in-flight dispatches so nothing leaks past the test.
+    resolveY();
+    resolveX2();
+    await Promise.all([pY, pX2]);
   });
 
   it('clears pendingTitle on reject so the next tick retries (#51 semantics preserved)', async () => {
@@ -582,6 +645,50 @@ describe('issue #73/#75 - orphan sweep interval validation & precedence', () => 
     }
   );
 
+  // The rejection-only suite above never proves the accepted boundaries stay
+  // accepted; a future off-by-one (>= -> > / <= -> <) would silently reject legal
+  // values and fall back to the 60s default. Pin both bounds to the exact cadence.
+  it.each(['1000', '2147483647'])(
+    'accepts boundary ICAL_ORPHAN_SWEEP_MS=%s and fires the sweep at exactly that cadence (#102)',
+    async (raw) => {
+      process.env.ICAL_ORPHAN_SWEEP_MS = raw;
+      const ms = Number(raw);
+      const id = `bound-${raw}`;
+      const orphanAction = { id, setTitle: vi.fn(), setImage: vi.fn() };
+      const a = new TestAction();
+      const state = a.seed(id, orphanAction);
+      state.calendarId = 'cal_123';
+
+      baseMod.startOrphanSweep(); // no explicit interval -> env boundary is consulted
+
+      await vi.advanceTimersByTimeAsync(ms - 1);
+      expect(a.states().has(id)).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(a.states().has(id)).toBe(false);
+    }
+  );
+
+  it('ignores an out-of-range explicit interval and falls back to the 60s default with a warning (#104.3)', async () => {
+    // The explicit intervalMs param previously bypassed the [1000, 2147483647] bounds
+    // entirely — an asymmetric #73 defense. A sub-floor explicit value must now warn
+    // and fall back to the default rather than hot-loop the sweep.
+    const id = 'explicit-oob';
+    const orphanAction = { id, setTitle: vi.fn(), setImage: vi.fn() };
+    const a = new TestAction();
+    const state = a.seed(id, orphanAction);
+    state.calendarId = 'cal_123';
+
+    baseMod.startOrphanSweep(500); // below the 1000ms floor -> rejected, default used
+
+    expect(vi.mocked(logger.warn)).toHaveBeenCalled();
+    // At the rejected 500ms cadence the orphan would already be gone by 60s; the
+    // default cadence keeps it until exactly 60s.
+    await vi.advanceTimersByTimeAsync(59_999);
+    expect(a.states().has(id)).toBe(true);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(a.states().has(id)).toBe(false);
+  });
+
   it('gives an explicit interval precedence over a valid env override (#75)', async () => {
     process.env.ICAL_ORPHAN_SWEEP_MS = '5000';
     const orphanAction = { id: 'prec-orphan', setTitle: vi.fn(), setImage: vi.fn() };
@@ -685,5 +792,97 @@ describe('issue #54 - onWillAppear change-guard reset', () => {
     await a.setTitle('wake1', action, '10:00');
     expect(action.setTitle).toHaveBeenCalledWith('10:00');
     // The per-second timer onWillAppear started is stopped in afterEach (#78.6).
+  });
+});
+
+describe('issue #99 - onWillAppear clears stuck in-flight title guards', () => {
+  let appeared: TestAction | undefined;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    baseMod.__resetActionInstancesForTest();
+    getActionByIdMock.mockReset();
+    appeared = undefined;
+  });
+
+  afterEach(() => {
+    if (appeared) {
+      (appeared as any).stopTimerForButton('wake99');
+    }
+    vi.useRealTimers();
+  });
+
+  it('resets a stuck pendingTitle/titleFailureLogged so an identical post-wake title still paints', async () => {
+    const action = { id: 'wake99', setTitle: vi.fn().mockResolvedValue(undefined), setImage: vi.fn(), setSettings: vi.fn() };
+    const a = new TestAction();
+    appeared = a;
+    const state = a.seed('wake99', action);
+    // Simulate a setTitle whose IPC promise hung before sleep: onWillAppear reuses the
+    // ButtonState, leaving a stale in-flight marker (and outage-log flag) that would
+    // make the post-wake repaint of the same text silently no-op (#99, stale-display
+    // class #54 addressed via the in-flight guard rather than currentTitle).
+    state.currentTitle = undefined;
+    state.pendingTitle = '10:00';
+    state.titleFailureLogged = true;
+
+    await a.appear('wake99', action, {});
+
+    // The hung in-flight guards are cleared on (re)appear.
+    expect(state.pendingTitle).toBeUndefined();
+    expect(state.titleFailureLogged).toBe(false);
+
+    // The same text as the stuck in-flight title must now reach the SDK.
+    await a.setTitle('wake99', action, '10:00');
+    expect(action.setTitle).toHaveBeenCalledWith('10:00');
+  });
+});
+
+describe('issue #101 - stopOrphanSweep resets the in-flight guard', () => {
+  const savedSweepEnv = process.env.ICAL_ORPHAN_SWEEP_MS;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    baseMod.__resetActionInstancesForTest();
+    (baseMod as any).stopOrphanSweep?.();
+    // Mirror the #55 reset pattern: guarantee no in-flight guard leaks in from a
+    // prior test whose sweep pass never settled (#101).
+    (baseMod as any).__resetSweepInFlightForTest?.();
+    getActionByIdMock.mockReset();
+    getActionByIdMock.mockReturnValue(undefined);
+    delete process.env.ICAL_ORPHAN_SWEEP_MS;
+  });
+
+  afterEach(() => {
+    (baseMod as any).stopOrphanSweep?.();
+    (baseMod as any).__resetSweepInFlightForTest?.();
+    vi.useRealTimers();
+    if (savedSweepEnv === undefined) {
+      delete process.env.ICAL_ORPHAN_SWEEP_MS;
+    } else {
+      process.env.ICAL_ORPHAN_SWEEP_MS = savedSweepEnv;
+    }
+  });
+
+  it('lets a restarted sweep run after a hung pass is stopped (in-flight guard cleared)', async () => {
+    const a = new SlowSweepAction();
+    a.seed('hung-1', { id: 'hung-1', setTitle: vi.fn(), setImage: vi.fn() });
+
+    baseMod.startOrphanSweep(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(a.sweepCalls).toBe(1); // first pass started and is hung (never released)
+
+    // Stop the sweep while its pass is still in flight, then restart it. stopOrphanSweep
+    // must clear the module-level in-flight guard, otherwise the restarted sweep would
+    // see a stuck `true` and never run another pass (#101).
+    baseMod.stopOrphanSweep();
+    baseMod.startOrphanSweep(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(a.sweepCalls).toBe(2); // restarted sweep runs a fresh pass
+
+    a.release(); // release the still-hung pass so nothing leaks past the test
+    await vi.advanceTimersByTimeAsync(0);
   });
 });
