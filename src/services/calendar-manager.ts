@@ -19,13 +19,20 @@ import { normalizeICalUrl, isSupportedICalUrl } from '../utils/url-utils.js';
 
 /**
  * Generate a unique ID for a calendar based on its URL
- * Uses a simple hash to create a consistent identifier
+ * Uses a simple hash to create a consistent identifier.
+ *
+ * The URL is normalized (webcal(s):// -> https://, whitespace trimmed)
+ * before hashing so that different spellings of the same feed (e.g. a
+ * button saved with `webcal://` and another saved with `https://`)
+ * collapse onto the same calendar ID instead of double-polling the same
+ * endpoint via two independent CalendarInstances (#48).
  */
 function generateCalendarId(url: string): string {
+  const normalizedUrl = normalizeICalUrl(url);
   // Simple hash function for URL -> ID
   let hash = 0;
-  for (let i = 0; i < url.length; i++) {
-    const char = url.charCodeAt(i);
+  for (let i = 0; i < normalizedUrl.length; i++) {
+    const char = normalizedUrl.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
     hash = hash & hash; // Convert to 32-bit integer
   }
@@ -132,14 +139,20 @@ class CalendarManager {
   /**
    * Get or create a calendar instance for a URL
    * If calendar already exists, returns existing instance
+   *
+   * The URL is normalized up front (#48) so that webcal:// and https://
+   * spellings of the same feed resolve to the same calendarId and share
+   * one CalendarInstance/fetch cycle; the normalized URL (not the raw
+   * input) is what gets stored on the instance.
    */
   getOrCreateCalendar(
     url: string,
     timeWindow: number = 3,
     excludeAllDay: boolean = true
   ): CalendarInstance {
-    const calendarId = generateCalendarId(url);
-    
+    const normalizedUrl = normalizeICalUrl(url);
+    const calendarId = generateCalendarId(normalizedUrl);
+
     let instance = this.calendars.get(calendarId);
     
     if (instance) {
@@ -172,11 +185,11 @@ class CalendarManager {
     }
     
     // Create new calendar instance
-    logger.info(`[CalendarManager] Creating new calendar: ${calendarId} for ${url.substring(0, 50)}...`);
-    
+    logger.info(`[CalendarManager] Creating new calendar: ${calendarId} for ${normalizedUrl.substring(0, 50)}...`);
+
     instance = {
       id: calendarId,
-      url,
+      url: normalizedUrl,
       timeWindow,
       excludeAllDay,
       cache: createEmptyCache(),

@@ -382,7 +382,7 @@ describe('CalendarManager', () => {
       );
 
       const status = manager.getStatusForAction('action1');
-      expect(['LOADED', 'NO_EVENTS']).toContain(status);
+      expect(status).toBe('LOADED');
     });
 
     it('should set INVALID_URL status for unsupported schemes like ftp:// (#43)', async () => {
@@ -395,6 +395,27 @@ describe('CalendarManager', () => {
       const status = manager.getStatusForAction('action1');
       expect(status).toBe('INVALID_URL');
       expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('should dedupe webcal:// and https:// spellings of the same feed into one calendar/fetch cycle (#48)', async () => {
+      const id1 = manager.registerAction('action1', 'webcal://example.com/cal.ics');
+      const id2 = manager.registerAction('action2', 'https://example.com/cal.ics');
+
+      // Same calendar ID for both spellings of the same feed
+      expect(id1).toBe(id2);
+      expect(manager.getAllCalendars().size).toBe(1);
+
+      const calendar = manager.getCalendarForAction('action1');
+      expect(calendar).toBe(manager.getCalendarForAction('action2'));
+      expect(calendar?.refCount).toBe(2);
+      expect(calendar?.url).toBe('https://example.com/cal.ics');
+
+      // Wait for the (single) initial update to complete
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Only one fetch cycle should have happened, not one per action
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(mockFetch).toHaveBeenCalledWith('https://example.com/cal.ics', expect.anything());
     });
   });
 

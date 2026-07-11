@@ -30,6 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   reports (clearing their leaked per-second timers and calendar refcounts),
   `setTitle` and per-tick debug logs are now only emitted when their content
   changes, and the debug-info log line no longer embeds the full log buffer.
+- Same calendar added as `webcal://` and `https://` no longer double-polls
+  (#48); settings UI hardened against HTML injection in the calendar list
+  (code scanning alert #1), and `normalizeICalUrl`/`isSupportedICalUrl` no
+  longer throw on null/undefined input (#49).
 
 ### Removed
 

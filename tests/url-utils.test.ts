@@ -79,3 +79,29 @@ describe('isSupportedICalUrl', () => {
     expect(isSupportedICalUrl('')).toBe(false);
   });
 });
+
+describe('null/undefined/non-string safety (#49)', () => {
+  it('normalizeICalUrl returns null unchanged instead of throwing', () => {
+    expect(normalizeICalUrl(null as unknown as string)).toBe(null);
+  });
+
+  it('normalizeICalUrl returns undefined unchanged instead of throwing', () => {
+    expect(normalizeICalUrl(undefined as unknown as string)).toBe(undefined);
+  });
+
+  it('normalizeICalUrl returns a non-string input unchanged instead of throwing', () => {
+    expect(normalizeICalUrl(42 as unknown as string)).toBe(42);
+  });
+
+  it('isSupportedICalUrl returns false for null instead of throwing', () => {
+    expect(isSupportedICalUrl(null as unknown as string)).toBe(false);
+  });
+
+  it('isSupportedICalUrl returns false for undefined instead of throwing', () => {
+    expect(isSupportedICalUrl(undefined as unknown as string)).toBe(false);
+  });
+
+  it('isSupportedICalUrl returns false for a non-string input instead of throwing', () => {
+    expect(isSupportedICalUrl(42 as unknown as string)).toBe(false);
+  });
+});
