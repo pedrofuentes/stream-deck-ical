@@ -11,7 +11,7 @@ import { processRecurringEvents } from './recurrence-expander.js';
 import { CalendarCache, CalendarEvent, ErrorState } from '../types/index.js';
 import { logger, debugLogs, isDebugMode } from '../utils/logger.js';
 import { sortEventsByStartTime, filterEventsInWindow } from '../utils/event-utils.js';
-import { normalizeICalUrl, isSupportedICalUrl } from '../utils/url-utils.js';
+import { normalizeICalUrl, isSupportedICalUrl, previewNonStringValue } from '../utils/url-utils.js';
 
 /**
  * Global calendar cache
@@ -96,15 +96,28 @@ export async function updateCalendarCache(
   timeWindowDays: number = 3,
   excludeAllDay: boolean = true
 ): Promise<void> {
-  if (!url || url.trim() === '') {
+  // Boundary guard: mirrors CalendarManager.getOrCreateCalendar's #65/#90
+  // coercion — a corrupted/hand-edited settings blob can hand this legacy
+  // path a truthy non-string (e.g. a number) despite the `string` type.
+  // `!url` alone lets a numeric url through (a truthy number is not falsy),
+  // and the subsequent `url.trim()` then throws a TypeError before the try
+  // block, leaving calendarCache.status stale instead of INVALID_URL (#91.1).
+  if (typeof url !== 'string') {
+    logger.warn(
+      `Non-string URL passed to updateCalendarCache (typeof=${typeof url}, value="${previewNonStringValue(url)}")`
+    );
+  }
+  const safeUrl = typeof url === 'string' ? url : '';
+
+  if (!safeUrl || safeUrl.trim() === '') {
     logger.warn('No URL provided, skipping cache update');
     calendarCache.status = 'INVALID_URL';
     calendarCache.events = [];
     return;
   }
-  
-  if (!isValidURL(url)) {
-    logger.error('Invalid URL format:', url);
+
+  if (!isValidURL(safeUrl)) {
+    logger.error('Invalid URL format:', safeUrl);
     calendarCache.status = 'INVALID_URL';
     calendarCache.events = [];
     return;
@@ -126,7 +139,7 @@ export async function updateCalendarCache(
     logger.info(`🔄 Updating calendar cache (${timeWindowDays} day window, excludeAllDay=${excludeAllDay})${isBackgroundRefresh ? ' [background]' : ''}...`);
     
     // Fetch the feed
-    const icsContent = await fetchICalFeed(url);
+    const icsContent = await fetchICalFeed(safeUrl);
     
     // Parse the feed
     const parsed = await parseICalFeed(icsContent);
