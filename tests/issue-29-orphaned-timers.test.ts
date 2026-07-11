@@ -126,6 +126,32 @@ class ThrowingTestAction extends TestAction {
   }
 }
 
+/**
+ * Subclass whose reapOrphans blocks on a manually-released promise, letting a
+ * test hold one sweep "in flight" across the next interval tick (#78.3).
+ */
+class SlowSweepAction extends TestAction {
+  public sweepCalls = 0;
+  public release: () => void = () => {};
+  public async reapOrphans(): Promise<string[]> {
+    this.sweepCalls++;
+    await new Promise<void>(resolve => {
+      this.release = resolve;
+    });
+    return [];
+  }
+}
+
+/**
+ * Subclass whose reapOrphans always rejects — proves the sweep-interval's outer
+ * .catch logs and swallows the rejection instead of crashing the plugin (#78.6).
+ */
+class RejectingSweepAction extends TestAction {
+  public async reapOrphans(): Promise<string[]> {
+    throw new Error('reap boom');
+  }
+}
+
 describe('issue #29 - setTitle change-guard', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -157,9 +183,11 @@ describe('issue #29 - setTitle change-guard', () => {
     const a = new TestAction();
     a.seed('t1', action);
 
-    // setTitleForButton must swallow the rejection (plugin never crashes); .catch is
-    // a safety net so this test doesn't blow up if the current impl still rejects.
-    await a.setTitle('t1', action, 'Meeting').catch(() => {});
+    // setTitleForButton MUST swallow the rejection and resolve to undefined — this
+    // pins the no-throw contract so a future edit that rethrows fails here instead
+    // of being masked by the test's own .catch (#76).
+    await expect(a.setTitle('t1', action, 'Meeting')).resolves.toBeUndefined();
+    expect(vi.mocked(logger.warn)).toHaveBeenCalled();
     // Guard must not be committed after a failed paint.
     expect(a.states().get('t1').currentTitle).toBeUndefined();
 
@@ -194,6 +222,125 @@ describe('issue #29 - marquee still renders through the guard', () => {
     // Guarded setter records the last painted title
     const state = a.states().get('m1');
     expect(state.currentTitle).toBe('m Stand');
+  });
+});
+
+describe('issue #72 - setTitle failure log throttled to the failure transition', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('warns once for a sustained IPC outage, not every tick, while still attempting each paint', async () => {
+    const action = {
+      id: 'out1',
+      setTitle: vi.fn().mockRejectedValue(new Error('IPC down')),
+      setImage: vi.fn()
+    };
+    const a = new TestAction();
+    a.seed('out1', action);
+
+    await a.setTitle('out1', action, 'Meeting');
+    await a.setTitle('out1', action, 'Meeting');
+    await a.setTitle('out1', action, 'Meeting');
+
+    // Every tick still tries the SDK (so recovery is detected promptly)...
+    expect(action.setTitle).toHaveBeenCalledTimes(3);
+    // ...but only the first failure of the outage is logged.
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledTimes(1);
+  });
+
+  it('logs recovery exactly once when the SDK paints again after a failure', async () => {
+    const action = {
+      id: 'rec1',
+      setTitle: vi.fn()
+        .mockRejectedValueOnce(new Error('IPC down'))
+        .mockRejectedValueOnce(new Error('IPC down'))
+        .mockResolvedValue(undefined),
+      setImage: vi.fn()
+    };
+    const a = new TestAction();
+    a.seed('rec1', action);
+
+    await a.setTitle('rec1', action, 'Meeting'); // fail (warn)
+    await a.setTitle('rec1', action, 'Meeting'); // fail (suppressed)
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledTimes(1);
+
+    await a.setTitle('rec1', action, 'Meeting'); // success -> recovery logged once
+    const recovery = () =>
+      vi.mocked(logger.info).mock.calls.filter(
+        (c: any[]) => typeof c[0] === 'string' && c[0].includes('recovered')
+      );
+    expect(recovery()).toHaveLength(1);
+
+    // A subsequent healthy paint must NOT re-log recovery.
+    await a.setTitle('rec1', action, 'Later');
+    expect(recovery()).toHaveLength(1);
+  });
+});
+
+describe('issue #74 - setTitle in-flight coalescing', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('coalesces two concurrent identical titles into a single SDK call', async () => {
+    const action = { id: 'c1', setTitle: vi.fn().mockResolvedValue(undefined), setImage: vi.fn() };
+    const a = new TestAction();
+    a.seed('c1', action);
+
+    const p1 = a.setTitle('c1', action, 'Same');
+    const p2 = a.setTitle('c1', action, 'Same'); // identical & still in flight -> skipped
+    await Promise.all([p1, p2]);
+
+    expect(action.setTitle).toHaveBeenCalledTimes(1);
+    expect(a.states().get('c1').currentTitle).toBe('Same');
+    expect(a.states().get('c1').pendingTitle).toBeUndefined();
+  });
+
+  it('does not let a stale out-of-order resolution clobber a newer title', async () => {
+    let resolveX!: () => void;
+    let resolveY!: () => void;
+    const action = {
+      id: 'oo1',
+      setTitle: vi.fn()
+        .mockImplementationOnce(() => new Promise<void>(r => { resolveX = () => r(); }))
+        .mockImplementationOnce(() => new Promise<void>(r => { resolveY = () => r(); })),
+      setImage: vi.fn()
+    };
+    const a = new TestAction();
+    a.seed('oo1', action);
+
+    const pX = a.setTitle('oo1', action, 'X'); // dispatched first
+    const pY = a.setTitle('oo1', action, 'Y'); // dispatched second (newest)
+
+    resolveY();
+    await pY;
+    expect(a.states().get('oo1').currentTitle).toBe('Y');
+
+    resolveX(); // the older paint settles last
+    await pX;
+    // The stale 'X' resolution must not overwrite the newer committed 'Y'.
+    expect(a.states().get('oo1').currentTitle).toBe('Y');
+  });
+
+  it('clears pendingTitle on reject so the next tick retries (#51 semantics preserved)', async () => {
+    const action = {
+      id: 'r1',
+      setTitle: vi.fn()
+        .mockRejectedValueOnce(new Error('IPC down'))
+        .mockResolvedValueOnce(undefined),
+      setImage: vi.fn()
+    };
+    const a = new TestAction();
+    a.seed('r1', action);
+
+    await expect(a.setTitle('r1', action, 'Meeting')).resolves.toBeUndefined();
+    expect(a.states().get('r1').pendingTitle).toBeUndefined();
+    expect(a.states().get('r1').currentTitle).toBeUndefined();
+
+    await a.setTitle('r1', action, 'Meeting'); // same text -> retried, now succeeds
+    expect(action.setTitle).toHaveBeenCalledTimes(2);
+    expect(a.states().get('r1').currentTitle).toBe('Meeting');
   });
 });
 
@@ -298,6 +445,74 @@ describe('issue #29 - orphan reconciliation sweep', () => {
     expect(mockCalendarManager.unregisterAction).toHaveBeenCalledWith('marquee-orphan');
   });
 
+  it('keeps reaping other ids when getActionById throws for one (#78.2)', async () => {
+    const throwAction = { id: 'gid-throw', setTitle: vi.fn(), setImage: vi.fn() };
+    const goneAction = { id: 'gid-gone', setTitle: vi.fn(), setImage: vi.fn() };
+    const a = new TestAction();
+    const s1 = a.seed('gid-throw', throwAction);
+    s1.calendarId = 'cal_123';
+    const s2 = a.seed('gid-gone', goneAction);
+    s2.calendarId = 'cal_123';
+
+    // The SDK lookup throws for the first id; the second id is simply gone.
+    getActionByIdMock.mockImplementation((id: string) => {
+      if (id === 'gid-throw') {
+        throw new Error('SDK boom');
+      }
+      return undefined;
+    });
+
+    const reaped = await baseMod.reapOrphanedButtons();
+
+    // One SDK throw must not abort the remainder of the pass: gid-gone is reaped.
+    expect(reaped).toEqual(['gid-gone']);
+    expect(a.states().has('gid-gone')).toBe(false);
+    // The id whose lookup threw is left intact and the error is logged.
+    expect(a.states().has('gid-throw')).toBe(true);
+    expect(vi.mocked(logger.error)).toHaveBeenCalled();
+  });
+
+  it('skips a sweep tick while the previous sweep is still in flight (#78.3)', async () => {
+    const a = new SlowSweepAction();
+    a.seed('slow-1', { id: 'slow-1', setTitle: vi.fn(), setImage: vi.fn() });
+
+    baseMod.startOrphanSweep(1000);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(a.sweepCalls).toBe(1); // first sweep started and is still pending
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(a.sweepCalls).toBe(1); // overlapping tick is skipped, not re-entered
+
+    a.release(); // let the in-flight sweep settle -> clears the guard in .finally
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(a.sweepCalls).toBe(2); // next tick runs now that the guard is clear
+    a.release();
+  });
+
+  it('logs and swallows a reapOrphanedButtons rejection from the sweep interval (#78.6)', async () => {
+    const a = new RejectingSweepAction();
+    a.seed('rej-1', { id: 'rej-1', setTitle: vi.fn(), setImage: vi.fn() });
+
+    baseMod.startOrphanSweep(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+
+    // The outer .catch turns the rejection into an error log, not a crash.
+    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
+      '[BaseAction] Orphan sweep failed:',
+      expect.any(Error)
+    );
+
+    // A later tick still runs (the in-flight guard was cleared in .finally).
+    await vi.advanceTimersByTimeAsync(1000);
+    const sweepFailedLogs = vi.mocked(logger.error).mock.calls.filter(
+      (c: any[]) => c[0] === '[BaseAction] Orphan sweep failed:'
+    );
+    expect(sweepFailedLogs.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('reads the sweep cadence from ICAL_ORPHAN_SWEEP_MS when no explicit interval is given (#56.1)', async () => {
     process.env.ICAL_ORPHAN_SWEEP_MS = '5000';
 
@@ -314,6 +529,74 @@ describe('issue #29 - orphan reconciliation sweep', () => {
     // ...fires at the env-configured 5s cadence.
     await vi.advanceTimersByTimeAsync(1);
     expect(a.states().has('env-orphan')).toBe(false);
+  });
+});
+
+describe('issue #73/#75 - orphan sweep interval validation & precedence', () => {
+  const savedSweepEnv = process.env.ICAL_ORPHAN_SWEEP_MS;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    baseMod.__resetActionInstancesForTest();
+    (baseMod as any).stopOrphanSweep?.();
+    getActionByIdMock.mockReset();
+    getActionByIdMock.mockReturnValue(undefined);
+    delete process.env.ICAL_ORPHAN_SWEEP_MS;
+  });
+
+  afterEach(() => {
+    (baseMod as any).stopOrphanSweep?.();
+    vi.useRealTimers();
+    if (savedSweepEnv === undefined) {
+      delete process.env.ICAL_ORPHAN_SWEEP_MS;
+    } else {
+      process.env.ICAL_ORPHAN_SWEEP_MS = savedSweepEnv;
+    }
+  });
+
+  // 'abc'/'-5'/'0'/'2.5' are rejected by the pre-existing integer/positivity check;
+  // '999' (below the 1000ms floor) and '3600000000' (above the 2^31-1 ceiling that
+  // makes Node clamp setInterval to 1ms) are the newly-bounded cases (#73).
+  it.each(['abc', '-5', '0', '2.5', '999', '3600000000'])(
+    'ignores invalid ICAL_ORPHAN_SWEEP_MS=%s and falls back to the 60s default with a warning',
+    async (raw) => {
+      process.env.ICAL_ORPHAN_SWEEP_MS = raw;
+      const id = `bad-${raw}`;
+      const orphanAction = { id, setTitle: vi.fn(), setImage: vi.fn() };
+      const a = new TestAction();
+      const state = a.seed(id, orphanAction);
+      state.calendarId = 'cal_123';
+
+      baseMod.startOrphanSweep(); // no explicit interval -> env is consulted
+
+      expect(vi.mocked(logger.warn)).toHaveBeenCalledWith(
+        expect.stringContaining('ICAL_ORPHAN_SWEEP_MS')
+      );
+
+      // Default 60s cadence: not due at 59.999s, reaped exactly at 60s.
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(a.states().has(id)).toBe(true);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(a.states().has(id)).toBe(false);
+    }
+  );
+
+  it('gives an explicit interval precedence over a valid env override (#75)', async () => {
+    process.env.ICAL_ORPHAN_SWEEP_MS = '5000';
+    const orphanAction = { id: 'prec-orphan', setTitle: vi.fn(), setImage: vi.fn() };
+    const a = new TestAction();
+    const state = a.seed('prec-orphan', orphanAction);
+    state.calendarId = 'cal_123';
+
+    baseMod.startOrphanSweep(10_000); // explicit param must win over env=5000
+
+    // The 5s env cadence must NOT fire it...
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(a.states().has('prec-orphan')).toBe(true);
+    // ...the explicit 10s cadence does.
+    await vi.advanceTimersByTimeAsync(1);
+    expect(a.states().has('prec-orphan')).toBe(false);
   });
 });
 
@@ -363,20 +646,30 @@ describe('issue #29 - debug-info log truncation', () => {
 });
 
 describe('issue #54 - onWillAppear change-guard reset', () => {
+  let wakeAction: TestAction | undefined;
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
     baseMod.__resetActionInstancesForTest();
     getActionByIdMock.mockReset();
+    wakeAction = undefined;
   });
 
   afterEach(() => {
+    // Stop the per-second timer onWillAppear started here, not inline in the test
+    // body — afterEach always runs even if an assertion above throws, so the timer
+    // can't leak into a later test (#78.6).
+    if (wakeAction) {
+      (wakeAction as any).stopTimerForButton('wake1');
+    }
     vi.useRealTimers();
   });
 
   it('resets currentTitle/lastDebugMessage on (re)appear so an identical post-wake title repaints', async () => {
     const action = { id: 'wake1', setTitle: vi.fn(), setImage: vi.fn(), setSettings: vi.fn() };
     const a = new TestAction();
+    wakeAction = a;
     const state = a.seed('wake1', action);
     // Simulate pre-sleep guards recording the last painted title / debug line.
     state.currentTitle = '10:00';
@@ -391,8 +684,6 @@ describe('issue #54 - onWillAppear change-guard reset', () => {
     // A title identical to the pre-sleep one must still reach the SDK.
     await a.setTitle('wake1', action, '10:00');
     expect(action.setTitle).toHaveBeenCalledWith('10:00');
-
-    // Stop the per-second timer started by onWillAppear.
-    (a as any).stopTimerForButton('wake1');
+    // The per-second timer onWillAppear started is stopped in afterEach (#78.6).
   });
 });
