@@ -410,12 +410,35 @@ describe('CalendarManager', () => {
       expect(calendar?.refCount).toBe(2);
       expect(calendar?.url).toBe('https://example.com/cal.ics');
 
-      // Wait for the (single) initial update to complete
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Wait for the (single) initial update to complete (#68: vi.waitFor
+      // instead of a fixed-delay real-timer wait)
+      await vi.waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+      });
 
       // Only one fetch cycle should have happened, not one per action
       expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith('https://example.com/cal.ics', expect.anything());
+    });
+
+    it('should not throw and should resolve to INVALID_URL for a null URL instead of crashing (#65)', async () => {
+      expect(() => manager.registerAction('action1', null as any)).not.toThrow();
+
+      await vi.waitFor(() => {
+        expect(manager.getStatusForAction('action1')).toBe('INVALID_URL');
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('should not throw and should resolve to INVALID_URL for a numeric URL instead of crashing (#65)', async () => {
+      expect(() => manager.registerAction('action1', 42 as any)).not.toThrow();
+
+      await vi.waitFor(() => {
+        expect(manager.getStatusForAction('action1')).toBe('INVALID_URL');
+      });
+
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
