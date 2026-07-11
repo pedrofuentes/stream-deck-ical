@@ -13,7 +13,7 @@
  * @license MIT
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { DateTime } from 'luxon';
@@ -32,6 +32,13 @@ import { expandRecurringEvent, processRecurringEvents } from '../src/services/re
 import { parseICS } from '../src/services/ical-parser';
 import { CalendarEvent } from '../src/types/index';
 import { logger } from '../src/utils/logger';
+
+// The logger mock is module-level and never reset by vitest between tests,
+// so a toHaveBeenCalledWith oracle could be satisfied by an EARLIER test's
+// call. Clear recorded calls before every test (#59 item 8).
+beforeEach(() => {
+  vi.mocked(logger.warn).mockClear();
+});
 
 // ─────────────────────────────────────────────────────────────
 // Issue #39: BYDAY weekly event vanishes when UTC day ≠ local day
@@ -209,8 +216,10 @@ describe('Issue #30 — DST-aware weekly expansion', () => {
 
     expect(parsed.provider).toBe('outlook');
     expect(parsed.events.length).toBe(1);
-    // Windows TZID mapped to an IANA zone during parsing
-    expect(parsed.events[0].eventTimezone).toBeDefined();
+    // Windows TZID mapped to a concrete IANA zone during parsing:
+    // windows-iana maps "Central Europe Standard Time" → "Europe/Budapest"
+    // (first territory entry; same CET/CEST rules as the event's locale).
+    expect(parsed.events[0].eventTimezone).toBe('Europe/Budapest');
     expect(parsed.events[0].start.toISOString()).toBe('2026-03-25T09:00:00.000Z');
 
     const startWindow = new Date('2026-03-22T00:00:00Z');

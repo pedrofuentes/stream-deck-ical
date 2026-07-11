@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `ROADMAP.md` restructured to the agents-template format.
 
 ### Fixed
+- Recurring-event edge cases hardened: exact real-UTC window filtering across DST
+  transitions, EXDATE matching for occurrences in spring-forward gaps, malformed and
+  lowercase `UNTIL` tolerance, deduplicated invalid-timezone warnings, and
+  crypto-random generated UIDs for events without a `UID` (#57, #58, #59).
 - iCloud/Apple Calendar `webcal://` (and `webcals://`) share links are now normalized to
   `https://` before fetching, and unsupported URL schemes (e.g. `ftp://`, `file://`) now
   surface as "Please Setup" (INVALID_URL) instead of a misleading "Network Error" (#43).
