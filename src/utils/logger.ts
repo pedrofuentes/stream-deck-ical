@@ -50,25 +50,31 @@ const NEWLINE_RE = /[\r\n]/g;
 // Continuation-line marker for multi-line Error stacks (#71): keeps real line
 // breaks but prevents any injected line from presenting as a fresh record.
 const STACK_LF_RE = /\n/g;
-// User-profile path prefix — Windows C:\Users\name (or C:/Users/name) and
-// macOS /Users/name; the drive letter is optional and both slash forms match. /home/<user> and /root
-// are also covered, and the username class excludes CR/LF so redaction cannot
-// cross a line break and swallow a genuine following stack frame (#78.5, #93,
-// #94, #95). This single-separator form runs over RAW string values during JSON
-// serialization (see redactHomePathsReplacer); the final sanitize pass uses
-// HOME_PATH_TEXT_RE below, which also tolerates JSON-doubled backslashes.
-const HOME_PATH_RE = /(?:[a-z]:)?[\\/](?:users|home)[\\/][^\\/\r\n]+|[\\/]root(?=[\\/]|$)/gi;
-// Final-text variant (SR-20260711-PR105): JSON.stringify doubles backslashes, so a
-// Windows path arrives in JSON-derived text as C:\\Users\\pedro — a single-separator
-// [\\/] can never align with \\Users\\ and the username leaks (pre-stringified
-// string args like the plugin.ts "Global settings received:" idiom reach the log
-// this way). Each separator here matches one-or-two backslashes or a forward
-// slash, which only widens the match to the JSON-escaped form of the same path
-// shape: the literal users/home/root token between separators is still required,
-// and the username class additionally excludes '"' so a match cannot swallow a
-// JSON string's closing quote and the sibling keys after it. Applied centrally in
-// sanitizeLogMessage so every argument shape is covered (#93).
-const HOME_PATH_TEXT_RE = /(?:[a-z]:)?(?:\\{1,2}|\/)(?:users|home)(?:\\{1,2}|\/)[^\\/"\r\n]+|(?:\\{1,2}|\/)root(?=[\\/"]|$)/gi;
+// User-profile path prefix — Windows C:\Users\name (or C:/Users/name),
+// macOS /Users/name, Linux /home/name and /root; the drive letter is optional.
+// One regex serves BOTH redaction layers (the pre-stringify replacer on raw leaf
+// values and the final sanitize pass), so any fix applies everywhere (#78.5,
+// #93, #94, #95, SR-20260711-PR105).
+//
+// Separators: JSON.stringify doubles backslashes on every stringification, and
+// user-pasted text can arrive already escaped, so a path separator appears in
+// log text as a RUN of backslashes whose length depends on escaping depth
+// (1, 2, 3, 4, ... — depth is NOT fixed). Each separator therefore matches a
+// BOUNDED run \{1,8} or a forward slash:
+// - bounded, not \\+, because an unbounded run on a long non-matching backslash
+//   string backtracks catastrophically (measured ~76s on 200k chars in review
+//   SR-20260711-PR105-14f6644); {1,8} keeps per-position work constant.
+// - {1,8} covers separator runs up to 8, i.e. text escaped to depth 3; matches
+//   may also START inside a longer run, so only the token→username separator is
+//   truly bound by the 8. Combined with leaf-level redaction (which sees values
+//   BEFORE this stringify doubles them) a leak requires >=16 literal backslashes
+//   (quadruple-escaped input) — no shipped call site can produce that.
+// The literal users/home/root token between separators is still required, so the
+// widened separator only extends the match to escaped forms of the same path
+// shape. The username class excludes CR/LF (redaction cannot cross a line break
+// and swallow a genuine stack frame) and '"' (a match cannot swallow a JSON
+// string's closing quote and the sibling keys after it).
+const HOME_PATH_RE = /(?:[a-z]:)?(?:\\{1,8}|\/)(?:users|home)(?:\\{1,8}|\/)[^\\/"\r\n]+|(?:\\{1,8}|\/)root(?=[\\/"]|$)/gi;
 
 /**
  * Escape raw CR/LF to their two-character literal forms so a newline injected via
@@ -160,7 +166,7 @@ function sanitizeLogMessage(message: string): string {
     .replace(C0_RE, '')
     .replace(C1_RE, '')
     .replace(SPOOF_RE, '')
-    .replace(HOME_PATH_TEXT_RE, '<home>');
+    .replace(HOME_PATH_RE, '<home>');
 }
 
 /**
