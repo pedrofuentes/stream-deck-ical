@@ -75,6 +75,16 @@ function getOpener() {
     return window.opener || window.parent;
 }
 
+// BEGIN mirror:render
+// This block (renderCalendarList) is extracted and evaluated in isolation
+// by tests/pi-render.test.ts (#67), which injects document, calendars,
+// editCalendar, deleteCalendar and defaultCalendarId as Function
+// parameters — the same BEGIN/END marker discipline established for the
+// url-utils mirror (#49 item 1) — so it can be exercised against a
+// happy-dom document without loading the whole webview. Keep this block
+// self-contained: it must not reference anything outside these five
+// injected names.
+
 /**
  * Render the calendar list
  * First calendar is always the default and cannot be deleted
@@ -158,6 +168,7 @@ function renderCalendarList() {
         listEl.appendChild(item);
     });
 }
+// END mirror:render
 
 /**
  * Show the calendar form for adding
