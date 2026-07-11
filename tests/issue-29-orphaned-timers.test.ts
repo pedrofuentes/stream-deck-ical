@@ -90,7 +90,7 @@ class TestAction extends BaseAction {
   public async setTitle(id: string, action: any, title: string): Promise<void> {
     await (this as any).setTitleForButton(id, action, title);
   }
-  public reap(): string[] {
+  public reap(): Promise<string[]> {
     return (this as any).reapOrphans();
   }
   public debugTick(id: string, msg: string): void {
@@ -98,6 +98,31 @@ class TestAction extends BaseAction {
   }
   public states(): Map<string, any> {
     return (this as any).buttonStates as Map<string, any>;
+  }
+  public async appear(id: string, action: any, settings: any = {}): Promise<void> {
+    await this.onWillAppear({ action: { ...action, id }, payload: { settings } } as any);
+  }
+}
+
+/**
+ * Subclass whose polymorphic cleanup hook records the ids it cleaned — proves
+ * subclass-specific cleanup (e.g. marquee intervals) runs when an orphan is reaped.
+ */
+class MarqueeTestAction extends TestAction {
+  public cleaned: string[] = [];
+  protected async cleanupButtonState(actionId: string): Promise<void> {
+    this.cleaned.push(actionId);
+    await super.cleanupButtonState(actionId);
+  }
+}
+
+/**
+ * Subclass whose cleanup hook always throws — proves a failing reap neither
+ * crashes the sweep nor records the id as reaped.
+ */
+class ThrowingTestAction extends TestAction {
+  protected async cleanupButtonState(actionId: string): Promise<void> {
+    throw new Error(`cleanup boom for ${actionId}`);
   }
 }
 
@@ -117,6 +142,30 @@ describe('issue #29 - setTitle change-guard', () => {
 
     await a.setTitle('g1', action, '4m 59s'); // changed -> painted
     expect(action.setTitle).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries the SDK call on the next tick when setTitle rejects (does not poison the guard)', async () => {
+    // Transient IPC failure: the first setTitle rejects. The guard must NOT record
+    // the title as painted, so the next tick with the SAME text calls the SDK again.
+    const action = {
+      id: 't1',
+      setTitle: vi.fn()
+        .mockRejectedValueOnce(new Error('IPC down'))
+        .mockResolvedValueOnce(undefined),
+      setImage: vi.fn()
+    };
+    const a = new TestAction();
+    a.seed('t1', action);
+
+    // setTitleForButton must swallow the rejection (plugin never crashes); .catch is
+    // a safety net so this test doesn't blow up if the current impl still rejects.
+    await a.setTitle('t1', action, 'Meeting').catch(() => {});
+    // Guard must not be committed after a failed paint.
+    expect(a.states().get('t1').currentTitle).toBeUndefined();
+
+    await a.setTitle('t1', action, 'Meeting'); // same text -> must retry, now succeeds
+    expect(action.setTitle).toHaveBeenCalledTimes(2);
+    expect(a.states().get('t1').currentTitle).toBe('Meeting');
   });
 });
 
@@ -149,19 +198,30 @@ describe('issue #29 - marquee still renders through the guard', () => {
 });
 
 describe('issue #29 - orphan reconciliation sweep', () => {
+  const savedSweepEnv = process.env.ICAL_ORPHAN_SWEEP_MS;
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    // Prevent order-dependent collateral reaping: each test starts with an empty
+    // instance registry so the sweep only sees the button(s) it created (#55).
+    baseMod.__resetActionInstancesForTest();
     (baseMod as any).stopOrphanSweep?.();
     getActionByIdMock.mockReset();
+    delete process.env.ICAL_ORPHAN_SWEEP_MS;
   });
 
   afterEach(() => {
     (baseMod as any).stopOrphanSweep?.();
     vi.useRealTimers();
+    if (savedSweepEnv === undefined) {
+      delete process.env.ICAL_ORPHAN_SWEEP_MS;
+    } else {
+      process.env.ICAL_ORPHAN_SWEEP_MS = savedSweepEnv;
+    }
   });
 
-  it('reaps a tracked button the SDK no longer reports and leaves visible ones alone', () => {
+  it('reaps a tracked button the SDK no longer reports and leaves visible ones alone', async () => {
     const orphanAction = { id: 'sweep-orphan', setTitle: vi.fn(), setImage: vi.fn() };
     const visibleAction = { id: 'sweep-visible', setTitle: vi.fn(), setImage: vi.fn() };
 
@@ -179,18 +239,18 @@ describe('issue #29 - orphan reconciliation sweep', () => {
     // SDK only knows about the visible button
     getActionByIdMock.mockImplementation((id: string) => (id === 'sweep-visible' ? visibleAction : undefined));
 
-    const reaped = baseMod.reapOrphanedButtons();
+    const reaped = await baseMod.reapOrphanedButtons();
 
-    expect(reaped).toContain('sweep-orphan');
-    expect(reaped).not.toContain('sweep-visible');
+    // With an isolated registry, exactly one button is reaped — assert the full set.
+    expect(reaped).toEqual(['sweep-orphan']);
     expect(a.states().has('sweep-orphan')).toBe(false);
     expect(a.states().has('sweep-visible')).toBe(true);
-    expect(mockCalendarManager.unregisterAction).toHaveBeenCalledWith('sweep-orphan');
-    expect(mockCalendarManager.unregisterAction).not.toHaveBeenCalledWith('sweep-visible');
+    // The ONLY unregister call is for the orphan (strict, order-independent — #55).
+    expect(mockCalendarManager.unregisterAction.mock.calls).toEqual([['sweep-orphan']]);
     expect(clearIntervalSpy).toHaveBeenCalledWith(orphanTimer);
   });
 
-  it('runs the sweep on the periodic interval', () => {
+  it('runs the sweep on the periodic interval', async () => {
     const orphanAction = { id: 'timed-orphan', setTitle: vi.fn(), setImage: vi.fn() };
     const a = new TestAction();
     const state = a.seed('timed-orphan', orphanAction);
@@ -202,10 +262,58 @@ describe('issue #29 - orphan reconciliation sweep', () => {
     baseMod.startOrphanSweep(60_000);
     expect(a.states().has('timed-orphan')).toBe(true);
 
-    vi.advanceTimersByTime(60_000);
+    await vi.advanceTimersByTimeAsync(60_000);
 
     expect(a.states().has('timed-orphan')).toBe(false);
-    expect(mockCalendarManager.unregisterAction).toHaveBeenCalledWith('timed-orphan');
+    // The isolated registry means the sole unregister is the timed orphan (#55).
+    expect(mockCalendarManager.unregisterAction.mock.calls).toEqual([['timed-orphan']]);
+  });
+
+  it('does not crash the sweep and does not record the id as reaped when cleanup throws (#50)', async () => {
+    const orphanAction = { id: 'throw-orphan', setTitle: vi.fn(), setImage: vi.fn() };
+    const a = new ThrowingTestAction();
+    a.seed('throw-orphan', orphanAction);
+    getActionByIdMock.mockReturnValue(undefined);
+
+    // Must resolve (no unhandled rejection / crash) and NOT count the failed reap.
+    const reaped = await baseMod.reapOrphanedButtons();
+
+    expect(reaped).not.toContain('throw-orphan');
+    expect(vi.mocked(logger.error)).toHaveBeenCalled();
+  });
+
+  it('runs subclass-specific cleanup when an orphan is reaped (#50)', async () => {
+    const orphanAction = { id: 'marquee-orphan', setTitle: vi.fn(), setImage: vi.fn() };
+    const a = new MarqueeTestAction();
+    a.seed('marquee-orphan', orphanAction);
+    getActionByIdMock.mockReturnValue(undefined);
+
+    const reaped = await baseMod.reapOrphanedButtons();
+
+    expect(reaped).toContain('marquee-orphan');
+    // The polymorphic cleanup hook ran, so marquee-style subclass state was cleared.
+    expect(a.cleaned).toContain('marquee-orphan');
+    // Base cleanup still happened.
+    expect(a.states().has('marquee-orphan')).toBe(false);
+    expect(mockCalendarManager.unregisterAction).toHaveBeenCalledWith('marquee-orphan');
+  });
+
+  it('reads the sweep cadence from ICAL_ORPHAN_SWEEP_MS when no explicit interval is given (#56.1)', async () => {
+    process.env.ICAL_ORPHAN_SWEEP_MS = '5000';
+
+    const orphanAction = { id: 'env-orphan', setTitle: vi.fn(), setImage: vi.fn() };
+    const a = new TestAction();
+    a.seed('env-orphan', orphanAction);
+    getActionByIdMock.mockReturnValue(undefined);
+
+    baseMod.startOrphanSweep(); // no explicit interval -> env override applies
+
+    // Not yet due at the default cadence boundary...
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(a.states().has('env-orphan')).toBe(true);
+    // ...fires at the env-configured 5s cadence.
+    await vi.advanceTimersByTimeAsync(1);
+    expect(a.states().has('env-orphan')).toBe(false);
   });
 });
 
@@ -251,5 +359,40 @@ describe('issue #29 - debug-info log truncation', () => {
     expect(summary).toContain('logs=1');
     expect(summary).toContain('status=LOADED');
     expect(summary).toContain('events=3');
+  });
+});
+
+describe('issue #54 - onWillAppear change-guard reset', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    baseMod.__resetActionInstancesForTest();
+    getActionByIdMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('resets currentTitle/lastDebugMessage on (re)appear so an identical post-wake title repaints', async () => {
+    const action = { id: 'wake1', setTitle: vi.fn(), setImage: vi.fn(), setSettings: vi.fn() };
+    const a = new TestAction();
+    const state = a.seed('wake1', action);
+    // Simulate pre-sleep guards recording the last painted title / debug line.
+    state.currentTitle = '10:00';
+    state.lastDebugMessage = 'Active events: 1';
+
+    await a.appear('wake1', action, {});
+
+    // Change-guards cleared so the first post-appear tick always paints (#29/#54).
+    expect(state.currentTitle).toBeUndefined();
+    expect(state.lastDebugMessage).toBeUndefined();
+
+    // A title identical to the pre-sleep one must still reach the SDK.
+    await a.setTitle('wake1', action, '10:00');
+    expect(action.setTitle).toHaveBeenCalledWith('10:00');
+
+    // Stop the per-second timer started by onWillAppear.
+    (a as any).stopTimerForButton('wake1');
   });
 });

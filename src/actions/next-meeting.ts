@@ -210,13 +210,13 @@ export class NextMeetingAction extends BaseAction {
   }
   
   /**
-   * Override to stop marquee when disappearing
+   * Override the shared cleanup hook so NextMeeting-specific state (marquee) is
+   * torn down for both SDK disappearances and reaped orphans (#50).
    */
-  async onWillDisappear(ev: any): Promise<void> {
-    const actionId = ev.action.id;
+  protected async cleanupButtonState(actionId: string): Promise<void> {
     this.stopMarquee(actionId);
     // Clean up NextMeeting-specific state
     this.nextMeetingStates.delete(actionId);
-    await super.onWillDisappear(ev);
+    await super.cleanupButtonState(actionId);
   }
 }

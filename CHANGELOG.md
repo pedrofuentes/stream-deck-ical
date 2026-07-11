@@ -34,6 +34,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   (#48); settings UI hardened against HTML injection in the calendar list
   (code scanning alert #1), and `normalizeICalUrl`/`isSupportedICalUrl` no
   longer throw on null/undefined input (#49).
+- Hardened the orphan-reconciliation sweep and its diagnostics (#50, #51, #52,
+  #54, #55, #56): orphan cleanup now runs through a shared, polymorphic
+  `cleanupButtonState` hook that is awaited per button, so a failing reap can no
+  longer escape as an unhandled rejection and crash the plugin, and an id is only
+  recorded as reaped once its cleanup (including subclass marquee/timeout state)
+  actually completes; a key title no longer freezes stale after a transient
+  Stream Deck IPC failure because the change-guard is committed only after
+  `setTitle` resolves (the next tick retries otherwise); logged `Error` objects
+  keep their message and stack instead of collapsing to `{}`, and log messages
+  are stripped of ANSI/OSC escapes and C0/C1/BEL/U+2028 control characters; the
+  sweep cadence can be tuned via the `ICAL_ORPHAN_SWEEP_MS` env override; and a
+  failed debug-info size measurement now logs its cause instead of a silent
+  `bytes=-1`.
 
 ### Removed
 

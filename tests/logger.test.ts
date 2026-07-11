@@ -21,7 +21,7 @@ vi.mock('@elgato/streamdeck', () => ({
 }));
 
 // Import after mocking
-import { logger, debugLogs, isDebugMode, DebugLogEntry, getFormattedLogs, getErrorLogs, clearLogs } from '../src/utils/logger';
+import { logger, debugLogs, isDebugMode, DebugLogEntry, getFormattedLogs, getErrorLogs, clearLogs, summarizeDebugInfo } from '../src/utils/logger';
 import streamDeck from '@elgato/streamdeck';
 
 describe('logger', () => {
@@ -99,6 +99,58 @@ describe('logger', () => {
       const error = new Error('test error');
       logger.error('caught:', error.message);
       expect(debugLogs[0].message).toContain('test error');
+    });
+
+    it('should serialize a passed Error object with its message and stack, not {} (#52)', () => {
+      logger.error('Orphan sweep failed:', new Error('boom'));
+      // Non-enumerable Error fields must not collapse to '{}'.
+      expect(debugLogs[0].message).toContain('boom');
+      expect(debugLogs[0].message).not.toBe('Orphan sweep failed: {}');
+      // Stack should be present for diagnosability.
+      expect(debugLogs[0].message).toMatch(/boom[\s\S]*at /);
+    });
+  });
+
+  describe('message sanitization (#52)', () => {
+    beforeEach(() => {
+      debugLogs.length = 0;
+      vi.clearAllMocks();
+    });
+
+    it('strips ANSI escape sequences', () => {
+      logger.info('\x1b[31mred\x1b[0m');
+      expect(debugLogs[0].message).toBe('red');
+      expect(debugLogs[0].message).not.toContain('[31m');
+    });
+
+    it('strips C0/C1 controls, BEL and separators but keeps newline and tab', () => {
+      const input = 'a' + '\x07' + 'b' + ' ' + 'c' + '\t' + 'd' + '\n' + 'e' + '\x9b';
+      logger.info(input);
+      expect(debugLogs[0].message).toBe('abc\td\ne');
+    });
+
+    it('sanitizes the message sent to the underlying SDK logger too', () => {
+      logger.warn('bad\x1b[31mvalue');
+      expect(streamDeck.logger.warn).toHaveBeenCalledWith('badvalue');
+    });
+  });
+
+  describe('summarizeDebugInfo failure logging (#56.2)', () => {
+    beforeEach(() => {
+      debugLogs.length = 0;
+      vi.clearAllMocks();
+    });
+
+    it('logs the cause at debug level when size measurement fails and still returns bytes=-1', () => {
+      const circular: any = {};
+      circular.self = circular;
+      const info = { cache: { status: 'LOADED', eventCount: 2 }, logs: [], extra: circular };
+
+      const summary = summarizeDebugInfo(info);
+
+      expect(summary).toContain('bytes=-1');
+      const debugEntries = debugLogs.filter(e => e.level === 'debug');
+      expect(debugEntries.length).toBeGreaterThan(0);
     });
   });
 

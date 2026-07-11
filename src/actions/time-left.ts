@@ -181,16 +181,16 @@ export class TimeLeftAction extends BaseAction {
   }
   
   /**
-   * Override to clear timeouts when disappearing
+   * Override the shared cleanup hook so TimeLeft-specific state (end timeout) is
+   * torn down for both SDK disappearances and reaped orphans (#50).
    */
-  async onWillDisappear(ev: any): Promise<void> {
-    const actionId = ev.action.id;
+  protected async cleanupButtonState(actionId: string): Promise<void> {
     const tlState = this.timeLeftStates.get(actionId);
     if (tlState?.endTimeout) {
       clearTimeout(tlState.endTimeout);
     }
     // Clean up TimeLeft-specific state
     this.timeLeftStates.delete(actionId);
-    await super.onWillDisappear(ev);
+    await super.cleanupButtonState(actionId);
   }
 }
