@@ -61,6 +61,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the `ICAL_ORPHAN_SWEEP_MS` bounds now also cover the explicit interval param and reject
   non-decimal forms (`0x7D0`, `1e3`, ` 5000 `); title failure/recovery logs are suppressed for
   a `ButtonState` already removed mid-flight (#99, #100, #101, #102, #103, #104).
+- Residual post-wake stale-title race closed: `onWillAppear` now also bumps the per-button
+  title dispatch token, so a `setTitle` left hung from before sleep can no longer commit its
+  stale text (or flip the outage flag) if it settles during the re-appear reset window. The
+  `titleFailureLogged` outage/recovery transitions are now token-gated so an older out-of-order
+  settlement in an x,y,x overlap can no longer raise a spurious warn or log a false recovery,
+  and `stopOrphanSweep()` now advances a sweep generation so a pass left in flight across a
+  stop/restart can no longer clear the in-flight guard held by the restarted sweep's pass
+  (no two overlapping reap passes) (#109, #110, #111, #112).
 - Recurring-event edge cases hardened: exact real-UTC window filtering across DST
   transitions, EXDATE matching for occurrences in spring-forward gaps, malformed and
   lowercase `UNTIL` tolerance, deduplicated invalid-timezone warnings, and
