@@ -668,6 +668,23 @@ describe('nested home-token decoy consumption (#116)', () => {
     logger.error('/home/users');
     expect(debugLogs[0].message).toBe('<home>');
   });
+
+  // Pins (SR-20260711-PR120-1b5d5c7): discriminating coverage for the ROOT alternative of the
+  // decoy check — without it, /home/root/<name> would redact the decoy and leak the real username.
+  it('fully redacts /home/root/<name> (root as the inner decoy segment)', () => {
+    logger.error('/home/root/pedro');
+    expect(debugLogs[0].message).toBe('<home>');
+  });
+
+  it('consumes a root decoy chain (/home/root/root/<name>)', () => {
+    logger.error('/home/root/root/pedro');
+    expect(debugLogs[0].message).toBe('<home>');
+  });
+
+  it('fully redacts C:\\Users\\root\\<name> (Windows-shaped root decoy)', () => {
+    logger.error('C:\\Users\\root\\pedro');
+    expect(debugLogs[0].message).toBe('<home>');
+  });
 });
 
 describe('username span termination (#116 companion)', () => {
