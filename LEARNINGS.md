@@ -35,6 +35,21 @@
 
 <!-- Add new learnings below this line, most recent first -->
 
+### [2026-07-10] Sentinel rejection: fallback-path tests need discriminating oracles
+**Context**: PR #46 (timezone-aware recurrence expansion) was REJECTED by Sentinel review SR-20260709-PR46-9dac11e.
+**Learning**: The invalid-timezone fallback test asserted only `Array.isArray(expanded)` and `expanded.length === 0`; a mutation probe showed it stayed GREEN with the `isValidIANATimezone` guard deleted, because the crash path (invalid DateTime → rrulestr throws → catch) also returns `[]`. A 0-output oracle cannot discriminate "graceful fallback" from "crashed". Correction: assert exact NONZERO expected output through the fallback path (the reworked test pins 3 exact ISO instants + the logger.warn call) and mutation-verify (delete the guard → test must go RED).
+**Impact**: Any test covering an error-fallback branch must use an oracle that fails when the branch is broken — verify with a quick mutation probe before committing.
+
+### [2026-07-10] Recurrence must expand wall-clock in the event's timezone
+**Context**: Issues #39 (weekly BYDAY events vanished) and #30 (1h off after DST) shared one root cause, fixed in PR #46.
+**Learning**: Feeding rrule a UTC-component DTSTART breaks BYDAY for events whose local day differs from the UTC day (evening events in the Americas) and ignores DST when stepping weeks (Europe). The parser resolves `event.eventTimezone` (IANA) precisely so expansion can convert to wall-clock in that zone, expand naively, and convert occurrences back to real UTC.
+**Impact**: Never do RRULE math on raw UTC components when the event has a timezone; regression fixtures exist at `__fixtures__/google-calendar/issue-39-evening-byday.ics` and `__fixtures__/outlook/issue-30-dst-weekly.ics`.
+
+### [2026-07-10] Timer cleanup must not live only in onWillDisappear
+**Context**: Issue #29 (100% CPU after macOS wake), fixed in PR #47.
+**Learning**: The Stream Deck app can re-emit willAppear with NEW context IDs after wake without a matching willDisappear for the old IDs, so per-button timers whose only cleanup is onWillDisappear leak forever (each leaked 1s interval adds render/log work; calendarManager refCounts strand 10-min updaters too). Correction: a periodic orphan-reconciliation sweep compares tracked buttonStates against the SDK's action store (`streamDeck.actions.getActionById`) and reuses the disappear cleanup path.
+**Impact**: Any per-context resource keyed by action id needs a reconciliation safety net, not just event-driven cleanup.
+
 ### [2026-06-16] Migrated to agents-template v0.16.0
 **Context**: Adopted the agents-template governance system via the Migration path.
 **Learning**: Workflow is now TDD-choreographed + Sentinel-gated on worktree branches; the
