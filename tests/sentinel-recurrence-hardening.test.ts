@@ -24,6 +24,10 @@
  *    digest #98 item 1 — feeds the diagnostics Error Summary counter).
  *  - #98.2: dedup cache eviction is LRU (recency-refreshed), not plain
  *    insertion-order FIFO (Sentinel digest #98 item 2).
+ *  - #98.4: #81's invariant comment softened — both sides of the inequality
+ *    scale together since MAX_RAW_OCCURRENCES is derived from WINDOW_PAD_MS,
+ *    so pad-widening alone is self-adjusting rather than something this
+ *    assertion guards against (Sentinel digest #98 item 4, comment-only).
  *
  * @author Pedro Fuentes <git@pedrofuent.es>
  * @copyright Pedro Pablo Fuentes Schuster
@@ -765,8 +769,14 @@ describe('#81 — raw pre-cap is derived from the window pad (starvation invaria
     // Module-load invariant (#81): a minutely rule can occupy at most
     // 2 * (WINDOW_PAD_MS / 60_000) slots with pad-only occurrences, so the
     // raw pre-cap must leave at least MAX_OCCURRENCES slots for the real
-    // window. Widening WINDOW_PAD_MS without recomputing the cap would
-    // silently re-open the cap-starvation bug — this assertion trips instead.
+    // window. MAX_RAW_OCCURRENCES is a formula OF WINDOW_PAD_MS (#81), so
+    // both sides of this inequality scale together and merely widening
+    // WINDOW_PAD_MS is self-adjusting — it keeps this assertion green rather
+    // than tripping it (#98.4). What this assertion actually guards,
+    // non-vacuously, is the derivation formula itself: a wrong multiplier or
+    // a negative RAW_OCCURRENCES_MARGIN would trip it even though every
+    // value the formula is CURRENTLY permitted to take satisfies the real
+    // starvation requirement.
     const worstCaseMinutelyPadOccupancy = Math.ceil(2 * (WINDOW_PAD_MS / 60_000));
     expect(MAX_RAW_OCCURRENCES).toBeGreaterThanOrEqual(
       worstCaseMinutelyPadOccupancy + MAX_OCCURRENCES
