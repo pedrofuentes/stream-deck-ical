@@ -587,14 +587,29 @@ describe('home-prefix anchoring: mid-path segments are not home prefixes (#114)'
     expect(debugLogs[0].message).toBe('template at /opt/app/home/default.json');
   });
 
-  it('no longer redacts users as a URL path segment (previously a known false positive)', () => {
+  // ── Sanctioned spec change (#121/#122) — pin flips, not weakenings ────────
+  // #114 pinned `http://example.com/users/bob` and `//example.com/users/bob`
+  // as untouched (URL fidelity). Sentinel issue #121 reverses that call for
+  // account-bearing URL segments: "a subscription URL embedding the account
+  // name as a path segment (Zimbra `…/home/<user>/calendar.ics`, CalDAV
+  // `/users/<name>/…`) is logged on every fetch (truncated) and in full on
+  // validation error; the alnum-preceded token is now classified mid-path and
+  // skipped → username PII in the exportable diagnostics buffer." The chosen
+  // remediation is scheme-aware anchoring (privacy over URL fidelity in a
+  // diagnostics log), so these two pins flip to redacted. Every other #114
+  // pin (non-URL mid-path segments) remains green and unchanged.
+  it('redacts a users URL path segment again (pin flipped by #121)', () => {
     logger.info('fetching http://example.com/users/bob/cal.ics');
-    expect(debugLogs[0].message).toBe('fetching http://example.com/users/bob/cal.ics');
+    expect(debugLogs[0].message).toBe('fetching http://example.com<home>/cal.ics');
   });
 
-  it('does not treat a forward-slash-only double separator as a UNC host prefix (protocol-relative URL)', () => {
+  // Flipped by #122 (direction decided privacy-first): a protocol-relative
+  // URL carries the same account semantics as its scheme-full form, and the
+  // share-position rule no longer demands backslash evidence, so
+  // `//host/users/<name>` redacts like `\\host\users\<name>` does.
+  it('redacts users after a protocol-relative double separator (pin flipped by #122)', () => {
     logger.info('see //example.com/users/bob');
-    expect(debugLogs[0].message).toBe('see //example.com/users/bob');
+    expect(debugLogs[0].message).toBe('see //example.com<home>');
   });
 
   // Pin — passes before the fix; guards that anchoring keeps prose-adjacent absolute paths redacted.
@@ -624,6 +639,189 @@ describe('home-prefix anchoring: mid-path segments are not home prefixes (#114)'
   it('does not extend the drive prefix through a preceding word (cc:\\users\\… edge)', () => {
     logger.error('cc:\\users\\pedro');
     expect(debugLogs[0].message).toBe('cc:<home>');
+  });
+});
+
+describe('URL account-segment redaction (#121)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // The Zimbra share-URL shape logged by calendar-service on every fetch.
+  it('redacts the account in a Zimbra-style /home/<user>/ subscription URL', () => {
+    logger.info('Fetching iCal feed: https://cal.example.com/home/pedro/calendar.ics');
+    expect(debugLogs[0].message).toBe('Fetching iCal feed: https://cal.example.com<home>/calendar.ics');
+    expect(debugLogs[0].message).not.toContain('pedro');
+  });
+
+  // CalDAV principal shape — the token is NOT host-adjacent, so only the
+  // scheme lookback (not the share-position rule) can anchor it.
+  it('redacts a deep CalDAV /users/<name>/ segment', () => {
+    logger.error('Invalid URL format: https://dav.example.com/principals/users/pedro/cal.ics');
+    expect(debugLogs[0].message).toBe('Invalid URL format: https://dav.example.com/principals<home>/cal.ics');
+  });
+
+  it('redacts the account segment in a URL inside a JSON object argument', () => {
+    logger.error('cfg:', { url: 'https://cal.example.com/home/pedro/c.ics' });
+    expect(debugLogs[0].message).toBe('cfg: {"url":"https://cal.example.com<home>/c.ics"}');
+  });
+
+  // Pin — passes before the fix (the \/\/ runs carry backslash evidence under
+  // the current UNC rule); kept to prove scheme evidence survives escaping.
+  it('redacts through PHP json_encode-escaped URL separators (scheme evidence survives escaping)', () => {
+    logger.error('paste https:\\/\\/cal.example.com\\/home\\/pedro\\/x.ics');
+    expect(debugLogs[0].message).toBe('paste https:\\/\\/cal.example.com<home>\\/x.ics');
+  });
+
+  it('keeps scheme context across a port number', () => {
+    logger.info('https://x.example.com:8443/dav/users/pedro/x.ics');
+    expect(debugLogs[0].message).toBe('https://x.example.com:8443/dav<home>/x.ics');
+  });
+
+  it('keeps scheme context across URL userinfo and interior colons', () => {
+    logger.info('https://u:p@example.com/dav/users/pedro/x');
+    expect(debugLogs[0].message).toBe('https://u:p@example.com/dav<home>/x');
+  });
+
+  // DOCUMENTED over-redaction (#121 accepted trade-off): in a diagnostics
+  // log, privacy beats fidelity — non-account URLs that happen to use
+  // /users/<seg> lose that segment too.
+  it('over-redacts a non-account /users/ URL segment (accepted #121 trade-off)', () => {
+    logger.info('https://github.com/users/bob');
+    expect(debugLogs[0].message).toBe('https://github.com<home>');
+  });
+
+  // Pin — passes before the fix. Token-set decision: only users/home carry
+  // account semantics in URL paths; a deep /root/ URL segment keeps #114
+  // mid-path behavior (see #124's calibration note: inside URLs, skipping
+  // root is correct #114 behavior).
+  it('leaves a deep root URL segment untouched (root is not a URL account token)', () => {
+    logger.info('see https://example.com/api/root/config');
+    expect(debugLogs[0].message).toBe('see https://example.com/api/root/config');
+  });
+
+  // Pin — passes before the fix; the token must be a whole path segment.
+  it('leaves a longer segment containing the token untouched inside a URL', () => {
+    logger.info('https://example.com/data/users2/x');
+    expect(debugLogs[0].message).toBe('https://example.com/data/users2/x');
+  });
+
+  // Pin — passes before the fix; a users token needs a following username.
+  it('leaves a URL users segment with no username untouched', () => {
+    logger.info('https://example.com/users/');
+    expect(debugLogs[0].message).toBe('https://example.com/users/');
+  });
+
+  // Pin — passes before the fix; scheme context must not cross whitespace.
+  it('does not let a URL earlier in the message anchor a separate mid-path token', () => {
+    logger.info('https://x.example.com and /var/data/users/cache');
+    expect(debugLogs[0].message).toBe('https://x.example.com and /var/data/users/cache');
+  });
+
+  // Pin — passes before the fix; a quote bounds the scheme context (JSON
+  // string values are independent runs).
+  it('does not let a URL in one JSON value anchor a token in the next value', () => {
+    logger.info('{"a":"https://x.example.com","b":"/var/data/users/cache"}');
+    expect(debugLogs[0].message).toBe('{"a":"https://x.example.com","b":"/var/data/users/cache"}');
+  });
+
+  // Pin — passes before the fix; drive-letter colons never read as schemes:
+  // their separator runs are either length 1 (C:\, C:/) or all-backslash at
+  // every escaping depth, while an escaped :// keeps its two forward slashes.
+  it('does not treat a drive-letter colon as scheme evidence (single-backslash form)', () => {
+    logger.info('x C:\\projects\\users\\data');
+    expect(debugLogs[0].message).toBe('x C:\\projects\\users\\data');
+  });
+
+  it('does not treat a forward-slash drive form as scheme evidence', () => {
+    logger.info('x C:/projects/users/data');
+    expect(debugLogs[0].message).toBe('x C:/projects/users/data');
+  });
+
+  // Pin — passes before the fix (pre-existing #114 UNC-shape behavior, kept):
+  // at escaping depth >= 1 the doubled backslashes make \\projects read as a
+  // UNC host and the segment after it redacts. Documented over-redaction.
+  it('keeps the pre-existing escaped-drive over-redaction (UNC-shaped depth-1 paste)', () => {
+    logger.info('x C:\\\\projects\\\\users\\\\data');
+    expect(debugLogs[0].message).toBe('x C:\\\\projects<home>');
+  });
+
+  // #95 companion — passes before the fix: a scheme on one stack line must
+  // not anchor a token on the next line (CR/LF bound the context walk; the
+  // "    | " continuation marker already whitespace-bounds real stacks, so
+  // the CR/LF boundary is belt-and-braces).
+  it('does not carry scheme context across an Error-stack line break', () => {
+    const err = new Error('boom');
+    err.stack = 'Error: see https://x.example.com\n/var/data/users/cache';
+    logger.error(err);
+    expect(debugLogs[0].message).toBe('Error: see https://x.example.com\n    | /var/data/users/cache');
+  });
+
+  it('is idempotent for URL redaction (re-logging a redacted URL is a no-op)', () => {
+    logger.info('fetching https://cal.example.com/home/pedro/calendar.ics');
+    const once = debugLogs[0].message;
+    expect(once).toBe('fetching https://cal.example.com<home>/calendar.ics');
+    logger.info(once);
+    expect(debugLogs[1].message).toBe(once);
+  });
+});
+
+describe('UNC evidence window (#122)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // Issue #122 probe: forward-slash prefix + backslash token-adjacent run
+  // leaked under the prefix-run-only backslash discriminator.
+  it('redacts //server\\users\\pedro (mixed separators, backslash in the token-adjacent run)', () => {
+    logger.error('//server\\users\\pedro');
+    expect(debugLogs[0].message).toBe('//server<home>');
+  });
+
+  // Pin — passes before the fix (the prefix run carries backslash evidence).
+  it('redacts \\\\server/users/pedro (backslash in the prefix run)', () => {
+    logger.error('\\\\server/users/pedro');
+    expect(debugLogs[0].message).toBe('\\\\server<home>');
+  });
+
+  // Decided direction (#122's documented judgment call, privacy-first): a
+  // users/home token in share position after a double-separator start
+  // redacts regardless of separator flavor — //fileserver/users/pedro is a
+  // plausible roaming-profile share AND a protocol-relative URL account
+  // path; both readings say redact.
+  it('redacts the forward-slash-only share form //fileserver/users/pedro', () => {
+    logger.error('//fileserver/users/pedro');
+    expect(debugLogs[0].message).toBe('//fileserver<home>');
+  });
+
+  it('redacts a fully forward-slash share with doubled interior separators', () => {
+    logger.error('//server//users//pedro');
+    expect(debugLogs[0].message).toBe('//server<home>');
+  });
+
+  // Consequence of flavor-free share evidence, pinned as deliberate:
+  // host-adjacent root in share position redacts too (\\server\root already
+  // did; //host/root and https://host/root now match). Deep URL
+  // /api/root/... segments remain untouched (#121 token-set pin above).
+  it('redacts host-adjacent root in share position regardless of separator flavor', () => {
+    logger.error('https://example.com/root');
+    expect(debugLogs[0].message).toBe('https://example.com<home>');
+  });
+
+  // Pin — passes before the fix; the share prefix run must itself be
+  // anchored (an alnum-preceded double separator is not a share start).
+  it('leaves an alnum-preceded double separator untouched (not a share start)', () => {
+    logger.info('on server//users/pedro');
+    expect(debugLogs[0].message).toBe('on server//users/pedro');
+  });
+
+  // Pin — passes before the fix; a single-separator "prefix" before the
+  // would-be hostname is not a share start either.
+  it('leaves a doubled interior separator in a plain path untouched', () => {
+    logger.info('ls /var/data//users/cache');
+    expect(debugLogs[0].message).toBe('ls /var/data//users/cache');
   });
 });
 
@@ -789,6 +987,36 @@ describe('scanner boundary pins (#117)', () => {
   });
 });
 
+describe('URL-context scanning stays linear (#121/#122 perf pin)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // Perf pin — passes before the fix too; guards the memoized O(n) bound of
+  // the scheme-context walk and the colon-run scans on ~200k inputs.
+  it('stays linear on 200k adversarial URL-shaped inputs', () => {
+    // One giant boundary-free run with a scheme at the front: every candidate
+    // consults the URL-context walk, which must stay memoized (each char
+    // walked once per pass, not once per candidate).
+    const urlRun = 'https://x.com/' + 'a1/users/'.repeat(22000);
+    // Colon-dense input where no colon ever qualifies as scheme evidence.
+    const colonHeavy = 'a:b/users/'.repeat(20000);
+    // Scheme-shaped colon + share-position anchor before every token, but the
+    // username scan fails each time (next char is ':') — anchor-heavy, no
+    // redaction, so the scan must not fall into quadratic rescans.
+    const schemeShare = ':\\/x/users/'.repeat(18000);
+    const start = performance.now();
+    logger.error(urlRun);
+    logger.error(colonHeavy);
+    logger.error(schemeShare);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(500);
+    expect(debugLogs[1].message).toBe(colonHeavy);
+    expect(debugLogs[2].message).toBe(schemeShare);
+  });
+});
+
 describe('formatError catch-fallback tagging (#117.4)', () => {
   beforeEach(() => {
     debugLogs.length = 0;
@@ -841,6 +1069,66 @@ describe('spoof-class completeness (#97.3)', () => {
     // Discriminating: U+200E is already stripped; U+061C must not survive beside it.
     logger.info('a؜b‎c');
     expect(debugLogs[0].message).toBe('abc');
+  });
+});
+
+describe('invisible-character class completeness (#123)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // Discriminating members for every range #123 enumerates, plus the plane-14
+  // tag block and reserved default-ignorables (the property-derived class
+  // covers them wholesale, ending the one-range-per-cycle pattern
+  // #71 → #97.3 → #115 → #123).
+  const strippedMembers: Array<[string, string]> = [
+    ['U+00AD soft hyphen', '­'],
+    ['U+180E Mongolian vowel separator', '᠎'],
+    ['U+2061 function application (invisible-operator range start)', '⁡'],
+    ['U+2064 invisible plus (invisible-operator range end)', '⁤'],
+    ['U+206A inhibit symmetric swapping (deprecated-format range start)', '⁪'],
+    ['U+206F nominal digit shapes (deprecated-format range end)', '⁯'],
+    ['U+FE00 variation selector-1', '︀'],
+    ['U+FE0F variation selector-16', '️'],
+    ['U+FFF9 interlinear annotation anchor', '￹'],
+    ['U+FFFB interlinear annotation terminator', '￻'],
+    ['U+115F Hangul choseong filler', 'ᅟ'],
+    ['U+1160 Hangul jungseong filler', 'ᅠ'],
+    ['U+3164 Hangul filler', 'ㅤ'],
+    ['U+FFA0 halfwidth Hangul filler', 'ﾠ'],
+    ['U+E0100 variation selector-17 (supplementary, surrogate pair)', '\u{e0100}'],
+    ['U+E01EF variation selector-256 (supplementary range end)', '\u{e01ef}'],
+    ['U+E0001 language tag', '\u{e0001}'],
+    ['U+E0020 tag space (ASCII-smuggling block start)', '\u{e0020}'],
+    ['U+E007F cancel tag (ASCII-smuggling block end)', '\u{e007f}'],
+    ['U+034F combining grapheme joiner', '͏'],
+    ['U+2065 reserved default-ignorable', '⁥'],
+    ['U+FFF0 reserved default-ignorable', '￰']
+  ];
+
+  for (const [name, ch] of strippedMembers) {
+    it(`strips ${name}`, () => {
+      logger.info(`a${ch}b`);
+      expect(debugLogs[0].message).toBe('ab');
+    });
+  }
+
+  it('strips a whole smuggled tag-character payload, not just single members', () => {
+    // "hi" hidden as tag characters riding on visible text.
+    logger.info('ok\u{e0068}\u{e0069}');
+    expect(debugLogs[0].message).toBe('ok');
+  });
+
+  it('does not strip legitimate non-ASCII text (CJK, RTL, combining marks, emoji bases)', () => {
+    const legit = '日本語 אב اب é \u{1f4e5}';
+    logger.info(legit);
+    expect(debugLogs[0].message).toBe(legit);
+  });
+
+  it('still keeps tabs intact alongside the widened invisible class', () => {
+    logger.info('a\tb­c');
+    expect(debugLogs[0].message).toBe('a\tbc');
   });
 });
 
