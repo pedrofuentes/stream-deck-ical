@@ -43,8 +43,17 @@ const RAW_OCCURRENCES_MARGIN = 2 * MAX_OCCURRENCES;
  * slots with pad-only occurrences (both pad sides), so reserving that
  * occupancy plus the full MAX_OCCURRENCES in-window budget guarantees the
  * final in-window cap can always fill for any rule of minutely or coarser
- * granularity — no matter how WINDOW_PAD_MS is widened later. Finer
- * (SECONDLY-scale) pathological rules stay CPU-bounded by this pre-cap (#26).
+ * granularity. Finer (SECONDLY-scale) pathological rules stay CPU-bounded by
+ * this pre-cap (#26).
+ *
+ * Because MAX_RAW_OCCURRENCES is a formula OF WINDOW_PAD_MS rather than an
+ * independently-chosen constant, the two are proportionally self-adjusting:
+ * widening WINDOW_PAD_MS automatically grows MAX_RAW_OCCURRENCES in step, so
+ * the module-load invariant below is satisfied by construction for any
+ * WINDOW_PAD_MS value, not as an incidental property this guards against
+ * regressing. What the invariant DOES still catch (non-vacuously) is the
+ * derivation formula itself breaking — e.g. a wrong multiplier or a
+ * RAW_OCCURRENCES_MARGIN that goes negative (#98.4).
  *
  * Module-load invariant (unit-tested in sentinel-recurrence-hardening):
  *   MAX_RAW_OCCURRENCES >= 2 * (WINDOW_PAD_MS / 60_000) + MAX_OCCURRENCES
@@ -146,19 +155,28 @@ function rewriteUntilForZone(rruleString: string, zone: string): string {
  * Zones already warned about as invalid (zone → number of SUPPRESSED repeat
  * warnings since the first one, #82.1), so the warning fires once per unique
  * zone value instead of repeating on every refresh for every event. Capped to
- * bound memory against feeds carrying unbounded distinct garbage TZIDs; on
- * overflow only the single OLDEST entry is evicted (FIFO — Map iteration
- * order is insertion order), so a feed cycling >cap distinct bad TZIDs can no
- * longer wipe the whole cache and re-fire every warning (#79).
+ * bound memory against feeds carrying unbounded distinct garbage TZIDs.
+ *
+ * Eviction is LRU, not plain insertion-order FIFO (#98.2): a repeat hit on an
+ * already-cached zone re-inserts its key (delete + set), moving it to the
+ * most-recently-used end of the Map's iteration order. Map iteration order is
+ * insertion order, so `.keys().next().value` — the eviction candidate below —
+ * is always the LEAST recently used entry, not merely the oldest by first
+ * sighting. This protects a persistently-recurring bad TZID (seen first but
+ * hit on every refresh) from being evicted ahead of a one-off zone that was
+ * inserted later but never seen again; on overflow only that single
+ * least-recently-used entry is evicted, so a feed cycling >cap distinct bad
+ * TZIDs can no longer wipe the whole cache and re-fire every warning (#79).
  */
 const warnedInvalidZones = new Map<string, number>();
 const MAX_WARNED_INVALID_ZONES = 100;
 
 /**
- * Record an invalid zone in the dedup cache, evicting the single oldest entry
- * when the cache is full. If the evicted zone had suppressed repeat warnings,
- * report their count so later sightings of that zone remain identifiable from
- * the logs (#82.1).
+ * Record an invalid zone in the dedup cache, evicting the single
+ * least-recently-used entry when the cache is full. If the evicted zone had
+ * suppressed repeat warnings, report their count at warn level — so it feeds
+ * the diagnostics Error Summary's totalWarnings counter (#98.1) — and later
+ * sightings of that zone remain identifiable from the logs (#82.1).
  */
 function rememberInvalidZone(zone: string): void {
   if (warnedInvalidZones.size >= MAX_WARNED_INVALID_ZONES) {
@@ -167,7 +185,7 @@ function rememberInvalidZone(zone: string): void {
       const suppressed = warnedInvalidZones.get(oldest) ?? 0;
       warnedInvalidZones.delete(oldest);
       if (suppressed > 0) {
-        logger.info(
+        logger.warn(
           `Invalid event timezone "${oldest}": ${suppressed} repeat warning(s) suppressed since first report — evicted from dedup cache`
         );
       }
@@ -191,6 +209,11 @@ function resolveExpansionZone(eventTimezone: string | undefined, summary: string
       rememberInvalidZone(eventTimezone);
       logger.warn(`Invalid event timezone "${eventTimezone}" for "${summary}" — falling back to UTC expansion`);
     } else {
+      // LRU recency refresh (#98.2): delete + re-set moves this key to the
+      // most-recently-used end of the Map's insertion-ordered iteration, so
+      // a repeatedly-hit zone is never the least-recently-used eviction
+      // candidate in rememberInvalidZone above.
+      warnedInvalidZones.delete(eventTimezone);
       warnedInvalidZones.set(eventTimezone, suppressedRepeats + 1);
     }
     return undefined;
@@ -271,24 +294,47 @@ export function expandRecurringEvent(
     const betweenEnd = zone
       ? new Date(toWallClockDate(endWindow, zone).getTime() + WINDOW_PAD_MS)
       : endWindow;
-    const occurrences = rruleSet.between(betweenStart, betweenEnd, true);
 
-    // Coarse safety pre-cap (#26) on the PADDED between() result. This must
-    // NOT be the tight MAX_OCCURRENCES cap: the leading pad can hold
-    // occurrences that all precede the real window (WINDOW_PAD_MS / 60_000
-    // of them for a minutely rule), and a tight pre-cap would truncate to
-    // pad-only entries that the real-UTC filter then discards entirely.
-    // MAX_RAW_OCCURRENCES is DERIVED from WINDOW_PAD_MS (#81) — worst-case
-    // minutely pad occupancy (both sides) + MAX_OCCURRENCES + margin — so it
-    // always leaves ≥ MAX_OCCURRENCES + margin slots for the real window and
-    // widening the pad can never silently re-open the cap-starvation bug.
-    // Finer (SECONDLY-scale) pathological rules stay CPU-bounded by this
-    // pre-cap.
-    if (occurrences.length > MAX_RAW_OCCURRENCES) {
+    // Coarse safety pre-cap (#26) on the PADDED between() result, enforced
+    // DURING generation via rrule's 4th `iterator` callback rather than by
+    // materializing every raw occurrence and truncating afterwards (#98.3):
+    // for a pathological FREQ=SECONDLY rule over the max padded span, letting
+    // between() run to completion first would allocate hundreds of thousands
+    // of Date objects before any of them were discarded. The callback is
+    // invoked once per occurrence that survives rrule's own EXDATE/window
+    // filtering, with `len` equal to the number of occurrences already
+    // accepted (0-based) — returning false rejects the current occurrence AND
+    // stops generation immediately (verified against rrule 2.8.1's
+    // IterResult/CallbackIterResult: `add()` calls the iterator and, on
+    // false, returns false without pushing, which `accept()` propagates up
+    // through `iter()`'s `if (!iterResult.accept(...)) return emitResult(...)`
+    // early-return). Accepting while `len < MAX_RAW_OCCURRENCES` therefore
+    // yields EXACTLY the same first N occurrences, in the same order, as the
+    // previous generate-then-slice(0, MAX_RAW_OCCURRENCES) approach — the
+    // guarantee this cap exists for (see MAX_RAW_OCCURRENCES doc above) is
+    // unchanged, only the point at which the pathological tail is discarded
+    // moves earlier.
+    //
+    // This must NOT be the tight MAX_OCCURRENCES cap: the leading pad can
+    // hold occurrences that all precede the real window (WINDOW_PAD_MS /
+    // 60_000 of them for a minutely rule), and a tight pre-cap would truncate
+    // to pad-only entries that the real-UTC filter then discards entirely.
+    let rawCapReached = false;
+    const occurrences = rruleSet.between(betweenStart, betweenEnd, true, (_date, len) => {
+      if (len >= MAX_RAW_OCCURRENCES) {
+        rawCapReached = true;
+        return false;
+      }
+      return true;
+    });
+
+    if (rawCapReached) {
+      // The true raw count is unknown once generation is stopped early — the
+      // message can only report that the DERIVED cap (#81) was reached, not
+      // how many raw occurrences the rule would otherwise have produced.
       logger.warn(
-        `⚠️ Recurring event "${event.summary}" produced ${occurrences.length} raw occurrences — pre-capping at ${MAX_RAW_OCCURRENCES}`
+        `⚠️ Recurring event "${event.summary}" produced ${MAX_RAW_OCCURRENCES}+ raw occurrences — pre-capping at ${MAX_RAW_OCCURRENCES}`
       );
-      occurrences.length = MAX_RAW_OCCURRENCES;
     }
 
     // Calculate event duration
