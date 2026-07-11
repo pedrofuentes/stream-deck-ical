@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   `getActionById` throw for one button without aborting the rest of the pass and skips
   overlapping ticks while a slow pass is still running, and subclass lifecycle overrides now
   carry the `override` modifier under `noImplicitOverride` so a mistyped hook fails the build
-  (#72, #73, #74, #75, #77, #78).
+  (#72, #73, #74, #75, #76, #77, #78).
 - Post-wake repaint can no longer be blocked by a hung in-flight `setTitle`: `onWillAppear`
   now also clears `pendingTitle`/`titleFailureLogged`, so an identical post-wake title still
   paints. In-flight title coalescing is now keyed to a per-dispatch generation token instead
@@ -48,7 +48,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   the `ICAL_ORPHAN_SWEEP_MS` bounds now also cover the explicit interval param and reject
   non-decimal forms (`0x7D0`, `1e3`, ` 5000 `); title failure/recovery logs are suppressed for
   a `ButtonState` already removed mid-flight (#99, #100, #101, #102, #103, #104).
-  (#72, #73, #74, #75, #76, #77).
 - Recurring-event edge cases hardened: exact real-UTC window filtering across DST
   transitions, EXDATE matching for occurrences in spring-forward gaps, malformed and
   lowercase `UNTIL` tolerance, deduplicated invalid-timezone warnings, and
