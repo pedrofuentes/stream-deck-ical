@@ -133,10 +133,17 @@ class ThrowingTestAction extends TestAction {
 class SlowSweepAction extends TestAction {
   public sweepCalls = 0;
   public release: () => void = () => {};
+  // Every hung pass records its own resolver here. `release` still points at the
+  // most-recent pass for the single-pass tests, but reassigning it per call orphaned
+  // an earlier hung pass's resolver (it could never be settled), leaking a pending
+  // promise across the test (#112.5). Tests that hold two passes in flight resolve
+  // them via `releasers` so no pass is left dangling.
+  public releasers: Array<() => void> = [];
   public async reapOrphans(): Promise<string[]> {
     this.sweepCalls++;
     await new Promise<void>(resolve => {
       this.release = resolve;
+      this.releasers.push(resolve);
     });
     return [];
   }
@@ -294,6 +301,128 @@ describe('issue #72 - setTitle failure log throttled to the failure transition',
     // A subsequent healthy paint must NOT re-log recovery.
     await a.setTitle('rec1', action, 'Later');
     expect(recovery()).toHaveLength(1);
+  });
+});
+
+describe('issue #110 - setTitle re-reads live state, never a state removed mid-flight', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does not commit a paint onto a ButtonState removed while setTitle was pending (#110)', async () => {
+    let resolve!: () => void;
+    const action = {
+      id: 'mid1',
+      setTitle: vi.fn().mockImplementation(() => new Promise<void>(r => { resolve = () => r(); })),
+      setImage: vi.fn()
+    };
+    const a = new TestAction();
+    const state = a.seed('mid1', action);
+
+    const p = a.setTitle('mid1', action, 'Hello');
+    // A cleanupButtonState/reap races the in-flight settle and removes this id.
+    a.states().delete('mid1');
+
+    resolve(); // setTitle resolves AFTER the state was removed
+    await p;
+
+    // The removed state must not be resurrected, and the detached object must not be
+    // mutated (a raw `state` write would set currentTitle on the dead object) (#110).
+    expect(a.states().has('mid1')).toBe(false);
+    expect(state.currentTitle).toBeUndefined();
+    expect(state.titleFailureLogged).toBeFalsy();
+  });
+
+  it('stays silent when a setTitle failure settles after the ButtonState was removed (#110)', async () => {
+    let reject!: (e: Error) => void;
+    const action = {
+      id: 'mid2',
+      setTitle: vi.fn().mockImplementation(() => new Promise<void>((_res, rej) => { reject = rej; })),
+      setImage: vi.fn()
+    };
+    const a = new TestAction();
+    const state = a.seed('mid2', action);
+
+    const p = a.setTitle('mid2', action, 'Hello');
+    // State existed at entry but is gone by the time the failure settles.
+    a.states().delete('mid2');
+
+    reject(new Error('IPC down'));
+    await p;
+
+    // Logging a failure for an already-removed button is misleading and unthrottleable,
+    // so it must be suppressed; the detached state's throttle flag stays untouched (#110).
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+    expect(state.titleFailureLogged).toBeFalsy();
+  });
+});
+
+describe('issue #112.1 - titleFailureLogged transitions are token-gated', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('an older dispatch rejecting after a newer one succeeded does not raise a spurious outage warn (#112.1)', async () => {
+    let rejectX!: (e: Error) => void;
+    let resolveY!: () => void;
+    const action = {
+      id: 'tg1',
+      setTitle: vi.fn()
+        .mockImplementationOnce(() => new Promise<void>((_res, rej) => { rejectX = rej; })) // X: older, hung
+        .mockImplementationOnce(() => new Promise<void>(r => { resolveY = () => r(); })),   // Y: newer
+      setImage: vi.fn()
+    };
+    const a = new TestAction();
+    const state = a.seed('tg1', action);
+
+    const pX = a.setTitle('tg1', action, 'X'); // dispatch 1 (older)
+    const pY = a.setTitle('tg1', action, 'Y'); // dispatch 2 (latest)
+
+    // The NEWER dispatch settles successfully first — no outage.
+    resolveY();
+    await pY;
+    expect(state.currentTitle).toBe('Y');
+    expect(state.titleFailureLogged).toBeFalsy();
+
+    // The OLDER X now rejects. It is not the latest dispatch, so it must NOT flip the
+    // outage flag or emit a warn — that would be a spurious/stuck outage (#112.1).
+    rejectX(new Error('IPC down'));
+    await pX;
+    expect(state.titleFailureLogged).toBeFalsy();
+    expect(vi.mocked(logger.warn)).not.toHaveBeenCalled();
+  });
+
+  it('an older dispatch resolving after a newer one failed does not spuriously log recovery (#112.1)', async () => {
+    let resolveX!: () => void;
+    let rejectY!: (e: Error) => void;
+    const action = {
+      id: 'tg2',
+      setTitle: vi.fn()
+        .mockImplementationOnce(() => new Promise<void>(r => { resolveX = () => r(); }))      // X: older, hung
+        .mockImplementationOnce(() => new Promise<void>((_res, rej) => { rejectY = rej; })),  // Y: newer
+      setImage: vi.fn()
+    };
+    const a = new TestAction();
+    const state = a.seed('tg2', action);
+
+    const pX = a.setTitle('tg2', action, 'X'); // dispatch 1 (older)
+    const pY = a.setTitle('tg2', action, 'Y'); // dispatch 2 (latest)
+
+    // The NEWER dispatch fails first — a real outage opens (warn once).
+    rejectY(new Error('IPC down'));
+    await pY;
+    expect(state.titleFailureLogged).toBe(true);
+    expect(vi.mocked(logger.warn)).toHaveBeenCalledTimes(1);
+
+    // The OLDER X now resolves. It is not the latest dispatch, so it must NOT clear the
+    // outage flag or log a (false) recovery while the latest paint is still failed (#112.1).
+    resolveX();
+    await pX;
+    expect(state.titleFailureLogged).toBe(true);
+    const recovered = vi.mocked(logger.info).mock.calls.filter(
+      (c: any[]) => typeof c[0] === 'string' && c[0].includes('recovered')
+    );
+    expect(recovered).toHaveLength(0);
   });
 });
 
@@ -621,7 +750,10 @@ describe('issue #73/#75 - orphan sweep interval validation & precedence', () => 
   // 'abc'/'-5'/'0'/'2.5' are rejected by the pre-existing integer/positivity check;
   // '999' (below the 1000ms floor) and '3600000000' (above the 2^31-1 ceiling that
   // makes Node clamp setInterval to 1ms) are the newly-bounded cases (#73).
-  it.each(['abc', '-5', '0', '2.5', '999', '3600000000'])(
+  // '0x7D0' (=2000), '1e3' (=1000) and ' 5000 ' (=5000) are the forms Number() WOULD
+  // coerce into the accepted range; only the /^\d+$/ pre-check rejects them, so they
+  // pin that clause — dropping it lets them through and fires the sweep early (#111).
+  it.each(['abc', '-5', '0', '2.5', '999', '3600000000', '0x7D0', '1e3', ' 5000 '])(
     'ignores invalid ICAL_ORPHAN_SWEEP_MS=%s and falls back to the 60s default with a warning',
     async (raw) => {
       process.env.ICAL_ORPHAN_SWEEP_MS = raw;
@@ -838,6 +970,62 @@ describe('issue #99 - onWillAppear clears stuck in-flight title guards', () => {
   });
 });
 
+describe('issue #109 - onWillAppear invalidates the in-flight title dispatch token', () => {
+  let appeared: TestAction | undefined;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    baseMod.__resetActionInstancesForTest();
+    getActionByIdMock.mockReset();
+    appeared = undefined;
+  });
+
+  afterEach(() => {
+    if (appeared) {
+      (appeared as any).stopTimerForButton('wake109');
+    }
+    vi.useRealTimers();
+  });
+
+  it('bumps titleDispatchToken on (re)appear so a pre-appear hung setTitle cannot commit stale text (#109)', async () => {
+    let resolveHung!: () => void;
+    const action = {
+      id: 'wake109',
+      setTitle: vi.fn()
+        // The pre-sleep dispatch whose IPC promise hangs until after the re-appear.
+        .mockImplementationOnce(() => new Promise<void>(r => { resolveHung = () => r(); }))
+        .mockResolvedValue(undefined),
+      setImage: vi.fn(),
+      setSettings: vi.fn()
+    };
+    const a = new TestAction();
+    appeared = a;
+    const state = a.seed('wake109', action);
+
+    // A setTitle dispatched before sleep that never settles (hung IPC): it stamps the
+    // ButtonState's dispatch token and leaves 'STALE' in flight.
+    const pHung = a.setTitle('wake109', action, 'STALE');
+    expect(state.pendingTitle).toBe('STALE');
+
+    // Re-appear reuses the SAME ButtonState object. It must invalidate the pre-appear
+    // dispatch's token so a late settlement can no longer commit its (now stale) text.
+    await a.appear('wake109', action, {});
+
+    // The hung pre-appear promise finally settles AFTER the reset window: with the token
+    // bumped it is no longer the latest dispatch, so it must NOT commit 'STALE'.
+    resolveHung();
+    await pHung;
+    expect(state.currentTitle).toBeUndefined();
+
+    // A fresh identical-title dispatch still reaches the SDK and paints (the post-wake
+    // repaint is not suppressed by a stale currentTitle).
+    await a.setTitle('wake109', action, 'STALE');
+    expect(action.setTitle).toHaveBeenCalledWith('STALE');
+    expect(state.currentTitle).toBe('STALE');
+  });
+});
+
 describe('issue #101 - stopOrphanSweep resets the in-flight guard', () => {
   const savedSweepEnv = process.env.ICAL_ORPHAN_SWEEP_MS;
 
@@ -882,7 +1070,39 @@ describe('issue #101 - stopOrphanSweep resets the in-flight guard', () => {
 
     expect(a.sweepCalls).toBe(2); // restarted sweep runs a fresh pass
 
-    a.release(); // release the still-hung pass so nothing leaks past the test
+    // Both the pre-restart pass AND the restarted pass are hung; `release` only points
+    // at the latest, so settle every recorded resolver or the first pass leaks (#112.5).
+    a.releasers.forEach(release => release());
+    await vi.advanceTimersByTimeAsync(0);
+  });
+
+  it('a settling pre-restart pass does not clear the guard held by the restarted sweep — no overlap (#112.2)', async () => {
+    const a = new SlowSweepAction();
+    a.seed('ov-1', { id: 'ov-1', setTitle: vi.fn(), setImage: vi.fn() });
+
+    baseMod.startOrphanSweep(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(a.sweepCalls).toBe(1); // pass A in flight (hung)
+    const [releaseA] = a.releasers;
+
+    // Restart mid-pass: #101 lets the restarted sweep begin a fresh pass B...
+    baseMod.stopOrphanSweep();
+    baseMod.startOrphanSweep(1000);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(a.sweepCalls).toBe(2); // pass B in flight (restarted)
+    const releaseB = a.releasers[1];
+
+    // ...but when the OLD pass A finally settles, its .finally() must NOT clear the
+    // in-flight guard that pass B now owns. A force-clear here (force-clearing without
+    // checking whose pass is settling) would let the next tick start a THIRD pass that
+    // overlaps the still-running B (#112.2).
+    releaseA();
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(a.sweepCalls).toBe(2); // next tick skipped — B still in flight, no pass C
+
+    releaseB();
     await vi.advanceTimersByTimeAsync(0);
   });
 });
