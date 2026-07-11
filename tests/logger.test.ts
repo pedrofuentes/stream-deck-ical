@@ -561,6 +561,271 @@ describe('separator-class completeness of home-path redaction (SR-20260711-PR105
   });
 });
 
+describe('home-prefix anchoring: mid-path segments are not home prefixes (#114)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('leaves a deployRoot-style JSON value untouched (root as a mid-path segment)', () => {
+    logger.error('cfg:', { deployRoot: '/srv/app/root' });
+    expect(debugLogs[0].message).toBe('cfg: {"deployRoot":"/srv/app/root"}');
+  });
+
+  it('leaves a mid-path root segment in a plain string untouched', () => {
+    logger.error('handler at /opt/myapp/root/handler.js failed');
+    expect(debugLogs[0].message).toBe('handler at /opt/myapp/root/handler.js failed');
+  });
+
+  it('leaves a mid-path users segment untouched', () => {
+    logger.info('cache dir /var/data/users/cache/entry.ics pruned');
+    expect(debugLogs[0].message).toBe('cache dir /var/data/users/cache/entry.ics pruned');
+  });
+
+  it('leaves a mid-path home segment untouched', () => {
+    logger.info('template at /opt/app/home/default.json');
+    expect(debugLogs[0].message).toBe('template at /opt/app/home/default.json');
+  });
+
+  it('no longer redacts users as a URL path segment (previously a known false positive)', () => {
+    logger.info('fetching http://example.com/users/bob/cal.ics');
+    expect(debugLogs[0].message).toBe('fetching http://example.com/users/bob/cal.ics');
+  });
+
+  it('does not treat a forward-slash-only double separator as a UNC host prefix (protocol-relative URL)', () => {
+    logger.info('see //example.com/users/bob');
+    expect(debugLogs[0].message).toBe('see //example.com/users/bob');
+  });
+
+  // Pin — passes before the fix; guards that anchoring keeps prose-adjacent absolute paths redacted.
+  it('still redacts an absolute path following prose (whitespace anchors the path start)', () => {
+    logger.error('Sync error for /home/pedro');
+    expect(debugLogs[0].message).toBe('Sync error for <home>');
+  });
+
+  // Pin — passes before the fix; UNC share form must survive anchoring (hostname intentionally visible).
+  it('still redacts the username in a UNC share path, hostname stays visible', () => {
+    logger.error('\\\\server\\Users\\pedro\\docs');
+    expect(debugLogs[0].message).toBe('\\\\server<home>\\docs');
+  });
+
+  // Pin — passes before the fix; a quote anchors a path start inside JSON text.
+  it('still redacts a quoted Windows path inside JSON text', () => {
+    logger.debug('cfg: {"p":"C:\\\\Users\\\\pedro\\\\x.ics"}');
+    expect(debugLogs[0].message).toBe('cfg: {"p":"<home>\\\\x.ics"}');
+  });
+
+  // Pin — passes before the fix; '=' and other punctuation anchor a path start.
+  it('still redacts a drive path after non-path punctuation', () => {
+    logger.info('cwd=C:\\Users\\pedro\\proj');
+    expect(debugLogs[0].message).toBe('cwd=<home>\\proj');
+  });
+
+  it('does not extend the drive prefix through a preceding word (cc:\\users\\… edge)', () => {
+    logger.error('cc:\\users\\pedro');
+    expect(debugLogs[0].message).toBe('cc:<home>');
+  });
+});
+
+describe('nested home-token decoy consumption (#116)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('fully redacts /home/users/<name> (no decoy + leak)', () => {
+    logger.error('/home/users/pedro');
+    expect(debugLogs[0].message).toBe('<home>');
+  });
+
+  it('fully redacts \\\\server\\users\\home\\<name>', () => {
+    logger.error('\\\\server\\users\\home\\pedro');
+    expect(debugLogs[0].message).toBe('\\\\server<home>');
+  });
+
+  it('fully redacts H:\\home\\users\\<name>', () => {
+    logger.error('H:\\home\\users\\pedro');
+    expect(debugLogs[0].message).toBe('<home>');
+  });
+
+  it('fully redacts /Users/home/<name> and keeps the trailing file path', () => {
+    logger.error('/Users/home/pedro/cal.ics');
+    expect(debugLogs[0].message).toBe('<home>/cal.ics');
+  });
+
+  it('fully redacts C:\\Users\\Users\\<name>', () => {
+    logger.error('C:\\Users\\Users\\pedro');
+    expect(debugLogs[0].message).toBe('<home>');
+  });
+
+  it('consumes an arbitrarily deep decoy chain (/home/users/users/<name>)', () => {
+    logger.error('/home/users/users/pedro');
+    expect(debugLogs[0].message).toBe('<home>');
+  });
+
+  // Pin — passes before the fix; a terminal decoy with nothing after it is itself the username.
+  it('redacts /home/users with no further segment as a plain home path', () => {
+    logger.error('/home/users');
+    expect(debugLogs[0].message).toBe('<home>');
+  });
+
+  // Pins (SR-20260711-PR120-1b5d5c7): discriminating coverage for the ROOT alternative of the
+  // decoy check — without it, /home/root/<name> would redact the decoy and leak the real username.
+  it('fully redacts /home/root/<name> (root as the inner decoy segment)', () => {
+    logger.error('/home/root/pedro');
+    expect(debugLogs[0].message).toBe('<home>');
+  });
+
+  it('consumes a root decoy chain (/home/root/root/<name>)', () => {
+    logger.error('/home/root/root/pedro');
+    expect(debugLogs[0].message).toBe('<home>');
+  });
+
+  it('fully redacts C:\\Users\\root\\<name> (Windows-shaped root decoy)', () => {
+    logger.error('C:\\Users\\root\\pedro');
+    expect(debugLogs[0].message).toBe('<home>');
+  });
+});
+
+describe('username span termination (#116 companion)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('stops the username at a colon so trailing prose survives', () => {
+    logger.error('Sync error for /home/pedro: net down');
+    expect(debugLogs[0].message).toBe('Sync error for <home>: net down');
+  });
+
+  // Pin — passes before the fix; whitespace is legal inside Windows usernames, so it must
+  // stay username-interior (trimming at whitespace would leak the surname here).
+  it('keeps a spaced Windows username fully redacted when the path continues', () => {
+    logger.error('C:\\Users\\John Smith\\cal.ics');
+    expect(debugLogs[0].message).toBe('<home>\\cal.ics');
+    expect(debugLogs[0].message).not.toContain('Smith');
+  });
+
+  // Pin — passes before the fix; DELIBERATE over-redaction: without a colon (or other hard
+  // boundary) trailing words are indistinguishable from a spaced username, and privacy wins.
+  it('over-redacts ambiguous trailing prose after a home path (documented privacy-first rule)', () => {
+    logger.error('Sync error for /home/pedro after retry');
+    expect(debugLogs[0].message).toBe('Sync error for <home>');
+  });
+
+  it('rejects a username that starts with whitespace (separator run followed by prose)', () => {
+    logger.info('mount /home/ 87% full');
+    expect(debugLogs[0].message).toBe('mount /home/ 87% full');
+  });
+});
+
+describe('scanner boundary pins (#117)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // Pin — passes before the fix; a token with no username must not match.
+  it('leaves a Users prefix with an empty username untouched', () => {
+    logger.info('base C:\\Users\\');
+    expect(debugLogs[0].message).toBe('base C:\\Users\\');
+  });
+
+  // Pin — passes before the fix; an all-separator tail is not a username.
+  it('leaves a token followed only by separators untouched', () => {
+    logger.info('list of /users//\\/');
+    expect(debugLogs[0].message).toBe('list of /users//\\/');
+  });
+
+  // Pin — passes before the fix; token must be a whole segment ending at a separator run.
+  it('leaves /rootbeer untouched (token not followed by separator/quote/end)', () => {
+    logger.info('try /rootbeer float');
+    expect(debugLogs[0].message).toBe('try /rootbeer float');
+  });
+
+  // Pin — passes before the fix; token must begin its own segment (preceded by a separator run).
+  it('leaves /srv/approot untouched (token embedded in a longer segment)', () => {
+    logger.info('app at /srv/approot ready');
+    expect(debugLogs[0].message).toBe('app at /srv/approot ready');
+  });
+
+  // Pin — passes before the fix; multiple matches redact left-to-right with interleaved text intact.
+  it('redacts multiple home paths in order, keeping surrounding text', () => {
+    logger.error('a C:\\Users\\p1\\f.txt b /home/p2/g.txt c');
+    expect(debugLogs[0].message).toBe('a <home>\\f.txt b <home>/g.txt c');
+  });
+
+  // Pin — passes before the fix; the final sanitize pass covers object KEYS too, which a
+  // JSON.stringify replacer never receives — part of why the single-source design suffices (#117.1).
+  it('redacts a home path used as an object key', () => {
+    logger.error('cfg:', { 'C:\\Users\\pedro\\f': 1 });
+    expect(debugLogs[0].message).toBe('cfg: {"<home>\\\\f":1}');
+  });
+
+  // Pin — passes before the fix; re-sanitizing an already-redacted message is a no-op.
+  it('is idempotent: re-logging a redacted message leaves it unchanged', () => {
+    logger.error('C:\\Users\\pedro\\x.ics');
+    const once = debugLogs[0].message;
+    expect(once).toBe('<home>\\x.ics');
+    logger.error(once);
+    expect(debugLogs[1].message).toBe(once);
+  });
+
+  it('stays linear on 200k adversarial inputs (no backtracking, no quadratic anchor walks)', () => {
+    // Repeated mid-path candidates: every users token has a separator run but an
+    // alphanumeric segment before it that is NOT a UNC hostname — worst case for
+    // the anchoring walk-backs. 8 chars * 25000 = 200k.
+    const midPath = 'a\\users\\'.repeat(25000);
+    // Single huge separator run before one token with no username after it.
+    const bigRun = '\\'.repeat(200000) + 'users';
+    const start = performance.now();
+    logger.error(midPath);
+    logger.error(bigRun);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(500);
+    // Mid-path candidates must all be rejected (anchoring, #114).
+    expect(debugLogs[0].message).toBe(midPath);
+    expect(debugLogs[1].message).toBe(bigRun);
+  });
+});
+
+describe('formatError catch-fallback tagging (#117.4)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('tags the fallback when the stack getter throws, keeping name and message visible', () => {
+    const err = new Error('boom');
+    Object.defineProperty(err, 'stack', {
+      get() {
+        throw new Error('nope');
+      }
+    });
+    logger.error('caught:', err);
+    expect(debugLogs[0].message).toContain('[unformattable Error: boom]');
+  });
+
+  it('never throws and stays tagged when every Error getter and toString throw', () => {
+    const err = new Error('boom');
+    for (const prop of ['stack', 'name', 'message'] as const) {
+      Object.defineProperty(err, prop, {
+        get() {
+          throw new Error('nope');
+        }
+      });
+    }
+    Object.defineProperty(err, 'toString', {
+      value() {
+        throw new Error('nope');
+      }
+    });
+    expect(() => logger.error('caught:', err)).not.toThrow();
+    expect(debugLogs).toHaveLength(1);
+    expect(debugLogs[0].message).toContain('[unformattable [object Error]]');
+  });
+});
+
 describe('spoof-class completeness (#97.3)', () => {
   beforeEach(() => {
     debugLogs.length = 0;
@@ -570,6 +835,12 @@ describe('spoof-class completeness (#97.3)', () => {
   it('strips U+200E/U+200F directional marks and the U+2060 word joiner', () => {
     logger.info('a‎b‏c⁠d');
     expect(debugLogs[0].message).toBe('abcd');
+  });
+
+  it('strips U+061C Arabic Letter Mark — the last Bidi_Control member (#115)', () => {
+    // Discriminating: U+200E is already stripped; U+061C must not survive beside it.
+    logger.info('a؜b‎c');
+    expect(debugLogs[0].message).toBe('abc');
   });
 });
 
