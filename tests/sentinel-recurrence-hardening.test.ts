@@ -20,6 +20,10 @@
  *  - #82.1: suppressed-repeat count is reported when a zone is evicted.
  *  - #82.3: SECONDLY residual (raw pre-cap consumed by the pad) and the
  *    both-caps-warn-in-one-expansion branch are pinned.
+ *  - #98.1: suppressed-repeat eviction line is logged at warn (Sentinel
+ *    digest #98 item 1 — feeds the diagnostics Error Summary counter).
+ *  - #98.2: dedup cache eviction is LRU (recency-refreshed), not plain
+ *    insertion-order FIFO (Sentinel digest #98 item 2).
  *
  * @author Pedro Fuentes <git@pedrofuent.es>
  * @copyright Pedro Pablo Fuentes Schuster
@@ -678,7 +682,7 @@ describe('#79 — FIFO single-oldest eviction on cache overflow (cap+1)', () => 
 
 describe('#82.1 — suppressed-repeat count reported at eviction', () => {
   it('should log how many warnings were suppressed for a zone when it is evicted from the cache', async () => {
-    const { expand, warn, info } = await freshExpander();
+    const { expand, warn } = await freshExpander();
 
     // First sighting warns; the next two are suppressed (count = 2).
     expandWithBadZone(expand, 'Sentinel/Counted');
@@ -692,11 +696,56 @@ describe('#82.1 — suppressed-repeat count reported at eviction', () => {
     }
     expandWithBadZone(expand, 'Sentinel/CountOverflow');
 
-    const suppressedCountLogs = info.mock.calls.filter(call =>
+    // #98.1: the suppressed-repeat eviction line is emitted at WARN (not
+    // info), so it feeds the diagnostics Error Summary's totalWarnings
+    // counter instead of being invisible to it (Sentinel digest #98 item 1).
+    const suppressedCountLogs = warn.mock.calls.filter(call =>
       String(call[0]).includes('"Sentinel/Counted"') &&
       String(call[0]).includes('2 repeat warning(s) suppressed')
     );
     expect(suppressedCountLogs.length).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// #98.2 — LRU dedup cache: recency refresh on repeat hits
+// ─────────────────────────────────────────────────────────────
+
+describe('#98.2 — LRU dedup cache: a repeatedly-hit zone is not the eviction victim', () => {
+  it('should evict a genuinely stale zone instead of a zone seen first but hit repeatedly since', async () => {
+    const { expand, warn } = await freshExpander();
+
+    // Zone A is the very first zone ever inserted.
+    expandWithBadZone(expand, 'Sentinel/LRU_A');
+
+    // Fill the rest of the cache with distinct zones so the cache sits
+    // exactly at the cap: insertion order is A, Fill_2, Fill_3, ..., Fill_cap.
+    for (let i = 2; i <= WARN_CACHE_CAP; i++) {
+      expandWithBadZone(expand, `Sentinel/LRU_Fill_${i}`);
+    }
+
+    // Re-hit A repeatedly (a "hot" zone). Under plain FIFO (insertion-order)
+    // eviction, repeat hits never move A's position, so A remains the oldest
+    // entry. Under LRU, a repeat hit refreshes A's recency, moving it to the
+    // newest end — Fill_2 (untouched since insertion) becomes the oldest.
+    expandWithBadZone(expand, 'Sentinel/LRU_A');
+    expandWithBadZone(expand, 'Sentinel/LRU_A');
+
+    // Overflow the cache with one new zone — exactly one entry is evicted.
+    expandWithBadZone(expand, 'Sentinel/LRU_Overflow');
+
+    // A must still be cached (LRU protected it via recency refresh): seeing
+    // it again must NOT re-warn. Under FIFO this would fail (A was evicted).
+    warn.mockClear();
+    expandWithBadZone(expand, 'Sentinel/LRU_A');
+    expect(invalidZoneWarns(warn, 'Sentinel/LRU_A').length).toBe(0);
+
+    // Fill_2 — the genuinely stale zone, never touched since its initial
+    // insertion — must have been the eviction victim: seeing it again fires
+    // a fresh warn. Under FIFO this would fail (Fill_2 was never evicted).
+    warn.mockClear();
+    expandWithBadZone(expand, 'Sentinel/LRU_Fill_2');
+    expect(invalidZoneWarns(warn, 'Sentinel/LRU_Fill_2').length).toBe(1);
   });
 });
 
