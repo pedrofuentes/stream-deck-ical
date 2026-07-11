@@ -22,6 +22,45 @@
 
 <!-- Add new decisions below this line, most recent first -->
 
+### ADR-008: Decorator-free base classes for testable Stream Deck actions
+**Date**: 2026-07-10
+**Status**: Accepted
+**Context**: The Stream Deck SDK requires every action class to carry the TC39 stage-3
+`@action({...})` class decorator (`combined-action.ts`, `next-meeting.ts`, `time-left.ts`).
+Under this project's `tsconfig`/Vitest esbuild transform, importing a file that contains
+that decorator throws `SyntaxError: Invalid or unexpected token` at module-collection
+time (#53) — the whole test file fails to load, not just the decorated class's tests.
+Pre-#53 this left CombinedAction/NextMeetingAction/TimeLeftAction's display and
+key-handling logic entirely untested, and #69/#70 (Sentinel review of PR #62) found the
+gap was still incomplete: several guarded display call sites (status-text and no-event
+fallbacks) and the per-subclass `cleanupButtonState` overrides were still never
+exercised directly.
+**Decision**: All business/display logic lives in plain, non-decorated base classes
+(`combined-action-base.ts`, `next-meeting-base.ts`, `time-left-base.ts`) that extend
+`BaseAction`. Each decorated leaf keeps only the `@action(...)` decorator and the
+mandatory explicit `onKeyUp()` override the SDK requires (ADR-003), delegating to
+`super.onKeyUp()` — nothing else. Vitest imports the base classes directly and drives
+them with mock action objects plus seeded button state
+(`tests/action-display-wiring.test.ts`); the leaves themselves stay permanently
+unimportable by the test runner. Because the leaf can never be imported into vitest, a
+structural test (`tests/action-leaf-structure.test.ts`, #70.1) reads each leaf file as
+text instead and fails if its class body declares any method besides `onKeyUp`,
+guarding against future logic silently landing somewhere vitest can never execute.
+**Alternatives considered**: (a) Reconfigure Vitest/esbuild (or swap to a transform with
+stage-3 decorator support, e.g. SWC/Babel) so the decorated file can be parsed —
+rejected as a build-tooling change with broader blast radius and no guarantee of
+matching the SDK's own decorator semantics at runtime; (b) hand-written test doubles
+that reimplement the decorated class's shape without the decorator — rejected because
+doubles drift from the real class and would not catch a real regression in it;
+(c) leave the decorated classes untested — rejected, this is the root cause of #53.
+**Consequences**: All behavior must live in the `*-base.ts` classes; a decorated leaf
+must stay a pure delegation shim (`@action` + `onKeyUp` only) or it silently reopens
+#53 by adding logic vitest can never execute — the structural test in
+`tests/action-leaf-structure.test.ts` enforces this on every run. Removing an action's
+explicit `onKeyUp()` override remains forbidden (ADR-003 / AGENTS.md §NEVER) — the base
+class intentionally carries none, so the leaf's override is the only path the SDK's
+key-event routing has into the shared logic.
+
 ### ADR-007: Adopt agents-template governance (TDD + Sentinel + worktrees)
 **Date**: 2026-06-16
 **Status**: Accepted
