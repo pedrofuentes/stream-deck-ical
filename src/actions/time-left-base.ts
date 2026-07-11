@@ -61,7 +61,7 @@ export class TimeLeftActionBase extends BaseAction {
   /**
    * Handle single key press - cycle through concurrent meetings
    */
-  protected async handleSinglePress(actionId: string, action: any): Promise<void> {
+  protected override async handleSinglePress(actionId: string, action: any): Promise<void> {
     const tlState = this.getTimeLeftState(actionId);
     const activeEvents = findActiveEvents(this.getEventsForButton(actionId));
 
@@ -180,7 +180,7 @@ export class TimeLeftActionBase extends BaseAction {
    * Override the shared cleanup hook so TimeLeft-specific state (end timeout) is
    * torn down for both SDK disappearances and reaped orphans (#50).
    */
-  protected async cleanupButtonState(actionId: string): Promise<void> {
+  protected override async cleanupButtonState(actionId: string): Promise<void> {
     const tlState = this.timeLeftStates.get(actionId);
     if (tlState?.endTimeout) {
       clearTimeout(tlState.endTimeout);

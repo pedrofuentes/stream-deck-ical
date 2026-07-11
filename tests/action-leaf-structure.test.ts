@@ -67,7 +67,7 @@ function extractClassBody(src: string): string {
  * to the leaf (not just onKeyUp) — the assertion below requires exactly one.
  */
 const METHOD_SIGNATURE =
-  /^\s*(?:public\s+|private\s+|protected\s+|static\s+|async\s+)*[A-Za-z_$][\w$]*\s*\([^)]*\)\s*(?::\s*[^{]+)?\{/gm;
+  /^\s*(?:public\s+|private\s+|protected\s+|static\s+|override\s+|async\s+)*[A-Za-z_$][\w$]*\s*\([^)]*\)\s*(?::\s*[^{]+)?\{/gm;
 
 describe('decorated leaf structural guard (#70.1)', () => {
   it.each(LEAF_FILES)('src/actions/%s declares exactly one method (onKeyUp) in its leaf class', (file) => {
@@ -80,6 +80,6 @@ describe('decorated leaf structural guard (#70.1)', () => {
     // (ADR-003). Any additional method here compiles fine but is unreachable by
     // vitest (#53) — this guards against logic silently landing there.
     expect(methodStarts).toHaveLength(1);
-    expect(methodStarts[0]).toMatch(/^\s*(?:public\s+|private\s+|protected\s+)?async\s+onKeyUp\s*\(/);
+    expect(methodStarts[0]).toMatch(/^\s*(?:public\s+|private\s+|protected\s+)?(?:override\s+)?async\s+onKeyUp\s*\(/);
   });
 });

@@ -21,7 +21,7 @@ export class NextMeetingAction extends NextMeetingActionBase {
   /**
    * Override onKeyUp to handle button press - required for SDK event routing
    */
-  async onKeyUp(ev: KeyUpEvent<any>): Promise<void> {
+  override async onKeyUp(ev: KeyUpEvent<any>): Promise<void> {
     await super.onKeyUp(ev);
   }
 }
