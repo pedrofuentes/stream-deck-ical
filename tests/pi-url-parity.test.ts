@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { normalizeICalUrl, isSupportedICalUrl } from '../src/utils/url-utils.js';
+import { extractMirrorBlock } from './helpers/mirror-block.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SETUP_JS_PATH = path.join(__dirname, '../pi/setup.js');
@@ -31,26 +32,13 @@ interface MirroredUrlUtils {
   isValidURL: (url: string) => boolean;
 }
 
-function extractMirrorBlock(): string {
-  const source = readFileSync(SETUP_JS_PATH, 'utf-8');
-  const beginIdx = source.indexOf(BEGIN_MARKER);
-  const endIdx = source.indexOf(END_MARKER);
-
-  if (beginIdx === -1 || endIdx === -1 || endIdx < beginIdx) {
-    throw new Error(
-      `pi/setup.js is missing the "${BEGIN_MARKER}" / "${END_MARKER}" markers ` +
-      'that delimit the mirrored URL utilities (#49 item 1).'
-    );
-  }
-
-  return source.slice(beginIdx + BEGIN_MARKER.length, endIdx);
-}
-
 function loadMirroredFunctions(): MirroredUrlUtils {
-  const block = extractMirrorBlock();
+  const block = extractMirrorBlock('url-utils');
   // Evaluate the marked block in isolation: it must be pure (no DOM access)
-  // so it can run outside a browser/webview context.
-  const factory = new Function(`${block}\nreturn { normalizeICalUrl, isValidURL };`);
+  // so it can run outside a browser/webview context. 'use strict' turns an
+  // accidental write to an undeclared name into a thrown ReferenceError
+  // instead of a silently-created global (#89 item 1).
+  const factory = new Function(`'use strict';\n${block}\nreturn { normalizeICalUrl, isValidURL };`);
   return factory() as MirroredUrlUtils;
 }
 

@@ -154,6 +154,18 @@ describe('updateCalendarCache', () => {
     expect(calendarCache.events).toEqual([]);
   });
 
+  it('should not throw and should resolve to INVALID_URL for a null URL instead of crashing (#91.1)', async () => {
+    await expect(updateCalendarCache(null as any)).resolves.not.toThrow();
+    expect(calendarCache.status).toBe('INVALID_URL');
+    expect(calendarCache.events).toEqual([]);
+  });
+
+  it('should not throw and should resolve to INVALID_URL for a numeric URL instead of crashing (#91.1)', async () => {
+    await expect(updateCalendarCache(42 as any)).resolves.not.toThrow();
+    expect(calendarCache.status).toBe('INVALID_URL');
+    expect(calendarCache.events).toEqual([]);
+  });
+
   it('should set status to LOADING while fetching', async () => {
     // Mock global fetch to control timing
     const fetchPromise = new Promise((resolve) => setTimeout(resolve, 100));

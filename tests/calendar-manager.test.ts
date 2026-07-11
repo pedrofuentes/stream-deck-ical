@@ -88,6 +88,26 @@ describe('CalendarManager', () => {
       const id = generateCalendarId('https://example.com/calendar.ics');
       expect(id).toMatch(/^cal_[0-9a-f]+$/);
     });
+
+    it('should not throw for a null URL (guard lives in generateCalendarId so every caller inherits it) (#91.2)', () => {
+      expect(() => generateCalendarId(null as any)).not.toThrow();
+    });
+
+    it('should not throw for a non-string (array) URL (#91.2)', () => {
+      expect(() => generateCalendarId(['not', 'a', 'url'] as any)).not.toThrow();
+    });
+  });
+
+  describe('hasCalendarForUrl boundary guard (#91.2)', () => {
+    it('returns false (does not throw) for a null URL with no reachable calendar', () => {
+      expect(() => manager.hasCalendarForUrl(null as any)).not.toThrow();
+      expect(manager.hasCalendarForUrl(null as any)).toBe(false);
+    });
+
+    it('returns false (does not throw) for a numeric URL with no reachable calendar', () => {
+      expect(() => manager.hasCalendarForUrl(42 as any)).not.toThrow();
+      expect(manager.hasCalendarForUrl(42 as any)).toBe(false);
+    });
   });
 
   describe('getOrCreateCalendar', () => {
@@ -439,6 +459,34 @@ describe('CalendarManager', () => {
       });
 
       expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('logs a warning naming the offending typeof when a non-string URL reaches getOrCreateCalendar (#90)', async () => {
+      const { logger: loggerMock } = await import('../src/utils/logger');
+
+      manager.registerAction('action1', 42 as any);
+
+      expect(loggerMock.warn).toHaveBeenCalledWith(
+        expect.stringContaining('typeof=number')
+      );
+    });
+
+    it('includes a truncated preview of the coerced value in the non-string URL warning (#90)', async () => {
+      const { logger: loggerMock } = await import('../src/utils/logger');
+      const longNonStringValue = 'x'.repeat(200);
+
+      // Use an object whose String() form is long, so typeof !== 'string'
+      // while still exercising the ~40 char truncation.
+      manager.registerAction('action1', { toString: () => longNonStringValue } as any);
+
+      const nonStringCall = (loggerMock.warn as ReturnType<typeof vi.fn>).mock.calls.find((call: unknown[]) =>
+        typeof call[0] === 'string' && (call[0] as string).includes('typeof=object')
+      );
+      expect(nonStringCall).toBeDefined();
+      const message = nonStringCall![0] as string;
+      // Message should not contain the full 200-char run of 'x' — only a
+      // truncated (~40 char) preview.
+      expect(message).not.toContain('x'.repeat(100));
     });
   });
 
