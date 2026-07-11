@@ -185,6 +185,17 @@ function rememberInvalidZone(zone: string): void {
       const suppressed = warnedInvalidZones.get(oldest) ?? 0;
       warnedInvalidZones.delete(oldest);
       if (suppressed > 0) {
+        // Deliberate warn level (#98.1): this line feeds the diagnostics
+        // Error Summary's totalWarnings counter, same as the first-sighting
+        // warn in resolveExpansionZone below. Sentinel digest #113 item 1
+        // flagged that this adds cache-housekeeping noise to that counter
+        // alongside the actionable first-sighting warns. Left at warn
+        // as-is: the digest's own remediation is conditional ("if triage
+        // noise materializes"), and no such noise has been reported since
+        // #98 shipped. If it does, the fix is to split totalWarnings into
+        // housekeeping vs actionable buckets rather than downgrading this
+        // line to info (which would make repeat-offender zones invisible to
+        // the counter entirely, the opposite of #98.1's intent).
         logger.warn(
           `Invalid event timezone "${oldest}": ${suppressed} repeat warning(s) suppressed since first report — evicted from dedup cache`
         );
@@ -320,6 +331,13 @@ export function expandRecurringEvent(
     // 60_000 of them for a minutely rule), and a tight pre-cap would truncate
     // to pad-only entries that the real-UTC filter then discards entirely.
     let rawCapReached = false;
+    // Note (#113 item 4): passing the 4th `iterator` argument routes rrule
+    // through CallbackIterResult instead of its normal IterResult, which
+    // silently bypasses rrule's internal per-instance result cache for this
+    // between() call. Currently harmless — a fresh RRuleSet is constructed
+    // per expandRecurringEvent() call above, so there is no cached result to
+    // miss — but would matter if this function were ever changed to reuse an
+    // RRuleSet across multiple between() calls.
     const occurrences = rruleSet.between(betweenStart, betweenEnd, true, (_date, len) => {
       if (len >= MAX_RAW_OCCURRENCES) {
         rawCapReached = true;

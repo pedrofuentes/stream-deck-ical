@@ -28,6 +28,13 @@
  *    scale together since MAX_RAW_OCCURRENCES is derived from WINDOW_PAD_MS,
  *    so pad-widening alone is self-adjusting rather than something this
  *    assertion guards against (Sentinel digest #98 item 4, comment-only).
+ *  - #113.2: raw pre-cap `>=` boundary pinned exactly (mutation-sensitive:
+ *    a >= → > mutation admits one extra raw occurrence at the boundary and
+ *    is caught) — Sentinel digest #113 item 2.
+ *  - #113.3: the #79 test's now-dead info-level "suppressed" assertion
+ *    (vacuous — no code path ever emitted it at info) flipped to assert on
+ *    warn.mock.calls, consistent with the #98.1 warn-level spec — Sentinel
+ *    digest #113 item 3.
  *
  * @author Pedro Fuentes <git@pedrofuent.es>
  * @copyright Pedro Pablo Fuentes Schuster
@@ -655,7 +662,7 @@ describe('#82.2 — warn-dedup cache behavior exactly at the cap', () => {
 
 describe('#79 — FIFO single-oldest eviction on cache overflow (cap+1)', () => {
   it('should evict only the oldest zone, keep zones 2..cap deduped, and re-warn zone 1 only after eviction', async () => {
-    const { expand, warn, info } = await freshExpander();
+    const { expand, warn } = await freshExpander();
 
     for (let i = 1; i <= WARN_CACHE_CAP; i++) {
       expandWithBadZone(expand, `Sentinel/Fifo_${i}`);
@@ -667,8 +674,16 @@ describe('#79 — FIFO single-oldest eviction on cache overflow (cap+1)', () => 
     expect(invalidZoneWarns(warn, `Sentinel/Fifo_${WARN_CACHE_CAP + 1}`).length).toBe(1);
     expect(invalidZoneWarns(warn).length).toBe(1);
 
-    // Zone #1 never had suppressed repeats → no suppressed-count log either.
-    expect(info.mock.calls.filter(call => String(call[0]).includes('suppressed')).length).toBe(0);
+    // Zone #1 never had suppressed repeats → no suppressed-count eviction log
+    // either. That eviction line is emitted at WARN (#98.1), not info, so
+    // asserting against info.mock.calls (as this test previously did) was
+    // vacuous — no code path in this module ever emits 'suppressed' at info,
+    // meaning the assertion could never fail regardless of behavior
+    // (Sentinel digest #113 item 3). Asserting against warn.mock.calls is the
+    // reachable, discriminating check: it would catch a regression where the
+    // eviction path logged a suppressed-count line even when suppressed
+    // === 0.
+    expect(warn.mock.calls.filter(call => String(call[0]).includes('suppressed')).length).toBe(0);
 
     // Zones #2..#cap must STILL be deduped — the old full clear() re-warned
     // all of them here, defeating the #59.2 log-churn reduction.
@@ -878,5 +893,84 @@ describe('#82.3 — SECONDLY residual and the raw pre-cap warn branch', () => {
       expect(occurrence.start.getTime()).toBeGreaterThanOrEqual(startWindow.getTime());
       expect(occurrence.start.getTime()).toBeLessThanOrEqual(endWindow.getTime());
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// #113.2 — raw pre-cap exact boundary (mutation-sensitive pin)
+// ─────────────────────────────────────────────────────────────
+
+describe('#113.2 — raw pre-cap fires at the exact boundary (>= vs > pin)', () => {
+  it('should reject exactly the (MAX_RAW_OCCURRENCES + 1)-th raw occurrence, not admit it', async () => {
+    const { MAX_RAW_OCCURRENCES } = await import('../src/services/recurrence-expander');
+
+    // The pre-cap guard is `if (len >= MAX_RAW_OCCURRENCES) { reject; stop }`,
+    // where `len` is the number of occurrences already accepted (0-based) —
+    // see the derivation comment above rruleSet.between() in
+    // recurrence-expander.ts (verified directly against rrule 2.8.1's
+    // CallbackIterResult.add(), which calls `iterator(date,
+    // this._result.length)` BEFORE pushing).
+    //
+    // This test places a 1-second-cadence SECONDLY rule so the raw
+    // occurrence that WOULD be the (MAX_RAW_OCCURRENCES + 1)-th acceptance
+    // (0-based index MAX_RAW_OCCURRENCES) lands EXACTLY at startWindow —
+    // i.e. it would survive the real-UTC window filter IF it were ever
+    // generated. Every earlier occurrence (0-based index < MAX_RAW_OCCURRENCES)
+    // lands strictly before startWindow, so it gets discarded by the window
+    // filter regardless of whether the pre-cap admits it.
+    //
+    // Correct `>=` behavior: at 0-based index MAX_RAW_OCCURRENCES (the
+    // boundary occurrence, exactly at startWindow), len === MAX_RAW_OCCURRENCES
+    // when the callback runs → `len >= MAX_RAW_OCCURRENCES` is true →
+    // rejected, generation stops. That occurrence — the only one that could
+    // have survived the window filter — is never generated, so
+    // expanded.length must be 0.
+    //
+    // A `>=` → `>` mutation makes that same check false (MAX_RAW_OCCURRENCES
+    // > MAX_RAW_OCCURRENCES is false), so the boundary occurrence IS
+    // generated, DOES survive the real-UTC window filter (it lands exactly
+    // at startWindow, inclusive), and expanded.length becomes 1 instead —
+    // the mutation flips this assertion. This pins the exact `>=` boundary
+    // that #82.3's SECONDLY-residual test leaves unpinned: there, the raw
+    // cap is consumed entirely ~73 minutes into a 1-day leading pad, nowhere
+    // near the real window boundary, so a >= → > mutation there would still
+    // leave expanded.length at 0 (Sentinel digest #113 item 2).
+    const startWindow = new Date('2026-07-06T00:00:00Z');
+    const endWindow = new Date('2026-07-06T00:01:00Z');
+
+    // DTSTART is MAX_RAW_OCCURRENCES seconds before startWindow, so the
+    // 0-based k-th generated occurrence lands at (startWindow - (cap - k))
+    // seconds — occurrence k = cap lands exactly at startWindow. No DST
+    // transition occurs anywhere in this window (deep CEST summer), so
+    // wall-clock and real-UTC seconds advance 1:1.
+    const dtstartReal = new Date(startWindow.getTime() - MAX_RAW_OCCURRENCES * 1000);
+
+    const boundaryEvent: CalendarEvent = {
+      uid: 'raw-cap-exact-boundary',
+      summary: 'Raw Cap Exact Boundary',
+      start: dtstartReal,
+      end: new Date(dtstartReal.getTime() + 1000),
+      isRecurring: true,
+      eventTimezone: 'Europe/Prague'
+    };
+
+    const expanded = expandRecurringEvent(
+      boundaryEvent,
+      'FREQ=SECONDLY;INTERVAL=1',
+      [],
+      startWindow,
+      endWindow,
+      'Europe/Prague'
+    );
+
+    expect(expanded).toEqual([]);
+
+    // Generation WAS stopped early by the pre-cap (confirms the boundary
+    // occurrence was actually reachable by this setup, not just absent for
+    // an unrelated reason).
+    const preCapWarns = vi.mocked(logger.warn).mock.calls.filter(call =>
+      String(call[0]).includes(`pre-capping at ${MAX_RAW_OCCURRENCES}`)
+    );
+    expect(preCapWarns.length).toBe(1);
   });
 });
