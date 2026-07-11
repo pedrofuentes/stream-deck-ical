@@ -500,6 +500,67 @@ describe('escaping-depth bypass of home-path redaction (SR-20260711-PR105-14f664
   });
 });
 
+describe('separator-class completeness of home-path redaction (SR-20260711-PR105-3a3d2b2)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('redacts PHP json_encode-style escaped separators (backslash-slash mix)', () => {
+    // PHP's json_encode escapes / as \/ by default — an everyday paste artifact.
+    logger.error('paste: \\/Users\\/pedro\\/calendar.ics');
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+  });
+
+  it('redacts reversed mixed separators (slash-backslash mix)', () => {
+    logger.error('/\\Users/\\pedro');
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+  });
+
+  it('redacts double-backslash-plus-slash separator runs', () => {
+    logger.error('\\\\/users\\\\/pedro');
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+  });
+
+  it('redacts a pure 9-backslash separator run (past any fixed quantifier bound)', () => {
+    const sep = '\\'.repeat(9);
+    logger.error('C:' + sep + 'Users' + sep + 'pedro' + sep + 'x.ics');
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+  });
+
+  it('redacts a pure 17-backslash separator run', () => {
+    const sep = '\\'.repeat(17);
+    logger.error('C:' + sep + 'Users' + sep + 'pedro' + sep + 'x.ics');
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+  });
+
+  it('redacts an 8-backslash-separator leaf inside an OBJECT argument (replacer oracle)', () => {
+    const sep = '\\'.repeat(8);
+    logger.error('blob:', { p: 'C:' + sep + 'Users' + sep + 'pedro' + sep + 'x' });
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+    const out = getFormattedLogs();
+    expect(out).toContain('<home>');
+    expect(out).not.toContain('pedro');
+  });
+
+  it('leaves prose tokens without an adjacent separator run untouched', () => {
+    logger.info('active users: 12, home base ok, root cause found');
+    expect(debugLogs[0].message).toBe('active users: 12, home base ok, root cause found');
+  });
+});
+
 describe('spoof-class completeness (#97.3)', () => {
   beforeEach(() => {
     debugLogs.length = 0;
