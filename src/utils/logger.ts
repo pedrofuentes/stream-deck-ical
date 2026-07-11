@@ -53,10 +53,22 @@ const STACK_LF_RE = /\n/g;
 // User-profile path prefix — Windows C:\Users\name (or C:/Users/name) and
 // macOS /Users/name; the drive letter is optional and both slash forms match. /home/<user> and /root
 // are also covered, and the username class excludes CR/LF so redaction cannot
-// cross a line break and swallow a genuine following stack frame. Applied
-// centrally in sanitizeLogMessage so every argument shape is covered, not just
-// Error instances (#78.5, #93, #94, #95).
+// cross a line break and swallow a genuine following stack frame (#78.5, #93,
+// #94, #95). This single-separator form runs over RAW string values during JSON
+// serialization (see redactHomePathsReplacer); the final sanitize pass uses
+// HOME_PATH_TEXT_RE below, which also tolerates JSON-doubled backslashes.
 const HOME_PATH_RE = /(?:[a-z]:)?[\\/](?:users|home)[\\/][^\\/\r\n]+|[\\/]root(?=[\\/]|$)/gi;
+// Final-text variant (SR-20260711-PR105): JSON.stringify doubles backslashes, so a
+// Windows path arrives in JSON-derived text as C:\\Users\\pedro — a single-separator
+// [\\/] can never align with \\Users\\ and the username leaks (pre-stringified
+// string args like the plugin.ts "Global settings received:" idiom reach the log
+// this way). Each separator here matches one-or-two backslashes or a forward
+// slash, which only widens the match to the JSON-escaped form of the same path
+// shape: the literal users/home/root token between separators is still required,
+// and the username class additionally excludes '"' so a match cannot swallow a
+// JSON string's closing quote and the sibling keys after it. Applied centrally in
+// sanitizeLogMessage so every argument shape is covered (#93).
+const HOME_PATH_TEXT_RE = /(?:[a-z]:)?(?:\\{1,2}|\/)(?:users|home)(?:\\{1,2}|\/)[^\\/"\r\n]+|(?:\\{1,2}|\/)root(?=[\\/"]|$)/gi;
 
 /**
  * Escape raw CR/LF to their two-character literal forms so a newline injected via
@@ -108,13 +120,23 @@ function formatError(err: Error): string {
  * case Error to preserve message + stack; other objects serialize as JSON. Raw
  * newlines in non-Error arguments are escaped so they cannot forge records (#71).
  */
+/**
+ * JSON.stringify replacer that redacts home paths inside string values BEFORE
+ * backslash-doubling can split the path separators (SR-20260711-PR105). The
+ * typeof guard means it only ever calls String.prototype.replace on a genuine
+ * string with a precompiled pattern, so it cannot throw; anything a hostile
+ * toJSON throws inside JSON.stringify is caught by formatArg's fallback.
+ */
+const redactHomePathsReplacer = (_key: string, value: unknown): unknown =>
+  typeof value === 'string' ? value.replace(HOME_PATH_RE, '<home>') : value;
+
 function formatArg(a: unknown): string {
   if (a instanceof Error) {
     return formatError(a);
   }
   if (typeof a === 'object' && a !== null) {
     try {
-      return escapeNewlines(JSON.stringify(a));
+      return escapeNewlines(JSON.stringify(a, redactHomePathsReplacer));
     } catch {
       // Circular / non-serializable object — fall back to a tagged safe string form
       // so a serialization failure is visible, not a bare [object Object] (#96).
@@ -138,7 +160,7 @@ function sanitizeLogMessage(message: string): string {
     .replace(C0_RE, '')
     .replace(C1_RE, '')
     .replace(SPOOF_RE, '')
-    .replace(HOME_PATH_RE, '<home>');
+    .replace(HOME_PATH_TEXT_RE, '<home>');
 }
 
 /**

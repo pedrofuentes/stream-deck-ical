@@ -19,8 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 - Diagnostics redaction hardened and the logger can no longer throw: home-path
   redaction is centralized so it applies to every argument shape (interpolated
-  strings, JSON objects, and Error stacks) and now covers `/home/<user>` and
-  `/root` in addition to the Windows/macOS `Users` forms, without crossing a line
+  strings, JSON objects, and Error stacks) — including JSON-escaped
+  (doubled-backslash) Windows paths in object arguments and pre-stringified
+  settings dumps — and now covers `/home/<user>` and `/root` in addition to the
+  Windows/macOS `Users` forms, without crossing a line
   break (so a genuine trailing stack frame can no longer be swallowed); `formatError`
   no longer throws on exotic Error objects (non-string `stack`, throwing `stack`
   getter); serialization-failure fallbacks are tagged `[unserializable …]`; and
