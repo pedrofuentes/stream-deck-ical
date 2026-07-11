@@ -67,3 +67,30 @@ export function isSupportedICalUrl(url: string): boolean {
     return false;
   }
 }
+
+/**
+ * Build a short, safe preview of a non-string value for diagnostic logging.
+ *
+ * Used at the string-boundary guards in calendar-manager.ts (#90) and
+ * calendar-service.ts (#91.1): when a corrupted/hand-edited settings blob
+ * hands a caller a truthy non-string URL, the coercion to '' previously
+ * dropped the offending value/type with no trace, leaving support reports
+ * indistinguishable from a genuinely blank URL. `String(value)` can itself
+ * throw for a null-prototype object or a throwing `toString` (mirrors the
+ * `safeString` guard in src/utils/logger.ts, #78.1); truncated to a short
+ * preview so a large/hostile value cannot bloat the log line (the final
+ * message is still run through the logger's own sanitization pipeline).
+ *
+ * @param value - The unexpected non-string value
+ * @param maxLength - Maximum preview length (default 40)
+ * @returns A truncated string preview, safe to interpolate into a log message
+ */
+export function previewNonStringValue(value: unknown, maxLength = 40): string {
+  let str: string;
+  try {
+    str = String(value);
+  } catch {
+    str = Object.prototype.toString.call(value);
+  }
+  return str.length > maxLength ? str.slice(0, maxLength) : str;
+}

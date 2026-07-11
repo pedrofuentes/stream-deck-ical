@@ -15,7 +15,7 @@ import { parseICalFeed } from './ical-parser.js';
 import { processRecurringEvents } from './recurrence-expander.js';
 import { sortEventsByStartTime } from '../utils/event-utils.js';
 import { logger } from '../utils/logger.js';
-import { normalizeICalUrl, isSupportedICalUrl } from '../utils/url-utils.js';
+import { normalizeICalUrl, isSupportedICalUrl, previewNonStringValue } from '../utils/url-utils.js';
 
 /**
  * Generate a unique ID for a calendar based on its URL
@@ -26,9 +26,16 @@ import { normalizeICalUrl, isSupportedICalUrl } from '../utils/url-utils.js';
  * button saved with `webcal://` and another saved with `https://`)
  * collapse onto the same calendar ID instead of double-polling the same
  * endpoint via two independent CalendarInstances (#48).
+ *
+ * Boundary guard: normalizeICalUrl returns non-string input unchanged
+ * (#49 item 3), so hashing it directly would throw. Guarding here — rather
+ * than only at the getOrCreateCalendar call site — means every caller
+ * (hasCalendarForUrl included) inherits the same safety even without its
+ * own coercion (#91.2).
  */
 function generateCalendarId(url: string): string {
-  const normalizedUrl = normalizeICalUrl(url);
+  const safeUrl = typeof url === 'string' ? url : '';
+  const normalizedUrl = normalizeICalUrl(safeUrl);
   // Simple hash function for URL -> ID
   let hash = 0;
   for (let i = 0; i < normalizedUrl.length; i++) {
@@ -154,7 +161,16 @@ class CalendarManager {
     // truthy non-string (e.g. a number) despite the `string` type. Coerce
     // to '' up front so it converges on the existing INVALID_URL handling
     // in updateCalendarCache instead of throwing a TypeError inside
-    // generateCalendarId (#65).
+    // generateCalendarId (#65). Log the offending typeof/value here since
+    // this is the last point the original value is still available — the
+    // coercion previously dropped it with no trace, making a "stuck on
+    // Please Setup" report indistinguishable from a genuinely blank URL
+    // and unreachable from exported diagnostics (#90).
+    if (typeof url !== 'string') {
+      logger.warn(
+        `[CalendarManager] Non-string URL passed to getOrCreateCalendar (typeof=${typeof url}, value="${previewNonStringValue(url)}")`
+      );
+    }
     const safeUrl = typeof url === 'string' ? url : '';
     const normalizedUrl = normalizeICalUrl(safeUrl);
     const calendarId = generateCalendarId(normalizedUrl);
@@ -491,7 +507,10 @@ class CalendarManager {
   }
 
   /**
-   * Check if a calendar exists by URL
+   * Check if a calendar exists by URL.
+   *
+   * Safe for non-string input: generateCalendarId coerces internally, so a
+   * null/array/etc. URL resolves to `false` instead of throwing (#91.2).
    */
   hasCalendarForUrl(url: string): boolean {
     const calendarId = generateCalendarId(url);
