@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `ROADMAP.md` restructured to the agents-template format.
 
 ### Fixed
+- Log records can no longer be forged by newline injection from untrusted calendar
+  event titles: raw CR/LF in non-Error arguments are escaped, Error-stack
+  continuation lines are marked so an injected line cannot present as a fresh record,
+  and bidi/zero-width spoofing characters are stripped. Error stacks are also
+  redacted (user-profile path prefix → `<home>`) and no longer duplicate the message
+  (#71, #78 items 1/4/5/6-logger).
 - Recurring-event edge cases hardened: exact real-UTC window filtering across DST
   transitions, EXDATE matching for occurrences in spring-forward gaps, malformed and
   lowercase `UNTIL` tolerance, deduplicated invalid-timezone warnings, and

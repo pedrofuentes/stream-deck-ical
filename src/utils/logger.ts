@@ -28,48 +28,103 @@ export interface DebugLogEntry {
 export const debugLogs: DebugLogEntry[] = [];
 const MAX_DEBUG_LOGS = 500;
 
+// Precompiled sanitization patterns (this runs on per-second hot paths — keep
+// each class as one combined, module-level regex so nothing recompiles per call).
+// ANSI CSI sequences: ESC [ ... final-byte
+const ANSI_CSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+// OSC sequences: ESC ] ... terminated by BEL or ST
+const OSC_RE = /\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
+// Other single-char escape sequences: ESC <Fe>
+const ESC_FE_RE = /\x1b[@-Z\\-_]/g;
+// C0 controls (except \t = 09 and \n = 0A) and DEL
+const C0_RE = /[\x00-\x08\x0b-\x1f\x7f]/g;
+// C1 controls
+const C1_RE = /[\x80-\x9f]/g;
+// Line/paragraph separators (U+2028/U+2029), bidi overrides (U+202A–202E,
+// U+2066–2069), and zero-width chars (U+200B–200D, U+FEFF) used for spoofing (#71).
+const SPOOF_RE = /[\u2028\u2029\u202a-\u202e\u2066-\u2069\u200b-\u200d\ufeff]/g;
+// Raw CR/LF in a non-Error argument — escaped so a feed-controlled string cannot
+// start a new line (and thus a forged record) in the log stream (#71/CWE-117).
+const NEWLINE_RE = /[\r\n]/g;
+// Continuation-line marker for multi-line Error stacks (#71): keeps real line
+// breaks but prevents any injected line from presenting as a fresh record.
+const STACK_LF_RE = /\n/g;
+// User-profile path prefix — Windows C:\Users\name (or C:/Users/name) and
+// macOS /Users/name; the drive letter is optional, both slash forms match (#78.5).
+const HOME_PATH_RE = /(?:[a-z]:)?[\\/]users[\\/][^\\/]+/gi;
+
+/**
+ * Escape raw CR/LF to their two-character literal forms so a newline injected via
+ * an untrusted argument cannot forge a new log record (#71/CWE-117).
+ */
+function escapeNewlines(s: string): string {
+  return s.replace(NEWLINE_RE, ch => (ch === '\n' ? '\\n' : '\\r'));
+}
+
+/**
+ * Convert an unknown value to a string without ever throwing. String(a) can throw
+ * for a null-prototype object or a throwing toString; fall back to the intrinsic
+ * Object.prototype.toString as a last resort (#78.1).
+ */
+function safeString(a: unknown): string {
+  try {
+    return String(a);
+  } catch {
+    return Object.prototype.toString.call(a);
+  }
+}
+
+/**
+ * Format an Error for the log buffer. V8 stacks already begin "Error: <message>",
+ * so use the stack alone (no message duplication, #78.4) and fall back to
+ * name + message when no stack is present. Absolute user-profile paths are redacted
+ * (#78.5) and continuation lines are marked so an injected stack line cannot forge
+ * a fresh [timestamp] [LEVEL] record (#71).
+ */
+function formatError(err: Error): string {
+  const raw = err.stack ?? `${err.name}: ${err.message}`;
+  const redacted = raw.replace(HOME_PATH_RE, '<home>');
+  return redacted.replace(STACK_LF_RE, '\n    | ');
+}
+
 /**
  * Serialize a single log argument to a string.
  *
  * Error objects carry their message/stack in non-enumerable fields, so plain
  * JSON.stringify(err) collapses to `{}` and destroys the diagnostic — the sole
  * failure signal of background mechanisms like the orphan sweep (#52). Special-
- * case Error to preserve message + stack; other objects serialize as JSON.
+ * case Error to preserve message + stack; other objects serialize as JSON. Raw
+ * newlines in non-Error arguments are escaped so they cannot forge records (#71).
  */
 function formatArg(a: unknown): string {
   if (a instanceof Error) {
-    return a.stack ? `${a.message}\n${a.stack}` : a.message;
+    return formatError(a);
   }
   if (typeof a === 'object' && a !== null) {
     try {
-      return JSON.stringify(a);
+      return escapeNewlines(JSON.stringify(a));
     } catch {
       // Circular / non-serializable object — fall back to a safe string form.
-      return String(a);
+      return escapeNewlines(safeString(a));
     }
   }
-  return String(a);
+  return escapeNewlines(safeString(a));
 }
 
 /**
  * Strip control sequences that would corrupt the log buffer or a terminal
  * rendering it (#52): ANSI/OSC escape sequences, C0/C1 control chars (except
- * \n and \t), DEL, and the U+2028/U+2029 line/paragraph separators.
+ * \n and \t), DEL, U+2028/U+2029 separators, and bidi/zero-width spoofing
+ * characters (#71). Real newlines from marked Error stacks are preserved.
  */
 function sanitizeLogMessage(message: string): string {
   return message
-    // ANSI CSI sequences: ESC [ ... final-byte
-    .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, '')
-    // OSC sequences: ESC ] ... terminated by BEL or ST
-    .replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '')
-    // Other single-char escape sequences: ESC <Fe>
-    .replace(/\x1b[@-Z\\-_]/g, '')
-    // C0 controls (except \t = 09 and \n = 0A) and DEL
-    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')
-    // C1 controls
-    .replace(/[\x80-\x9f]/g, '')
-    // Line/paragraph separators
-    .replace(/[\u2028\u2029]/g, '');
+    .replace(ANSI_CSI_RE, '')
+    .replace(OSC_RE, '')
+    .replace(ESC_FE_RE, '')
+    .replace(C0_RE, '')
+    .replace(C1_RE, '')
+    .replace(SPOOF_RE, '');
 }
 
 /**
