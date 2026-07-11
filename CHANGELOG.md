@@ -30,6 +30,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   is now derived from the DST window pad (with a unit-tested invariant) so
   widening the pad cannot silently starve the in-window occurrence cap
   (#79, #80, #81, #82).
+- Stream Deck IPC outages no longer flood the debug log (setTitle failures are logged
+  once per outage and recovery once), the `ICAL_ORPHAN_SWEEP_MS` override is bounds-checked
+  to `[1000, 2147483647]` ms so an out-of-range value can't hot-loop the sweep, in-flight
+  title updates are coalesced (identical concurrent paints collapse to one SDK call and a
+  stale out-of-order resolution can't overwrite a newer title), the orphan sweep tolerates a
+  `getActionById` throw for one button without aborting the rest of the pass and skips
+  overlapping ticks while a slow pass is still running, and subclass lifecycle overrides now
+  carry the `override` modifier under `noImplicitOverride` so a mistyped hook fails the build
+  (#72, #73, #74, #75, #76, #77).
 - Recurring-event edge cases hardened: exact real-UTC window filtering across DST
   transitions, EXDATE matching for occurrences in spring-forward gaps, malformed and
   lowercase `UNTIL` tolerance, deduplicated invalid-timezone warnings, and

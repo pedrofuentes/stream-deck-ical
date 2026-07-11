@@ -61,7 +61,7 @@ export class NextMeetingActionBase extends BaseAction {
   /**
    * Handle single key press - show meeting title
    */
-  protected async handleSinglePress(actionId: string, action: any): Promise<void> {
+  protected override async handleSinglePress(actionId: string, action: any): Promise<void> {
     const nmState = this.getNextMeetingState(actionId);
 
     if (nmState.showingTitle) {
@@ -209,7 +209,7 @@ export class NextMeetingActionBase extends BaseAction {
    * Override the shared cleanup hook so NextMeeting-specific state (marquee) is
    * torn down for both SDK disappearances and reaped orphans (#50).
    */
-  protected async cleanupButtonState(actionId: string): Promise<void> {
+  protected override async cleanupButtonState(actionId: string): Promise<void> {
     this.stopMarquee(actionId);
     // Clean up NextMeeting-specific state
     this.nextMeetingStates.delete(actionId);

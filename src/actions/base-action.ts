@@ -77,6 +77,11 @@ interface ButtonState {
   currentImage: string;
   /** Last title sent to the SDK — used to skip redundant setTitle calls (#29) */
   currentTitle?: string;
+  /** Title currently in flight to the SDK — coalesces duplicate setTitle calls (#74) */
+  pendingTitle?: string;
+  /** Whether the current setTitle failure has already been logged — throttles the
+   *  per-tick warn during a sustained IPC outage to one entry per outage (#72) */
+  titleFailureLogged?: boolean;
   /** Last per-tick debug line — used to skip redundant debug buffering (#29) */
   lastDebugMessage?: string;
   lastKeyPress: number;
@@ -129,6 +134,11 @@ const ORPHAN_SWEEP_INTERVAL_ENV = 'ICAL_ORPHAN_SWEEP_MS';
 // interval bleeding across tests (#56.3).
 let orphanSweepInterval: NodeJS.Timeout | undefined;
 
+// Guards against overlapping sweeps: reapOrphanedButtons is async and a subclass
+// cleanup hook can genuinely await, so a slow pass must not be re-entered by the
+// next interval tick. Set before a pass starts, cleared in its .finally() (#78.3).
+let sweepInFlight = false;
+
 /**
  * Reap button states the Stream Deck no longer reports as visible.
  *
@@ -152,10 +162,21 @@ export async function reapOrphanedButtons(): Promise<string[]> {
   return reaped;
 }
 
+/** Lower bound for the env sweep override (ms). Below this the sweep would hot-loop. */
+const ORPHAN_SWEEP_MIN_MS = 1000;
+
+/**
+ * Upper bound for the env sweep override (ms). Node clamps setInterval delays above
+ * the signed-32-bit max to 1ms, turning a "huge" cadence into a hot loop (#73).
+ */
+const ORPHAN_SWEEP_MAX_MS = 2_147_483_647;
+
 /**
  * Resolve the sweep cadence: explicit param > env override > default.
- * The env override must be a positive integer number of milliseconds; anything
- * else is ignored with a warning so a typo can't silently disable the sweep.
+ * The env override must be a safe integer number of milliseconds within
+ * [1000, 2147483647]; anything else (non-integer, out of range, or a value Node
+ * would clamp to a 1ms hot loop) is ignored with a warning so a typo can't
+ * silently disable the sweep or pin the CPU (#56.1, #73).
  */
 function resolveOrphanSweepInterval(intervalMs?: number): number {
   if (intervalMs !== undefined) {
@@ -164,10 +185,10 @@ function resolveOrphanSweepInterval(intervalMs?: number): number {
   const raw = process.env[ORPHAN_SWEEP_INTERVAL_ENV];
   if (raw !== undefined) {
     const parsed = Number(raw);
-    if (Number.isInteger(parsed) && parsed > 0) {
+    if (Number.isSafeInteger(parsed) && parsed >= ORPHAN_SWEEP_MIN_MS && parsed <= ORPHAN_SWEEP_MAX_MS) {
       return parsed;
     }
-    logger.warn(`[BaseAction] Ignoring invalid ${ORPHAN_SWEEP_INTERVAL_ENV}="${raw}" (expected positive integer ms)`);
+    logger.warn(`[BaseAction] Ignoring invalid ${ORPHAN_SWEEP_INTERVAL_ENV}="${raw}" (expected integer ms in [${ORPHAN_SWEEP_MIN_MS}, ${ORPHAN_SWEEP_MAX_MS}])`);
   }
   return ORPHAN_SWEEP_INTERVAL_MS;
 }
@@ -184,11 +205,21 @@ export function startOrphanSweep(intervalMs?: number): void {
   }
   const resolvedMs = resolveOrphanSweepInterval(intervalMs);
   orphanSweepInterval = setInterval(() => {
+    // Skip if the previous pass is still running so a slow sweep can't be re-entered
+    // and pile up overlapping cleanups (#78.3).
+    if (sweepInFlight) {
+      return;
+    }
+    sweepInFlight = true;
     // reapOrphanedButtons is async; a rejected promise would otherwise escape this
     // synchronous callback with no unhandledRejection handler and crash the plugin (#50).
-    reapOrphanedButtons().catch(error => {
-      logger.error('[BaseAction] Orphan sweep failed:', error);
-    });
+    reapOrphanedButtons()
+      .catch(error => {
+        logger.error('[BaseAction] Orphan sweep failed:', error);
+      })
+      .finally(() => {
+        sweepInFlight = false;
+      });
   }, resolvedMs);
   logger.info(`[BaseAction] Orphan sweep started (every ${Math.round(resolvedMs / 1000)}s)`);
 }
@@ -261,7 +292,7 @@ export abstract class BaseAction extends SingletonAction {
   /**
    * Called when action appears on Stream Deck
    */
-  async onWillAppear(ev: WillAppearEvent<any>): Promise<void> {
+  override async onWillAppear(ev: WillAppearEvent<any>): Promise<void> {
     const actionId = ev.action.id;
     logger.debug(`${this.constructor.name} will appear: ${actionId}`);
     
@@ -492,7 +523,7 @@ export abstract class BaseAction extends SingletonAction {
   /**
    * Called when action disappears from Stream Deck
    */
-  async onWillDisappear(ev: WillDisappearEvent<any>): Promise<void> {
+  override async onWillDisappear(ev: WillDisappearEvent<any>): Promise<void> {
     const actionId = ev.action.id;
     logger.debug(`${this.constructor.name} will disappear: ${actionId}`);
     await this.cleanupButtonState(actionId);
@@ -544,7 +575,7 @@ export abstract class BaseAction extends SingletonAction {
   /**
    * Called when settings are received/updated from Property Inspector
    */
-  async onDidReceiveSettings(ev: DidReceiveSettingsEvent<any>): Promise<void> {
+  override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<any>): Promise<void> {
     const actionId = ev.action.id;
     const settings = ev.payload.settings as ActionSettings | undefined;
     logger.debug(`[${this.constructor.name}] Settings received for ${actionId}:`, JSON.stringify(settings));
@@ -615,14 +646,14 @@ export abstract class BaseAction extends SingletonAction {
   /**
    * Called when key is pressed down
    */
-  async onKeyDown(ev: KeyDownEvent<any>): Promise<void> {
+  override async onKeyDown(ev: KeyDownEvent<any>): Promise<void> {
     // Override in subclasses if needed
   }
   
   /**
    * Called when key is released
    */
-  async onKeyUp(ev: KeyUpEvent<any>): Promise<void> {
+  override async onKeyUp(ev: KeyUpEvent<any>): Promise<void> {
     const actionId = ev.action.id;
     const state = this.buttonStates.get(actionId);
     if (!state) return;
@@ -752,18 +783,54 @@ export abstract class BaseAction extends SingletonAction {
    */
   protected async setTitleForButton(actionId: string, action: any, title: string): Promise<void> {
     const state = this.buttonStates.get(actionId);
-    if (state && state.currentTitle === title) {
-      return;
+    if (state) {
+      // Already the last painted title — nothing to do (#29).
+      if (state.currentTitle === title) {
+        return;
+      }
+      // Identical title already in flight to the SDK — coalesce rather than spawn a
+      // second uncoalesced setTitle per tick while IPC is slow (#74).
+      if (state.pendingTitle === title) {
+        return;
+      }
+      // Mark this as the most-recently dispatched title (used for the out-of-order
+      // commit guard below and to dedupe concurrent callers).
+      state.pendingTitle = title;
     }
     try {
       await action.setTitle(title);
-      // Commit the change-guard only after the SDK actually painted, so a rejected
-      // (transient IPC) call doesn't freeze stale text — the next tick retries (#51).
       if (state) {
-        state.currentTitle = title;
+        // Commit the change-guard only after the SDK actually painted, and only if
+        // this call is still the most recent dispatch — a slower earlier call must
+        // not clobber a newer title with an out-of-order resolution (#51, #74).
+        if (state.pendingTitle === title) {
+          state.currentTitle = title;
+        }
+        // Recovery: the SDK painted again after a failure — note it once (#72).
+        if (state.titleFailureLogged) {
+          state.titleFailureLogged = false;
+          logger.info(`[${this.constructor.name}] setTitle recovered for ${actionId}`);
+        }
       }
     } catch (error) {
-      logger.warn(`[${this.constructor.name}] setTitle failed for ${actionId}, will retry next tick:`, error);
+      // Failure-transition guard: log the first failure of an outage (with the
+      // error), then suppress the per-tick repeats so a sustained IPC outage can't
+      // flood the 500-entry debug ring (#72). The next tick still retries.
+      if (state) {
+        if (!state.titleFailureLogged) {
+          state.titleFailureLogged = true;
+          logger.warn(`[${this.constructor.name}] setTitle failed for ${actionId}, will retry next tick:`, error);
+        }
+      } else {
+        logger.warn(`[${this.constructor.name}] setTitle failed for ${actionId}, will retry next tick:`, error);
+      }
+    } finally {
+      // Clear the in-flight marker on settle (resolve OR reject). Clearing on reject
+      // re-enables the retry on the next tick per #51 semantics; guarding on equality
+      // avoids clobbering a newer dispatch's marker (#74).
+      if (state && state.pendingTitle === title) {
+        state.pendingTitle = undefined;
+      }
     }
   }
 
@@ -792,17 +859,19 @@ export abstract class BaseAction extends SingletonAction {
   public async reapOrphans(): Promise<string[]> {
     const reaped: string[] = [];
     for (const actionId of Array.from(this.buttonStates.keys())) {
-      const stillVisible = streamDeck.actions.getActionById(actionId);
-      if (!stillVisible) {
-        try {
+      try {
+        // The SDK lookup runs inside the per-id try so one throw can't abort the
+        // rest of the pass (#78.2).
+        const stillVisible = streamDeck.actions.getActionById(actionId);
+        if (!stillVisible) {
           // Await the shared, polymorphic cleanup so a rejection is caught here
           // (not left as an unhandled rejection) and the id is recorded as reaped
           // only after cleanup actually completes (#50).
           await this.cleanupButtonState(actionId);
           reaped.push(actionId);
-        } catch (error) {
-          logger.error(`[${this.constructor.name}] Failed to reap orphaned button ${actionId}:`, error);
         }
+      } catch (error) {
+        logger.error(`[${this.constructor.name}] Failed to reap orphaned button ${actionId}:`, error);
       }
     }
     return reaped;
