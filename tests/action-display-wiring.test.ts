@@ -75,7 +75,9 @@ import { NextMeetingActionBase } from '../src/actions/next-meeting-base';
 import { TimeLeftActionBase } from '../src/actions/time-left-base';
 import { findActiveEvents, findNextEvent } from '../src/utils/event-utils';
 import { calendarCache } from '../src/services/calendar-service';
+import { calendarManager } from '../src/services/calendar-manager';
 import { logger } from '../src/utils/logger';
+import { __resetActionInstancesForTest } from '../src/actions/base-action';
 
 const now = new Date('2026-07-10T12:00:00.000Z');
 
@@ -120,6 +122,12 @@ beforeEach(() => {
 afterEach(() => {
   vi.clearAllTimers();
   vi.useRealTimers();
+  // Each `new *ActionBase()` above registers itself in the module-level
+  // actionInstances registry (base-action.ts) and it is never pruned. Left
+  // unreset, instances constructed by one test leak into a later test that
+  // touches the orphan sweep across this file, reproducing the #55 shared-state
+  // pattern flagged for this file at #70.2.
+  __resetActionInstancesForTest();
 });
 
 // ---------------------------------------------------------------------------
@@ -192,6 +200,59 @@ describe('CombinedActionBase display wiring (#53)', () => {
 
     inst.stopMarquee('c-marquee');
   });
+
+  it('paints the guarded status text when cache status is not LOADED (#69)', async () => {
+    const action = mockAction('c-status');
+    const inst: any = new CombinedActionBase();
+    seed(inst, 'c-status', action);
+    (calendarCache as any).status = 'INIT';
+
+    const spy = vi.spyOn(inst, 'setTitleForButton');
+    await inst.updateDisplay('c-status', action);
+
+    // getStatusText('INIT') -> 'Please\nSetup' per the mocked calendar-service.
+    expect(spy).toHaveBeenCalledWith('c-status', action, 'Please\nSetup');
+    expect(action.setTitle).toHaveBeenCalledWith('Please\nSetup');
+  });
+
+  it('paints the guarded no-event fallback title when there is no active or next event (#69)', async () => {
+    const action = mockAction('c-noevents');
+    const inst: any = new CombinedActionBase();
+    seed(inst, 'c-noevents', action);
+    // status LOADED (default), findActiveEvents -> [], findNextEvent -> undefined (defaults from beforeEach)
+
+    const spy = vi.spyOn(inst, 'setTitleForButton');
+    await inst.updateDisplay('c-noevents', action);
+
+    expect(spy).toHaveBeenCalledWith('c-noevents', action, 'No\nMeetings');
+    expect(action.setTitle).toHaveBeenCalledWith('No\nMeetings');
+  });
+
+  it('cleanupButtonState clears marquee state and runs base cleanup (#70 addendum)', async () => {
+    const action = mockAction('c-cleanup');
+    const inst: any = new CombinedActionBase();
+    seed(inst, 'c-cleanup', action);
+
+    inst.startMarquee('c-cleanup', action, 'Team Standup');
+    const cbState = inst.combinedStates.get('c-cleanup');
+    expect(cbState.marqueeInterval).toBeDefined();
+    expect(cbState.titleTimeout).toBeDefined();
+    const intervalRef = cbState.marqueeInterval;
+    const timeoutRef = cbState.titleTimeout;
+
+    const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+    const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+
+    await inst.cleanupButtonState('c-cleanup');
+
+    // Combined-specific (subclass) state torn down.
+    expect(clearIntervalSpy).toHaveBeenCalledWith(intervalRef);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutRef);
+    expect(inst.combinedStates.has('c-cleanup')).toBe(false);
+    // Base cleanup (BaseAction.cleanupButtonState) also ran.
+    expect(inst.buttonStates.has('c-cleanup')).toBe(false);
+    expect(calendarManager.unregisterAction).toHaveBeenCalledWith('c-cleanup');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -258,6 +319,59 @@ describe('NextMeetingActionBase display wiring (#53)', () => {
 
     inst.stopMarquee('n-marquee');
   });
+
+  it('paints the guarded status text when cache status is not LOADED (#69)', async () => {
+    const action = mockAction('n-status');
+    const inst: any = new NextMeetingActionBase();
+    seed(inst, 'n-status', action);
+    (calendarCache as any).status = 'LOADING';
+
+    const spy = vi.spyOn(inst, 'setTitleForButton');
+    await inst.updateDisplay('n-status', action);
+
+    // getStatusText('LOADING') -> 'Loading\niCal' per the mocked calendar-service.
+    expect(spy).toHaveBeenCalledWith('n-status', action, 'Loading\niCal');
+    expect(action.setTitle).toHaveBeenCalledWith('Loading\niCal');
+  });
+
+  it('paints the guarded no-event fallback title when findNextEvent is undefined (#69)', async () => {
+    const action = mockAction('n-noevents');
+    const inst: any = new NextMeetingActionBase();
+    seed(inst, 'n-noevents', action);
+    // findNextEvent -> undefined (default from beforeEach)
+
+    const spy = vi.spyOn(inst, 'setTitleForButton');
+    await inst.updateDisplay('n-noevents', action);
+
+    expect(spy).toHaveBeenCalledWith('n-noevents', action, 'No\nUpcoming\nMeeting');
+    expect(action.setTitle).toHaveBeenCalledWith('No\nUpcoming\nMeeting');
+  });
+
+  it('cleanupButtonState clears marquee state and runs base cleanup (#70 addendum)', async () => {
+    const action = mockAction('n-cleanup');
+    const inst: any = new NextMeetingActionBase();
+    seed(inst, 'n-cleanup', action);
+
+    inst.startMarquee('n-cleanup', action, 'Team Standup');
+    const nmState = inst.nextMeetingStates.get('n-cleanup');
+    expect(nmState.marqueeInterval).toBeDefined();
+    expect(nmState.titleTimeout).toBeDefined();
+    const intervalRef = nmState.marqueeInterval;
+    const timeoutRef = nmState.titleTimeout;
+
+    const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+    const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+
+    await inst.cleanupButtonState('n-cleanup');
+
+    // NextMeeting-specific (subclass) state torn down.
+    expect(clearIntervalSpy).toHaveBeenCalledWith(intervalRef);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutRef);
+    expect(inst.nextMeetingStates.has('n-cleanup')).toBe(false);
+    // Base cleanup (BaseAction.cleanupButtonState) also ran.
+    expect(inst.buttonStates.has('n-cleanup')).toBe(false);
+    expect(calendarManager.unregisterAction).toHaveBeenCalledWith('n-cleanup');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -306,5 +420,59 @@ describe('TimeLeftActionBase display wiring (#53)', () => {
 
     expect(spy).toHaveBeenCalledWith('t-canary', action, '5m 0s');
     expect(action.setTitle).toHaveBeenCalledWith('5m 0s');
+  });
+
+  it('paints the guarded status text when cache status is not LOADED (#69)', async () => {
+    const action = mockAction('t-status');
+    const inst: any = new TimeLeftActionBase();
+    seed(inst, 't-status', action);
+    (calendarCache as any).status = 'NETWORK_ERROR';
+
+    const spy = vi.spyOn(inst, 'setTitleForButton');
+    await inst.updateDisplay('t-status', action);
+
+    // getStatusText falls through to the default -> 'Error' per the mocked calendar-service.
+    expect(spy).toHaveBeenCalledWith('t-status', action, 'Error');
+    expect(action.setTitle).toHaveBeenCalledWith('Error');
+  });
+
+  it('paints the guarded no-event fallback title when findActiveEvents is empty (#69)', async () => {
+    const action = mockAction('t-noevents');
+    const inst: any = new TimeLeftActionBase();
+    seed(inst, 't-noevents', action);
+    // findActiveEvents -> [] (default from beforeEach)
+
+    const spy = vi.spyOn(inst, 'setTitleForButton');
+    await inst.updateDisplay('t-noevents', action);
+
+    expect(spy).toHaveBeenCalledWith('t-noevents', action, 'No\nActive\nMeeting');
+    expect(action.setTitle).toHaveBeenCalledWith('No\nActive\nMeeting');
+  });
+
+  it('cleanupButtonState clears the end-of-meeting timeout and runs base cleanup (#70 addendum)', async () => {
+    const action = mockAction('t-cleanup');
+    const inst: any = new TimeLeftActionBase();
+    seed(inst, 't-cleanup', action);
+
+    // Drive updateDisplay once so the per-button TimeLeft state map entry exists,
+    // then seed the endTimeout field the cleanup override is responsible for
+    // clearing (src/actions/time-left-base.ts:184-187).
+    vi.mocked(findActiveEvents).mockReturnValue([makeEvent('Standup', -30 * 60 * 1000, 35 * 60 * 1000)]);
+    await inst.updateDisplay('t-cleanup', action);
+    const tlState = inst.timeLeftStates.get('t-cleanup');
+    expect(tlState).toBeDefined();
+    tlState.endTimeout = setTimeout(() => {}, 100_000);
+    const timeoutRef = tlState.endTimeout;
+
+    const clearTimeoutSpy = vi.spyOn(global, 'clearTimeout');
+
+    await inst.cleanupButtonState('t-cleanup');
+
+    // TimeLeft-specific (subclass) state torn down.
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timeoutRef);
+    expect(inst.timeLeftStates.has('t-cleanup')).toBe(false);
+    // Base cleanup (BaseAction.cleanupButtonState) also ran.
+    expect(inst.buttonStates.has('t-cleanup')).toBe(false);
+    expect(calendarManager.unregisterAction).toHaveBeenCalledWith('t-cleanup');
   });
 });
