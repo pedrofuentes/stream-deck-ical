@@ -423,6 +423,47 @@ describe('HOME_PATH_RE match boundaries (#94 / #95)', () => {
   });
 });
 
+describe('JSON backslash-doubling must not defeat home-path redaction (SR-20260711-PR105)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('redacts a Windows path inside an object argument (formatArg JSON branch)', () => {
+    // JSON.stringify doubles the backslashes: {"path":"C:\\Users\\pedro\\cal.ics"}.
+    // A single-separator [\\/] regex can never align with \\Users\\ — the username
+    // must still be gone from the buffer AND the diagnostics export.
+    logger.error('config:', { path: 'C:\\Users\\pedro\\cal.ics' });
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+    const out = getFormattedLogs();
+    expect(out).toContain('<home>');
+    expect(out).not.toContain('pedro');
+  });
+
+  it('redacts a Windows path in a pre-stringified STRING argument (plugin.ts settings idiom)', () => {
+    // Shipped call sites pass JSON.stringify(settings) as a plain string arg —
+    // the doubled-backslash form arrives already baked into the message text.
+    logger.debug('Global settings received:', JSON.stringify({ url: 'C:\\Users\\pedro\\x.ics' }));
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+  });
+
+  it('redacts mixed single- and double-backslash forms in one joined message', () => {
+    logger.error(
+      'failed for C:\\Users\\pedro\\a.ics:',
+      JSON.stringify({ p: 'C:\\Users\\pedro\\b.ics' })
+    );
+    const { message } = debugLogs[0];
+    expect(message).not.toContain('pedro');
+    // Both occurrences redacted, non-path remainder intact.
+    expect(message.match(/<home>/g)?.length).toBe(2);
+    expect(message).toContain('failed for');
+  });
+});
+
 describe('spoof-class completeness (#97.3)', () => {
   beforeEach(() => {
     debugLogs.length = 0;
