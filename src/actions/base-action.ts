@@ -143,6 +143,14 @@ let orphanSweepInterval: NodeJS.Timeout | undefined;
 // next interval tick. Set before a pass starts, cleared in its .finally() (#78.3).
 let sweepInFlight = false;
 
+// Generation counter for the in-flight guard. stopOrphanSweep() bumps it so a pass
+// that was still running when the sweep was stopped/restarted can no longer clear the
+// guard held by the RESTARTED sweep's pass. Each pass captures the generation live at
+// its start and only clears sweepInFlight in .finally() if it is still that generation —
+// so stopOrphanSweep() can safely reset the guard for a restart (#101) without letting
+// the old pass's late settlement open a window for a THIRD overlapping pass (#112.2).
+let sweepGeneration = 0;
+
 /**
  * Reap button states the Stream Deck no longer reports as visible.
  *
@@ -228,6 +236,10 @@ export function startOrphanSweep(intervalMs?: number): void {
       return;
     }
     sweepInFlight = true;
+    // Pin the generation this pass belongs to. If stopOrphanSweep() runs (and bumps the
+    // generation) while this pass is still in flight, a later restart owns a NEW guard —
+    // and this pass's .finally() must not clear it out from under the restarted pass (#112.2).
+    const generation = sweepGeneration;
     // reapOrphanedButtons is async; a rejected promise would otherwise escape this
     // synchronous callback with no unhandledRejection handler and crash the plugin (#50).
     reapOrphanedButtons()
@@ -235,7 +247,11 @@ export function startOrphanSweep(intervalMs?: number): void {
         logger.error('[BaseAction] Orphan sweep failed:', error);
       })
       .finally(() => {
-        sweepInFlight = false;
+        // Only clear the guard if it still belongs to this pass's generation — a
+        // stop/restart since this pass began means a different pass now owns it (#112.2).
+        if (generation === sweepGeneration) {
+          sweepInFlight = false;
+        }
       });
   }, resolvedMs);
   logger.info(`[BaseAction] Orphan sweep started (every ${Math.round(resolvedMs / 1000)}s)`);
@@ -249,7 +265,12 @@ export function stopOrphanSweep(): void {
     clearInterval(orphanSweepInterval);
     orphanSweepInterval = undefined;
   }
-  // Clear the overlap guard too. A pass whose .finally() never runs (e.g. a subclass
+  // Advance the generation FIRST so any pass still in flight is orphaned: when it later
+  // settles, its .finally() sees a newer generation and leaves the guard alone, so it
+  // can't clear the guard a restarted sweep's pass is holding (which would let a third
+  // pass overlap the restarted one) (#112.2).
+  sweepGeneration++;
+  // Then clear the overlap guard. A pass whose .finally() never runs (e.g. a subclass
   // cleanup hook that hangs) would otherwise leave sweepInFlight stuck true, and the
   // next startOrphanSweep() would no-op every tick until the stale pass settled (#101).
   sweepInFlight = false;
@@ -340,6 +361,12 @@ export abstract class BaseAction extends SingletonAction {
     state.currentTitle = undefined;
     state.pendingTitle = undefined;
     state.titleFailureLogged = false;
+    // Bump the dispatch token so any pre-appear setTitle still in flight is no longer
+    // the "latest" dispatch: if that hung IPC promise settles after this reset but
+    // before the next dispatch, its token no longer matches and it can neither commit
+    // stale currentTitle nor flip the outage flag — which would otherwise re-suppress
+    // the post-wake repaint in a narrower window than #99 closed (#109).
+    state.titleDispatchToken = (state.titleDispatchToken ?? 0) + 1;
     state.lastDebugMessage = undefined;
 
     // Check for per-action settings
@@ -848,13 +875,13 @@ export abstract class BaseAction extends SingletonAction {
       // removed this id (or a re-appear that replaced the ButtonState object), so only
       // act on the state still tracked for this id — never a stale/removed one (#104.2).
       const live = this.buttonStates.get(actionId) === state ? state : undefined;
-      if (live) {
-        // Commit the change-guard only after the SDK actually painted, and only if
-        // this dispatch is still the latest — a slower earlier call must not clobber a
-        // newer title with an out-of-order resolution (#51, #74, #100).
-        if (live.titleDispatchToken === token) {
-          live.currentTitle = title;
-        }
+      // Only the LATEST dispatch's settlement may mutate the change-guard and the
+      // outage flag — an older same-id settle (the x,y,x overlap) reaching here after a
+      // newer dispatch already committed must touch nothing, or it would clobber the
+      // newer title and spuriously clear the outage flag / log a false recovery (#112.1).
+      if (live && live.titleDispatchToken === token) {
+        // Commit the change-guard only after the SDK actually painted (#51, #74, #100).
+        live.currentTitle = title;
         // Recovery: the SDK painted again after a failure — note it once (#72).
         if (live.titleFailureLogged) {
           live.titleFailureLogged = false;
@@ -865,13 +892,15 @@ export abstract class BaseAction extends SingletonAction {
       const live = this.buttonStates.get(actionId) === state ? state : undefined;
       // Failure-transition guard: log the first failure of an outage (with the
       // error), then suppress the per-tick repeats so a sustained IPC outage can't
-      // flood the 500-entry debug ring (#72). The next tick still retries.
-      if (live) {
+      // flood the 500-entry debug ring (#72). The next tick still retries. Gated on the
+      // dispatch token so only the latest dispatch can open the outage — an older
+      // settle must not raise a spurious warn / stick the flag on a healthy button (#112.1).
+      if (live && live.titleDispatchToken === token) {
         if (!live.titleFailureLogged) {
           live.titleFailureLogged = true;
           logger.warn(`[${this.constructor.name}] setTitle failed for ${actionId}, will retry next tick:`, error);
         }
-      } else if (!hadStateAtEntry) {
+      } else if (!live && !hadStateAtEntry) {
         // Never-tracked button (no throttle state to consult) — log the bare failure.
         // If the state existed at entry but was removed/replaced mid-flight we stay
         // silent: logging a failure for a button that is already gone is misleading
