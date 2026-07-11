@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `ROADMAP.md` restructured to the agents-template format.
 
 ### Fixed
+- Home-path redaction scanner refined: mid-path `root`/`users`/`home` segments
+  (e.g. `deployRoot` values, `/opt/myapp/root/handler.js`, URL path segments)
+  are no longer misredacted — a match now requires the token to start an
+  anchored absolute path (text start, whitespace/punctuation, drive prefix, or
+  UNC `\\host\` share position) — while nested decoy shapes
+  (`/home/users/<name>`, `C:\Users\Users\<name>`) now consume the real
+  username instead of redacting the decoy and leaking it; the username span
+  stops at `:` so trailing prose survives; U+061C (Arabic Letter Mark) is added
+  to the bidi/zero-width strip; the redundant pre-stringify redaction replacer
+  is removed (the final scanner is the single source and also covers object
+  keys); and `formatError`'s last-resort fallback is tagged
+  `[unformattable …]` (#114, #115, #116, #117).
 - Diagnostics redaction hardened and the logger can no longer throw: home-path
   redaction is centralized so it applies to every argument shape (interpolated
   strings, JSON objects, and Error stacks) — via a linear token scanner that
