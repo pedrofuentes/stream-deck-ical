@@ -312,10 +312,15 @@ describe('formatArg last-resort stringification (#78.1)', () => {
     vi.clearAllMocks();
   });
 
-  it('does not throw and still buffers a record for a null-prototype object', () => {
-    expect(() => logger.error('x', Object.create(null))).not.toThrow();
+  it('serializes a null-prototype object via the JSON path even though String() would throw on it (#97.2)', () => {
+    // A no-prop Object.create(null) never reaches the catch branch (JSON.stringify → '{}'),
+    // so the old length>0 assertion was non-discriminating. Pin the exact JSON output for a
+    // null-prototype object — String()/toString() would throw on it, the JSON path must not.
+    const noProto: any = Object.create(null);
+    noProto.k = 'v';
+    expect(() => logger.error('x', noProto)).not.toThrow();
     expect(debugLogs).toHaveLength(1);
-    expect(debugLogs[0].message.length).toBeGreaterThan(0);
+    expect(debugLogs[0].message).toBe('x {"k":"v"}');
   });
 
   it('survives a circular null-prototype object where both JSON and String() fail', () => {
@@ -324,6 +329,109 @@ describe('formatArg last-resort stringification (#78.1)', () => {
     expect(() => logger.error('x', circular)).not.toThrow();
     expect(debugLogs).toHaveLength(1);
     expect(debugLogs[0].message).toContain('[object Object]');
+  });
+
+  it('tags the unserializable fallback with a marker so a serialization failure is visible (#96)', () => {
+    const circular: any = Object.create(null);
+    circular.self = circular; // both JSON.stringify and String() fail → tagged fallback
+    logger.error('x', circular);
+    expect(debugLogs[0].message).toContain('[unserializable ');
+  });
+});
+
+describe('formatError never-throws hardening (#92)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('does not throw and buffers a useful record when Error.stack is a non-string', () => {
+    const err = new Error('boom');
+    (err as any).stack = 12345; // .replace() would blow up on a number
+    expect(() => logger.error('caught:', err)).not.toThrow();
+    expect(debugLogs).toHaveLength(1);
+    expect(debugLogs[0].message).toContain('boom');
+  });
+
+  it('does not throw and buffers a useful record when the Error.stack getter throws', () => {
+    const err = new Error('boom');
+    Object.defineProperty(err, 'stack', {
+      get() {
+        throw new Error('nope');
+      }
+    });
+    expect(() => logger.error('caught:', err)).not.toThrow();
+    expect(debugLogs).toHaveLength(1);
+    expect(debugLogs[0].message).toContain('boom');
+  });
+});
+
+describe('centralized home-path redaction across all argument shapes (#93)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('redacts a home path in an interpolated string argument, not just Error instances', () => {
+    logger.error('Error refreshing all calendars: C:\\Users\\pedro\\cal.ics not found');
+    const out = getFormattedLogs();
+    expect(out).toContain('<home>');
+    expect(out).not.toContain('pedro');
+  });
+
+  it('redacts a home path inside a JSON-serialized object argument', () => {
+    logger.error('config:', { path: '/Users/pedro/config.json' });
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+  });
+});
+
+describe('HOME_PATH_RE match boundaries (#94 / #95)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('redacts /home/<user> paths in Error stacks (#94)', () => {
+    const err = new Error('boom');
+    err.stack = 'Error: boom\n    at foo (/home/pedro/proj/file.js:1:1)';
+    logger.error(err);
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('pedro');
+  });
+
+  it('redacts the /root home directory (#94)', () => {
+    const err = new Error('boom');
+    err.stack = 'Error: boom\n    at foo (/root/proj/file.js:1:1)';
+    logger.error(err);
+    const { message } = debugLogs[0];
+    expect(message).toContain('<home>');
+    expect(message).not.toContain('/root/');
+  });
+
+  it('does not cross a newline and swallow the next stack frame (#95)', () => {
+    const err = new Error('evil');
+    err.stack = 'Error: evil\nC:\\Users\\pedro\n    at real (file.js:1:1)';
+    logger.error(err);
+    const { message } = debugLogs[0];
+    // Username is gone...
+    expect(message).not.toContain('pedro');
+    // ...but the genuine trailing frame survived (redaction stopped at the newline).
+    expect(message).toContain('at real (file.js:1:1)');
+  });
+});
+
+describe('spoof-class completeness (#97.3)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  it('strips U+200E/U+200F directional marks and the U+2060 word joiner', () => {
+    logger.info('a‎b‏c⁠d');
+    expect(debugLogs[0].message).toBe('abcd');
   });
 });
 
