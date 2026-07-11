@@ -16,25 +16,43 @@ import { logger } from '../utils/logger.js';
 /**
  * Maximum number of occurrences to expand per recurring event.
  * Guards against pathological RRULE patterns that could cause CPU spikes (#26).
+ * Exported for the #81 derivation-invariant unit test.
  */
-const MAX_OCCURRENCES = 500;
+export const MAX_OCCURRENCES = 500;
 
 /**
  * Coarse padding (±1 day) applied to the wall-clock between() window when
  * expanding in a zone. The exact real-UTC window is enforced afterwards on
  * the converted occurrences, so the padding only needs to cover the largest
  * possible wall-clock/real-UTC divergence around DST transitions.
+ * Exported for the #81 derivation-invariant unit test.
  */
-const WINDOW_PAD_MS = 24 * 60 * 60 * 1000;
+export const WINDOW_PAD_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Extra raw-cap headroom on top of the guaranteed minimum, so the real window
+ * keeps filling the tight cap with slack even for rules somewhat finer than
+ * minutely (down to ~45-second intervals with the current ±1-day pad).
+ */
+const RAW_OCCURRENCES_MARGIN = 2 * MAX_OCCURRENCES;
 
 /**
  * Safety pre-cap for the raw (padded) between() result, applied BEFORE the
- * real-UTC window filter. See the justification comment at the use site: with
- * a ±1-day pad, 5000 guarantees the 500-occurrence in-window cap can still
- * fill for any recurrence interval of ~20 seconds or coarser, while keeping
- * the #26 CPU bound for pathological (SECONDLY-scale) rules.
+ * real-UTC window filter. DERIVED from WINDOW_PAD_MS (#81) instead of a magic
+ * multiplier: a minutely rule can occupy at most 2 * (WINDOW_PAD_MS / 60_000)
+ * slots with pad-only occurrences (both pad sides), so reserving that
+ * occupancy plus the full MAX_OCCURRENCES in-window budget guarantees the
+ * final in-window cap can always fill for any rule of minutely or coarser
+ * granularity — no matter how WINDOW_PAD_MS is widened later. Finer
+ * (SECONDLY-scale) pathological rules stay CPU-bounded by this pre-cap (#26).
+ *
+ * Module-load invariant (unit-tested in sentinel-recurrence-hardening):
+ *   MAX_RAW_OCCURRENCES >= 2 * (WINDOW_PAD_MS / 60_000) + MAX_OCCURRENCES
+ *
+ * Current value: 2880 + 500 + 1000 = 4380.
  */
-const MAX_RAW_OCCURRENCES = 10 * MAX_OCCURRENCES;
+export const MAX_RAW_OCCURRENCES =
+  Math.ceil(2 * (WINDOW_PAD_MS / 60_000)) + MAX_OCCURRENCES + RAW_OCCURRENCES_MARGIN;
 
 /**
  * Parse RRULE string from iCal format
@@ -125,12 +143,38 @@ function rewriteUntilForZone(rruleString: string, zone: string): string {
 }
 
 /**
- * Zones already warned about as invalid, so the warning fires once per unique
+ * Zones already warned about as invalid (zone → number of SUPPRESSED repeat
+ * warnings since the first one, #82.1), so the warning fires once per unique
  * zone value instead of repeating on every refresh for every event. Capped to
- * bound memory against feeds carrying unbounded distinct garbage TZIDs.
+ * bound memory against feeds carrying unbounded distinct garbage TZIDs; on
+ * overflow only the single OLDEST entry is evicted (FIFO — Map iteration
+ * order is insertion order), so a feed cycling >cap distinct bad TZIDs can no
+ * longer wipe the whole cache and re-fire every warning (#79).
  */
-const warnedInvalidZones = new Set<string>();
+const warnedInvalidZones = new Map<string, number>();
 const MAX_WARNED_INVALID_ZONES = 100;
+
+/**
+ * Record an invalid zone in the dedup cache, evicting the single oldest entry
+ * when the cache is full. If the evicted zone had suppressed repeat warnings,
+ * report their count so later sightings of that zone remain identifiable from
+ * the logs (#82.1).
+ */
+function rememberInvalidZone(zone: string): void {
+  if (warnedInvalidZones.size >= MAX_WARNED_INVALID_ZONES) {
+    const oldest = warnedInvalidZones.keys().next().value;
+    if (oldest !== undefined) {
+      const suppressed = warnedInvalidZones.get(oldest) ?? 0;
+      warnedInvalidZones.delete(oldest);
+      if (suppressed > 0) {
+        logger.info(
+          `Invalid event timezone "${oldest}": ${suppressed} repeat warning(s) suppressed since first report — evicted from dedup cache`
+        );
+      }
+    }
+  }
+  warnedInvalidZones.set(zone, 0);
+}
 
 /**
  * Resolve the IANA timezone to use for wall-clock expansion.
@@ -142,12 +186,12 @@ function resolveExpansionZone(eventTimezone: string | undefined, summary: string
     return undefined;
   }
   if (!isValidIANATimezone(eventTimezone)) {
-    if (!warnedInvalidZones.has(eventTimezone)) {
-      if (warnedInvalidZones.size >= MAX_WARNED_INVALID_ZONES) {
-        warnedInvalidZones.clear();
-      }
-      warnedInvalidZones.add(eventTimezone);
+    const suppressedRepeats = warnedInvalidZones.get(eventTimezone);
+    if (suppressedRepeats === undefined) {
+      rememberInvalidZone(eventTimezone);
       logger.warn(`Invalid event timezone "${eventTimezone}" for "${summary}" — falling back to UTC expansion`);
+    } else {
+      warnedInvalidZones.set(eventTimezone, suppressedRepeats + 1);
     }
     return undefined;
   }
@@ -230,15 +274,16 @@ export function expandRecurringEvent(
     const occurrences = rruleSet.between(betweenStart, betweenEnd, true);
 
     // Coarse safety pre-cap (#26) on the PADDED between() result. This must
-    // NOT be the tight MAX_OCCURRENCES cap: the ±1-day leading pad can hold
-    // occurrences that all precede the real window (e.g. 1440 for a minutely
-    // rule), and a tight pre-cap would truncate to pad-only entries that the
-    // real-UTC filter then discards entirely. Bound justification: the pad is
-    // exactly ±1 day, so a minutely rule contributes at most 1440 occurrences
-    // per pad side (2880 total); MAX_RAW_OCCURRENCES = 5000 therefore leaves
-    // ≥ 2120 slots for the real window — enough to fill the final 500 cap for
-    // any interval of ~20 seconds or coarser (86400s / 4500 ≈ 19.2s). Finer
-    // (SECONDLY-scale) pathological rules stay CPU-bounded by this pre-cap.
+    // NOT be the tight MAX_OCCURRENCES cap: the leading pad can hold
+    // occurrences that all precede the real window (WINDOW_PAD_MS / 60_000
+    // of them for a minutely rule), and a tight pre-cap would truncate to
+    // pad-only entries that the real-UTC filter then discards entirely.
+    // MAX_RAW_OCCURRENCES is DERIVED from WINDOW_PAD_MS (#81) — worst-case
+    // minutely pad occupancy (both sides) + MAX_OCCURRENCES + margin — so it
+    // always leaves ≥ MAX_OCCURRENCES + margin slots for the real window and
+    // widening the pad can never silently re-open the cap-starvation bug.
+    // Finer (SECONDLY-scale) pathological rules stay CPU-bounded by this
+    // pre-cap.
     if (occurrences.length > MAX_RAW_OCCURRENCES) {
       logger.warn(
         `⚠️ Recurring event "${event.summary}" produced ${occurrences.length} raw occurrences — pre-capping at ${MAX_RAW_OCCURRENCES}`

@@ -23,6 +23,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and bidi/zero-width spoofing characters are stripped. Error stacks are also
   redacted (user-profile path prefix → `<home>`) and no longer duplicate the message
   (#71, #78 items 1/4/5/6-logger).
+- Invalid-timezone warning dedup cache now evicts only the single oldest entry
+  (FIFO) on overflow instead of clearing entirely — feeds cycling >100 distinct
+  bad TZIDs can no longer re-fire every warning — and reports the number of
+  suppressed repeat warnings when a zone is evicted; the raw occurrence pre-cap
+  is now derived from the DST window pad (with a unit-tested invariant) so
+  widening the pad cannot silently starve the in-window occurrence cap
+  (#79, #80, #81, #82).
 - Recurring-event edge cases hardened: exact real-UTC window filtering across DST
   transitions, EXDATE matching for occurrences in spring-forward gaps, malformed and
   lowercase `UNTIL` tolerance, deduplicated invalid-timezone warnings, and

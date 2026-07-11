@@ -11,6 +11,15 @@
  *    EXDATE matching in the spring-forward gap, eventTimezone parameter
  *    defaulting to event.eventTimezone.
  *  - Code scanning alert #2: UID fallback uses crypto randomness.
+ *  - #79/#82.2: invalid-TZID warn-dedup cache evicts a SINGLE oldest entry
+ *    (FIFO) on overflow instead of full-clearing; cap boundary behavior.
+ *  - #80: explicit eventTimezone argument overrides event.eventTimezone
+ *    (mutation-sensitive precedence pin).
+ *  - #81: MAX_RAW_OCCURRENCES is derived from WINDOW_PAD_MS — pad-occupancy
+ *    invariant so pad widening cannot silently starve the in-window cap.
+ *  - #82.1: suppressed-repeat count is reported when a zone is evicted.
+ *  - #82.3: SECONDLY residual (raw pre-cap consumed by the pad) and the
+ *    both-caps-warn-in-one-expansion branch are pinned.
  *
  * @author Pedro Fuentes <git@pedrofuent.es>
  * @copyright Pedro Pablo Fuentes Schuster
@@ -515,5 +524,300 @@ describe('Code scanning #2 — generated UID fallback', () => {
       expect(event.uid).toMatch(/^generated-[0-9a-f-]{36}$/);
     }
     expect(parsed.events[0].uid).not.toBe(parsed.events[1].uid);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// #80 — explicit eventTimezone argument overrides event.eventTimezone
+// ─────────────────────────────────────────────────────────────
+
+describe('#80 — explicit eventTimezone argument wins over event.eventTimezone', () => {
+  it('should expand in the explicit argument zone when it differs from the event zone (exact instants)', () => {
+    // PURE PIN (mutation-sensitive): current behavior is correct, but no test
+    // exercised the precedence — swapping the `eventTimezone ??
+    // event.eventTimezone` operands left the suite green.
+    //
+    // 2026-07-05T00:30:00Z is Saturday 19:30 in America/Chicago (CDT, UTC-5)
+    // but Sunday 02:30 in Europe/Prague (CEST, UTC+2). With BYDAY=SU:
+    //  - Prague expansion (explicit argument): Sundays 02:30 CEST
+    //    → Jul 5/12/19 at 00:30:00Z.
+    //  - Chicago expansion (event zone, i.e. the swapped-operand mutation):
+    //    Sundays 19:30 CDT → Jul 6/13/20 at 00:30:00Z — disjoint instants,
+    //    so the mutation MUST fail this test.
+    const chicagoEvent: CalendarEvent = {
+      uid: 'precedence-override',
+      summary: 'Precedence Override Event',
+      start: new Date('2026-07-05T00:30:00Z'),
+      end: new Date('2026-07-05T01:30:00Z'),
+      isRecurring: true,
+      eventTimezone: 'America/Chicago'
+    };
+
+    const expanded = expandRecurringEvent(
+      chicagoEvent,
+      'FREQ=WEEKLY;BYDAY=SU;COUNT=3',
+      [],
+      new Date('2026-07-01T00:00:00Z'),
+      new Date('2026-07-25T00:00:00Z'),
+      'Europe/Prague' // explicit override — must win over America/Chicago
+    );
+
+    expect(expanded.map(e => e.start.toISOString())).toEqual([
+      '2026-07-05T00:30:00.000Z',
+      '2026-07-12T00:30:00.000Z',
+      '2026-07-19T00:30:00.000Z'
+    ]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// #79 / #82.1 / #82.2 — invalid-zone warn cache: FIFO eviction,
+// cap boundary, suppressed-repeat count
+// ─────────────────────────────────────────────────────────────
+
+/** Cap of the module-level warn-dedup cache (MAX_WARNED_INVALID_ZONES). */
+const WARN_CACHE_CAP = 100;
+
+/**
+ * The warn-dedup cache is module-level state. Each test below re-imports a
+ * FRESH expander instance (vi.resetModules re-runs the vi.mock logger factory
+ * too), so tests are isolated from each other and from the statically
+ * imported instance used by the rest of this file.
+ */
+async function freshExpander() {
+  vi.resetModules();
+  const { expandRecurringEvent: expand } = await import('../src/services/recurrence-expander');
+  const { logger: freshLogger } = await import('../src/utils/logger');
+  return {
+    expand,
+    warn: vi.mocked(freshLogger.warn),
+    info: vi.mocked(freshLogger.info)
+  };
+}
+
+function expandWithBadZone(expand: typeof expandRecurringEvent, zone: string) {
+  const event: CalendarEvent = {
+    uid: `bad-zone-${zone}`,
+    summary: `Bad Zone ${zone}`,
+    start: new Date('2026-01-05T10:00:00Z'),
+    end: new Date('2026-01-05T11:00:00Z'),
+    isRecurring: true,
+    eventTimezone: zone
+  };
+  return expand(
+    event,
+    'FREQ=WEEKLY;BYDAY=MO;COUNT=1',
+    [],
+    new Date('2026-01-01T00:00:00Z'),
+    new Date('2026-01-31T23:59:59Z'),
+    zone
+  );
+}
+
+/** Invalid-timezone warn calls, optionally narrowed to one zone value. */
+function invalidZoneWarns(warn: ReturnType<typeof vi.fn>, zone?: string) {
+  return warn.mock.calls.filter(call => {
+    const message = String(call[0]);
+    return (
+      message.includes('Invalid event timezone') &&
+      (zone === undefined || message.includes(`"${zone}"`))
+    );
+  });
+}
+
+describe('#82.2 — warn-dedup cache behavior exactly at the cap', () => {
+  it('should keep deduping every cached zone while the cache is exactly at the cap (no premature eviction)', async () => {
+    const { expand, warn } = await freshExpander();
+
+    // Fill to EXACTLY the cap: each distinct zone warns once.
+    for (let i = 1; i <= WARN_CACHE_CAP; i++) {
+      expandWithBadZone(expand, `Sentinel/AtCap_${i}`);
+    }
+    expect(invalidZoneWarns(warn).length).toBe(WARN_CACHE_CAP);
+
+    // Re-seeing every zone at the cap must stay silent — reaching the cap
+    // alone (without a NEW zone overflowing it) must not drop anything.
+    warn.mockClear();
+    for (let i = 1; i <= WARN_CACHE_CAP; i++) {
+      expandWithBadZone(expand, `Sentinel/AtCap_${i}`);
+    }
+    expect(invalidZoneWarns(warn).length).toBe(0);
+  });
+});
+
+describe('#79 — FIFO single-oldest eviction on cache overflow (cap+1)', () => {
+  it('should evict only the oldest zone, keep zones 2..cap deduped, and re-warn zone 1 only after eviction', async () => {
+    const { expand, warn, info } = await freshExpander();
+
+    for (let i = 1; i <= WARN_CACHE_CAP; i++) {
+      expandWithBadZone(expand, `Sentinel/Fifo_${i}`);
+    }
+    warn.mockClear();
+
+    // Zone #cap+1 is new → warns once and evicts ONLY zone #1 (the oldest).
+    expandWithBadZone(expand, `Sentinel/Fifo_${WARN_CACHE_CAP + 1}`);
+    expect(invalidZoneWarns(warn, `Sentinel/Fifo_${WARN_CACHE_CAP + 1}`).length).toBe(1);
+    expect(invalidZoneWarns(warn).length).toBe(1);
+
+    // Zone #1 never had suppressed repeats → no suppressed-count log either.
+    expect(info.mock.calls.filter(call => String(call[0]).includes('suppressed')).length).toBe(0);
+
+    // Zones #2..#cap must STILL be deduped — the old full clear() re-warned
+    // all of them here, defeating the #59.2 log-churn reduction.
+    warn.mockClear();
+    for (let i = 2; i <= WARN_CACHE_CAP; i++) {
+      expandWithBadZone(expand, `Sentinel/Fifo_${i}`);
+    }
+    expect(invalidZoneWarns(warn).length).toBe(0);
+
+    // Zone #1 WAS evicted → seeing it again warns exactly once more.
+    expandWithBadZone(expand, 'Sentinel/Fifo_1');
+    expect(invalidZoneWarns(warn, 'Sentinel/Fifo_1').length).toBe(1);
+  });
+});
+
+describe('#82.1 — suppressed-repeat count reported at eviction', () => {
+  it('should log how many warnings were suppressed for a zone when it is evicted from the cache', async () => {
+    const { expand, warn, info } = await freshExpander();
+
+    // First sighting warns; the next two are suppressed (count = 2).
+    expandWithBadZone(expand, 'Sentinel/Counted');
+    expandWithBadZone(expand, 'Sentinel/Counted');
+    expandWithBadZone(expand, 'Sentinel/Counted');
+    expect(invalidZoneWarns(warn, 'Sentinel/Counted').length).toBe(1);
+
+    // Fill the rest of the cache, then overflow → evicts Sentinel/Counted.
+    for (let i = 1; i <= WARN_CACHE_CAP - 1; i++) {
+      expandWithBadZone(expand, `Sentinel/CountFill_${i}`);
+    }
+    expandWithBadZone(expand, 'Sentinel/CountOverflow');
+
+    const suppressedCountLogs = info.mock.calls.filter(call =>
+      String(call[0]).includes('"Sentinel/Counted"') &&
+      String(call[0]).includes('2 repeat warning(s) suppressed')
+    );
+    expect(suppressedCountLogs.length).toBe(1);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// #81 — MAX_RAW_OCCURRENCES derived from WINDOW_PAD_MS
+// ─────────────────────────────────────────────────────────────
+
+describe('#81 — raw pre-cap is derived from the window pad (starvation invariant)', () => {
+  it('should reserve worst-case minutely pad occupancy PLUS the full in-window cap', async () => {
+    const constants = await import('../src/services/recurrence-expander');
+    const { MAX_OCCURRENCES, WINDOW_PAD_MS, MAX_RAW_OCCURRENCES } = constants;
+
+    expect(typeof MAX_OCCURRENCES).toBe('number');
+    expect(typeof WINDOW_PAD_MS).toBe('number');
+    expect(typeof MAX_RAW_OCCURRENCES).toBe('number');
+
+    // Module-load invariant (#81): a minutely rule can occupy at most
+    // 2 * (WINDOW_PAD_MS / 60_000) slots with pad-only occurrences, so the
+    // raw pre-cap must leave at least MAX_OCCURRENCES slots for the real
+    // window. Widening WINDOW_PAD_MS without recomputing the cap would
+    // silently re-open the cap-starvation bug — this assertion trips instead.
+    const worstCaseMinutelyPadOccupancy = Math.ceil(2 * (WINDOW_PAD_MS / 60_000));
+    expect(MAX_RAW_OCCURRENCES).toBeGreaterThanOrEqual(
+      worstCaseMinutelyPadOccupancy + MAX_OCCURRENCES
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────
+// #82.3 — SECONDLY residual + pre-cap warn branch
+// ─────────────────────────────────────────────────────────────
+
+describe('#82.3 — SECONDLY residual and the raw pre-cap warn branch', () => {
+  it('should pre-cap a zoned FREQ=SECONDLY;INTERVAL=1 rule with a past DTSTART and (pinned) yield 0 in-window occurrences', async () => {
+    const { MAX_RAW_OCCURRENCES } = await import('../src/services/recurrence-expander');
+
+    // DTSTART 2026-07-05T00:00:00Z = 02:00 CEST — exactly one day before the
+    // window, i.e. at the leading edge of the ±1-day pad.
+    const secondlyEvent: CalendarEvent = {
+      uid: 'secondly-residual',
+      summary: 'Secondly Residual',
+      start: new Date('2026-07-05T00:00:00Z'),
+      end: new Date('2026-07-05T00:01:00Z'),
+      isRecurring: true,
+      eventTimezone: 'Europe/Prague'
+    };
+
+    const expanded = expandRecurringEvent(
+      secondlyEvent,
+      'FREQ=SECONDLY;INTERVAL=1',
+      [],
+      new Date('2026-07-06T00:00:00Z'),
+      new Date('2026-07-06T01:00:00Z'),
+      'Europe/Prague'
+    );
+
+    // Pinned residual behavior: the raw pre-cap (~73 minutes of 1-second
+    // occurrences) is consumed entirely by the leading pad day, so ZERO
+    // occurrences survive the real-UTC window filter. This is the documented
+    // strict narrowing of the original starvation defect — pathological
+    // SECONDLY-scale rules only — traded for the #26 CPU bound.
+    expect(expanded).toEqual([]);
+
+    // The raw pre-cap warn fires, quoting the DERIVED cap value…
+    const preCapWarns = vi.mocked(logger.warn).mock.calls.filter(call =>
+      String(call[0]).includes(`pre-capping at ${MAX_RAW_OCCURRENCES}`)
+    );
+    expect(preCapWarns.length).toBe(1);
+
+    // …and the tight in-window cap warn must NOT fire (0 in-window ≤ cap).
+    const inWindowCapWarns = vi.mocked(logger.warn).mock.calls.filter(call =>
+      String(call[0]).includes('— capping at')
+    );
+    expect(inWindowCapWarns.length).toBe(0);
+  });
+
+  it('should fire BOTH cap warnings with distinct messages in one expansion and still fill the in-window cap', async () => {
+    const { MAX_OCCURRENCES, MAX_RAW_OCCURRENCES } = await import('../src/services/recurrence-expander');
+
+    // FREQ=SECONDLY;INTERVAL=30 = 2880/day. Over the 1-day window + 2-day pad
+    // the raw padded count (~8641) exceeds the raw pre-cap → pre-cap warn.
+    // The truncated raw list still reaches well past the window start, leaving
+    // > MAX_OCCURRENCES in-window entries → the tight cap warns too.
+    const denseEvent: CalendarEvent = {
+      uid: 'both-caps',
+      summary: 'Both Caps Event',
+      start: new Date('2026-07-04T22:00:00Z'), // 2026-07-05 00:00:00 CEST
+      end: new Date('2026-07-04T22:00:30Z'),
+      isRecurring: true,
+      eventTimezone: 'Europe/Prague'
+    };
+
+    const startWindow = new Date('2026-07-06T00:00:00Z');
+    const endWindow = new Date('2026-07-07T00:00:00Z');
+
+    const expanded = expandRecurringEvent(
+      denseEvent,
+      'FREQ=SECONDLY;INTERVAL=30',
+      [],
+      startWindow,
+      endWindow,
+      'Europe/Prague'
+    );
+
+    const warnMessages = vi.mocked(logger.warn).mock.calls.map(call => String(call[0]));
+    const preCapWarns = warnMessages.filter(m => m.includes(`raw occurrences — pre-capping at ${MAX_RAW_OCCURRENCES}`));
+    const inWindowCapWarns = warnMessages.filter(m => m.includes(`— capping at ${MAX_OCCURRENCES}`));
+    expect(preCapWarns.length).toBe(1);
+    expect(inWindowCapWarns.length).toBe(1);
+    // Distinct messages: the pre-cap text must not satisfy the tight-cap
+    // matcher and vice versa.
+    expect(preCapWarns[0]).not.toBe(inWindowCapWarns[0]);
+
+    // The in-window cap still FILLS from the real window (no starvation):
+    // first kept occurrence is exactly the window start.
+    expect(expanded.length).toBe(500);
+    expect(expanded[0].start.toISOString()).toBe('2026-07-06T00:00:00.000Z');
+    expect(expanded[499].start.toISOString()).toBe('2026-07-06T04:09:30.000Z');
+    for (const occurrence of expanded) {
+      expect(occurrence.start.getTime()).toBeGreaterThanOrEqual(startWindow.getTime());
+      expect(occurrence.start.getTime()).toBeLessThanOrEqual(endWindow.getTime());
+    }
   });
 });
