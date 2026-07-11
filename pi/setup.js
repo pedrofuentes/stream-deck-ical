@@ -33,8 +33,14 @@ function generateId() {
 /**
  * Normalize an iCal feed URL: rewrite webcal(s):// (Apple/iCloud share
  * links) to https://, since the plugin cannot fetch the webcal(s) scheme (#43).
+ *
+ * Non-string input is returned unchanged rather than throwing, mirroring
+ * src/utils/url-utils.ts (#65, #66).
  */
 function normalizeICalUrl(url) {
+    if (typeof url !== 'string') {
+        return url;
+    }
     return url.trim().replace(/^webcals?:\/\//i, 'https://');
 }
 

@@ -68,6 +68,10 @@ describe('pi/setup.js url-utils mirror parity (#49 item 1)', () => {
     '   https://example.com/cal.ics   '
   ];
 
+  // Non-string fixtures (#65, #66 companion): the TS side treats these as
+  // pass-through/reject rather than throwing; the PI mirror must match.
+  const nonStringFixtures: unknown[] = [null, undefined, 42];
+
   let mirrored: MirroredUrlUtils;
 
   beforeAll(() => {
@@ -84,5 +88,38 @@ describe('pi/setup.js url-utils mirror parity (#49 item 1)', () => {
 
   it.each(fixtures)('isValidURL(%j) matches isSupportedICalUrl(...)', (fixture) => {
     expect(mirrored.isValidURL(fixture)).toBe(isSupportedICalUrl(fixture));
+  });
+
+  it.each(nonStringFixtures)('normalizeICalUrl(%j) matches src/utils/url-utils.ts for non-string input (#65, #66)', (fixture) => {
+    expect(mirrored.normalizeICalUrl(fixture as unknown as string)).toBe(normalizeICalUrl(fixture as unknown as string));
+  });
+
+  it.each(nonStringFixtures)('isValidURL(%j) matches isSupportedICalUrl(...) for non-string input (#65, #66)', (fixture) => {
+    expect(mirrored.isValidURL(fixture as unknown as string)).toBe(isSupportedICalUrl(fixture as unknown as string));
+  });
+
+  it('declares normalizeICalUrl and isValidURL exactly once each, both inside the marker block (#66)', () => {
+    const source = readFileSync(SETUP_JS_PATH, 'utf-8');
+    const beginIdx = source.indexOf(BEGIN_MARKER);
+    const endIdx = source.indexOf(END_MARKER);
+    expect(beginIdx).toBeGreaterThan(-1);
+    expect(endIdx).toBeGreaterThan(beginIdx);
+
+    // Full-source scan (not just the extracted block): a second declaration
+    // placed AFTER the END marker would shadow the mirrored one at webview
+    // runtime (last function declaration wins) while leaving the extracted
+    // block itself untouched — a mutation-confirmed vacuous-pass gap (#66).
+    const normalizeMatches = [...source.matchAll(/function\s+normalizeICalUrl\s*\(/g)];
+    const isValidMatches = [...source.matchAll(/function\s+isValidURL\s*\(/g)];
+
+    expect(normalizeMatches).toHaveLength(1);
+    expect(isValidMatches).toHaveLength(1);
+
+    const [normalizeMatch] = normalizeMatches;
+    const [isValidMatch] = isValidMatches;
+    expect(normalizeMatch.index).toBeGreaterThan(beginIdx);
+    expect(normalizeMatch.index).toBeLessThan(endIdx);
+    expect(isValidMatch.index).toBeGreaterThan(beginIdx);
+    expect(isValidMatch.index).toBeLessThan(endIdx);
   });
 });

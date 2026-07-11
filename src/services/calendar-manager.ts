@@ -150,7 +150,13 @@ class CalendarManager {
     timeWindow: number = 3,
     excludeAllDay: boolean = true
   ): CalendarInstance {
-    const normalizedUrl = normalizeICalUrl(url);
+    // Boundary guard: a corrupted/hand-edited settings blob can hand us a
+    // truthy non-string (e.g. a number) despite the `string` type. Coerce
+    // to '' up front so it converges on the existing INVALID_URL handling
+    // in updateCalendarCache instead of throwing a TypeError inside
+    // generateCalendarId (#65).
+    const safeUrl = typeof url === 'string' ? url : '';
+    const normalizedUrl = normalizeICalUrl(safeUrl);
     const calendarId = generateCalendarId(normalizedUrl);
 
     let instance = this.calendars.get(calendarId);
