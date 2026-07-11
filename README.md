@@ -183,6 +183,14 @@ See [full changelog](#changelog) for all versions.
 | rrule | Recurring event expansion |
 | Luxon | Timezone handling |
 
+### Environment Variables
+
+| Variable | Purpose | Default | Valid range |
+|----------|---------|---------|-------------|
+| `ICAL_ORPHAN_SWEEP_MS` | Cadence (ms) of the orphan-button reconciliation sweep that reaps leaked per-button timers after macOS wake-from-sleep (#29). Mainly a tuning/test knob. | `60000` (60s) | Plain decimal integer in `[1000, 2147483647]` |
+
+Values outside the range, or non-decimal forms (`0x7D0`, `1e3`, ` 5000 `), are ignored with a warning and the 60s default is used, so a typo can't disable the sweep or pin the CPU.
+
 ### Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for:
