@@ -17,7 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `ROADMAP.md` restructured to the agents-template format.
 
 ### Fixed
-- Logger redaction boundary provenance (#126, #127, #128, #129): the sanitize
+- Logger redaction convergence (#131, #132, #133, #134): the URL capture-narrowing
+  gate is tightened at both sites to fire only when the URL itself owns the anchor
+  (`shareKind === SHARE_URL_OWN`), so a share shape glued to a URL with an
+  alnum-preceded `//host` (SHARE_NONE) keeps the wide capture and no longer leaks a
+  spaced surname tail (#131); `isSchemeColon` now requires two forward slashes so a
+  single-escaped-slash word-colon (`note:\/…`) is no longer misread as a URL scheme
+  while genuine `://` at every escaping depth still qualifies (#134.1); the redundant
+  O(k log k) sort of the already-ascending gap set in `applyStrip`'s hot path is
+  removed (#133); and coverage is closed with a decoy-loop narrowing pin (#132), a
+  zero-width-guard pin, and a 200k control/spoof-dense sub-500ms perf pin (#134).
   strip pass now records where characters were removed and treats those
   positions as non-alnum anchors, so an invisible/control that was the sole
   redaction anchor still anchors after being stripped (#128); a raw quote inside

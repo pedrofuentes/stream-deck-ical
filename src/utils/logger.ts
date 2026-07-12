@@ -179,7 +179,7 @@ function isHomeToken(lower: string, start: number, end: number): boolean {
  * Scheme-full URLs match here too when the token is host-adjacent
  * (http://example.com/users/bob) — consistent with the #121 rule that
  * governs the deeper segments. The hostname itself intentionally stays
- * visible (recorded deviation). Recorded deviation (#129, accepted): a URL
+ * visible. Recorded deviation (#129, accepted): a URL
  * whose first path segment is literally `root` (e.g. https://host/root) is
  * host-adjacent in share position, so it redacts to <home> under this
  * flavor-free rule — a minor diagnostics-fidelity loss in the
@@ -250,23 +250,25 @@ function isUncSharePosition(
 
 /**
  * Scheme evidence for the URL-context rule (#121): a ':' immediately followed
- * by a maximal separator run of length >= 2 containing at least one forward
- * slash. This survives every escaping depth — stringification only ever
- * inserts backslashes around the two '/' of '://' (JSON.stringify leaves '/'
- * alone; PHP's json_encode turns it into '\/'), never removes them — while a
- * drive-letter colon can never qualify: its separator run is either length 1
- * (C:\, C:/) or all-backslash at depth >= 1 (C:\\, C:\\\\). Each colon's
- * forward run scan covers a separator run adjacent to no other colon, so the
- * scans are disjoint and O(n) in total.
+ * by a maximal separator run containing at least TWO forward slashes — the two
+ * '/' of '://'. Forward-slash COUNT is the escaping-invariant discriminator
+ * (#134.1): stringification only ever inserts backslashes around the two '/' of
+ * '://' (JSON.stringify leaves '/' alone; PHP's json_encode turns each into
+ * '\/'), never removes them, so a genuine scheme always shows exactly two
+ * forward slashes at every depth. A single-forward-slash run — a drive-letter
+ * colon (C:/ has one, C:\ / C:\\ have none) OR a word-colon whose escaped run is
+ * '\/' (one '/', e.g. `note:\/host`, PHP-escaped `note:/host`) — is NOT a scheme
+ * and no longer qualifies. Each colon's forward run scan covers a separator run
+ * adjacent to no other colon, so the scans are disjoint and O(n) in total.
  */
 function isSchemeColon(text: string, colonAt: number): boolean {
   let i = colonAt + 1;
-  let hasForwardSlash = false;
+  let forwardSlashes = 0;
   while (i < text.length && isSepCode(text.charCodeAt(i))) {
-    if (text.charCodeAt(i) === CODE_SLASH) hasForwardSlash = true;
+    if (text.charCodeAt(i) === CODE_SLASH) forwardSlashes++;
     i++;
   }
-  return i - colonAt - 1 >= 2 && hasForwardSlash;
+  return forwardSlashes >= 2;
 }
 
 /**
@@ -507,13 +509,15 @@ function redactHomePaths(text: string, gaps: ReadonlySet<number> = NO_GAPS): str
       pos = tokenAt + 1;
       continue;
     }
-    // #127 capture narrowing applies ONLY when the URL context owns the match:
-    // it anchored via a scheme (urlAnchored), no GENUINE share anchor claims it
-    // (a real UNC path after a quoted/glued URL keeps the wide spaced-username
-    // capture — SHARE_URL_OWN means the "share" is the URL's own '://', which
-    // does not veto), and the run introducing the username is URL-flavored
-    // (an all-backslash run is a filesystem shape even inside URL context).
-    const narrowCapture = urlAnchored && shareKind !== SHARE_GENUINE && urlFlavorRun;
+    // #127 capture narrowing applies ONLY when the URL itself owns the match:
+    // it anchored via a scheme (urlAnchored), the anchoring share IS the URL's
+    // own '://' (shareKind === SHARE_URL_OWN), and the run introducing the
+    // username is URL-flavored (an all-backslash run is a filesystem shape even
+    // inside URL context). SHARE_NONE (a share shape glued to a URL with an
+    // alnum-preceded '//host', #131) and SHARE_GENUINE (a real UNC/filesystem
+    // anchor) both keep the WIDE spaced-username capture, so a surname tail can
+    // never leak past the narrowing bound.
+    const narrowCapture = urlAnchored && shareKind === SHARE_URL_OWN && urlFlavorRun;
     let nameEnd = scanUsernameSegment(text, nameStart, narrowCapture);
     if (nameEnd === -1) {
       pos = tokenAt + 1; // empty username, or a separator run followed by prose
@@ -532,7 +536,7 @@ function redactHomePaths(text: string, gaps: ReadonlySet<number> = NO_GAPS): str
       const nextEnd = scanUsernameSegment(
         text,
         nextStart,
-        urlAnchored && shareKind !== SHARE_GENUINE && nextUrlFlavor
+        urlAnchored && shareKind === SHARE_URL_OWN && nextUrlFlavor
       );
       if (nextEnd === -1) break; // nothing path-like follows — decoy IS the username
       nameStart = nextStart;
@@ -634,12 +638,18 @@ const STRIP_PASSES = [ANSI_CSI_RE, OSC_RE, ESC_FE_RE, C0_RE, C1_RE, SPOOF_RE];
  * span collapse onto that span's single output position. Never throws; O(n) in
  * the input plus the (small) number of matches and prior gaps. The no-match fast
  * path returns the input unchanged so the 200k perf inputs pay one native scan.
+ * Exported only so the zero-width-match guard below can be exercised directly by
+ * a synthetic /g regex (#134.2) — no STRIP_PASSES member produces a zero-width match.
  */
-function applyStrip(input: string, re: RegExp, inGaps: ReadonlySet<number>): { out: string; gaps: ReadonlySet<number> } {
+export function applyStrip(input: string, re: RegExp, inGaps: ReadonlySet<number>): { out: string; gaps: ReadonlySet<number> } {
   re.lastIndex = 0;
   let m = re.exec(input);
   if (m === null) return { out: input, gaps: inGaps };
-  const sortedIn = inGaps.size ? Array.from(inGaps).sort((a, b) => a - b) : [];
+  // inGaps is ascending by construction: every producer (this function and the
+  // sequential STRIP_PASSES loop) inserts gap positions in strictly increasing
+  // output-coordinate order, and Set preserves insertion order — so Array.from
+  // is already sorted and the prior .sort() was pure O(k log k) waste (#133).
+  const sortedIn = inGaps.size ? Array.from(inGaps) : [];
   const gaps = new Set<number>();
   let out = '';
   let cursor = 0; // next uncopied input index
