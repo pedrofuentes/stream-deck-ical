@@ -80,6 +80,10 @@ const CODE_CR = 0x0d; // \r
 const CODE_LF = 0x0a; // \n
 const CODE_SPACE = 0x20; // ' '
 const CODE_TAB = 0x09; // \t
+const CODE_COMMA = 0x2c; // ,
+const CODE_SEMICOLON = 0x3b; // ;
+// Shared empty strip-provenance set (#128) — no allocation on the common path.
+const NO_GAPS: ReadonlySet<number> = new Set<number>();
 
 /** A path separator: backslash or forward slash. */
 function isSepCode(code: number): boolean {
@@ -111,17 +115,41 @@ function isUsernameBoundaryCode(code: number): boolean {
 }
 
 /**
+ * A username-terminating boundary inside a URL context (#127). URL path
+ * segments never contain raw whitespace, ',' or ';': in a subscription URL the
+ * account segment ends at the next '/', but a malformed multi-URL or URL+prose
+ * line (attacker-influenceable via an iCal summary) puts a second URL or trailing
+ * diagnostics after soft punctuation. Bounding there stops the capture folding
+ * the rest of the line into one <home>. Filesystem paths (non-URL anchors) keep
+ * the WIDE capture — a Windows username may contain a space (C:\Users\John Smith),
+ * so whitespace stays username-interior there.
+ */
+function isUrlUsernameBoundaryCode(code: number): boolean {
+  return (
+    isUsernameBoundaryCode(code) ||
+    code === CODE_COMMA ||
+    code === CODE_SEMICOLON ||
+    code === CODE_SPACE ||
+    code === CODE_TAB
+  );
+}
+
+/**
  * Scan a candidate username segment starting at `start`. Returns the exclusive
  * end index, or -1 when the position cannot start a username (end of text, an
  * immediate hard boundary, or leading whitespace — a separator run followed by
- * whitespace is prose punctuation, not a home path).
+ * whitespace is prose punctuation, not a home path). When `narrow` is set the
+ * URL context owns the match (scheme-anchored, no genuine share anchor,
+ * URL-flavored separator run — see redactHomePaths), so soft punctuation
+ * (',', ';', whitespace) additionally bounds the capture (#127).
  */
-function scanUsernameSegment(text: string, start: number): number {
+function scanUsernameSegment(text: string, start: number, narrow: boolean): number {
   if (start >= text.length) return -1;
   const first = text.charCodeAt(start);
   if (isUsernameBoundaryCode(first) || first === CODE_SPACE || first === CODE_TAB) return -1;
+  const isBoundary = narrow ? isUrlUsernameBoundaryCode : isUsernameBoundaryCode;
   let end = start + 1;
-  while (end < text.length && !isUsernameBoundaryCode(text.charCodeAt(end))) end++;
+  while (end < text.length && !isBoundary(text.charCodeAt(end))) end++;
   return end;
 }
 
@@ -151,11 +179,40 @@ function isHomeToken(lower: string, start: number, end: number): boolean {
  * Scheme-full URLs match here too when the token is host-adjacent
  * (http://example.com/users/bob) — consistent with the #121 rule that
  * governs the deeper segments. The hostname itself intentionally stays
- * visible (recorded deviation). Walk-backs stop at `emitted` and cover
+ * visible (recorded deviation). Recorded deviation (#129, accepted): a URL
+ * whose first path segment is literally `root` (e.g. https://host/root) is
+ * host-adjacent in share position, so it redacts to <home> under this
+ * flavor-free rule — a minor diagnostics-fidelity loss in the
+ * privacy-fail-safe direction; a deeper /api/root/config keeps #114 mid-path
+ * behavior. Walk-backs stop at `emitted` and cover
  * disjoint spans (each maximal separator run has exactly one candidate token
  * at its end), preserving the O(n) bound.
+ *
+ * Return value distinguishes WHO owns the anchor (SR-20260711-PR130):
+ * SHARE_URL_OWN means the anchoring double-separator run is the scheme's own
+ * '://' (its preceding char is a qualifying scheme colon) — the "share" is the
+ * URL itself, so URL-context capture narrowing (#127) still applies to the
+ * match. SHARE_GENUINE is every other anchored share (quote/whitespace/text
+ * start/strip-gap/non-scheme colon before the run) — a real UNC/filesystem
+ * shape whose spaced-username capture must never be narrowed. Strip provenance
+ * (#128): a recorded gap at `uncRunStart` means a stripped character —
+ * always a control/invisible, hence non-alnum — sat immediately before the
+ * run, so it anchors exactly as it did pre-strip. Gaps are deliberately NOT
+ * hostname-walk boundaries: invisibles were never in the walk's boundary set
+ * before stripping, so treating a gap as one would break shares whose
+ * hostname contained a stripped invisible (pinned).
  */
-function isUncSharePosition(text: string, runStart: number, emitted: number): boolean {
+const SHARE_NONE = 0;
+const SHARE_GENUINE = 1;
+const SHARE_URL_OWN = 2;
+type ShareKind = typeof SHARE_NONE | typeof SHARE_GENUINE | typeof SHARE_URL_OWN;
+
+function isUncSharePosition(
+  text: string,
+  runStart: number,
+  emitted: number,
+  gaps: ReadonlySet<number>
+): ShareKind {
   // Hostname: walk back over non-separator, non-whitespace, non-quote, non-CR/LF chars.
   let hostStart = runStart - 1; // caller guarantees text[runStart - 1] is ASCII alnum
   while (hostStart > emitted) {
@@ -173,17 +230,22 @@ function isUncSharePosition(text: string, runStart: number, emitted: number): bo
     hostStart--;
   }
   // The hostname must be preceded by a 2+ separator run (any flavor, #122)…
-  if (hostStart - 2 < emitted) return false;
+  if (hostStart - 2 < emitted) return SHARE_NONE;
   if (!isSepCode(text.charCodeAt(hostStart - 1)) || !isSepCode(text.charCodeAt(hostStart - 2))) {
-    return false;
+    return SHARE_NONE;
   }
   let uncRunStart = hostStart - 2;
   while (uncRunStart > emitted && isSepCode(text.charCodeAt(uncRunStart - 1))) {
     uncRunStart--;
   }
-  // …and that run is itself anchored (text start / consumed edge / non-alnum).
-  if (uncRunStart === emitted) return true;
-  return !isAsciiAlnumCode(text.charCodeAt(uncRunStart - 1));
+  // …and that run is itself anchored (text start / consumed edge / non-alnum /
+  // recorded strip position, #128).
+  if (uncRunStart === emitted) return SHARE_GENUINE;
+  const before = text.charCodeAt(uncRunStart - 1);
+  if (isAsciiAlnumCode(before) && !gaps.has(uncRunStart)) return SHARE_NONE;
+  return before === CODE_COLON && isSchemeColon(text, uncRunStart - 1)
+    ? SHARE_URL_OWN
+    : SHARE_GENUINE;
 }
 
 /**
@@ -222,19 +284,33 @@ interface UrlContext {
 
 /**
  * Whether the separator run beginning at `runStart` sits inside a URL (#121):
- * a scheme marker (see isSchemeColon) appears earlier in the same
- * context run — the stretch back to the nearest whitespace, quote, or CR/LF.
- * Quotes bound the context so a URL in one JSON string value cannot anchor a
- * token in the next value; CR/LF bound it so a scheme on one stack line
- * cannot anchor a token on the next (#95 companion). Colons inside the URL
- * (ports, userinfo) fail isSchemeColon and are walked over harmlessly.
+ * a scheme marker (see isSchemeColon) appears earlier in the same context run —
+ * the stretch back to the nearest STRUCTURAL boundary. The boundary set is
+ * whitespace, CR/LF, and the URL soft punctuation ',' / ';' — never a bare
+ * quote (#126). A quote is content, not structure: a malformed subscription URL
+ * logged raw (calendar-service logs safeUrl verbatim on validation failure) can
+ * embed a quote mid-path, and treating it as a severer dropped the scheme
+ * context so the account token leaked. The structural separator between two JSON
+ * values is the comma JSON.stringify always emits (`,"key":`), and the join
+ * between two log arguments is a space — both already in this set — so a URL in
+ * one JSON value still cannot anchor a token in the next (pinned both
+ * directions). CR/LF bound the context so a scheme on one stack line cannot
+ * anchor a token on the next (#95 companion). Colons inside the URL (ports,
+ * userinfo) fail isSchemeColon and are walked over harmlessly.
  */
 function isUrlContextPosition(text: string, runStart: number, ctx: UrlContext): boolean {
   let hasScheme = false;
   let i = runStart - 1;
   while (i >= ctx.end) {
     const c = text.charCodeAt(i);
-    if (c === CODE_SPACE || c === CODE_TAB || c === CODE_CR || c === CODE_LF || c === CODE_QUOTE) {
+    if (
+      c === CODE_SPACE ||
+      c === CODE_TAB ||
+      c === CODE_CR ||
+      c === CODE_LF ||
+      c === CODE_COMMA ||
+      c === CODE_SEMICOLON
+    ) {
       // Boundary: the context run starts after it — earlier text is irrelevant.
       ctx.hasScheme = hasScheme;
       ctx.end = runStart;
@@ -314,7 +390,7 @@ function isUrlContextPosition(text: string, runStart: number, ctx: UrlContext): 
  * covers object KEYS, which stringify replacers never receive.
  * Never throws: plain string/charCode operations only.
  */
-function redactHomePaths(text: string): string {
+function redactHomePaths(text: string, gaps: ReadonlySet<number> = NO_GAPS): string {
   const lower = text.toLowerCase();
   let out = '';
   let emitted = 0; // text before this index has been emitted or consumed
@@ -358,6 +434,13 @@ function redactHomePaths(text: string): string {
     // #114: the separator run must start an absolute path, not continue one.
     let spanStart = runStart;
     let anchored = false;
+    // Whether this match anchors inside a URL scheme context (#121). Computed
+    // independently of the anchor decision so the username capture can bound at
+    // URL soft punctuation (#127) even when the run also reads as a share start.
+    let urlAnchored = false;
+    // Share evidence for this match (SR-20260711-PR130): a GENUINE share anchor
+    // vetoes URL-context capture narrowing below.
+    let shareKind: ShareKind = SHARE_NONE;
     if (runStart === emitted) {
       anchored = true; // text start, or flush against an already-redacted span
     } else {
@@ -376,14 +459,20 @@ function redactHomePaths(text: string): string {
             spanStart = runStart - 2;
           }
         }
-      } else if (!isAsciiAlnumCode(before)) {
-        anchored = true; // whitespace, quote, '(', '=', … — a path can start here
+      } else if (!isAsciiAlnumCode(before) || gaps.has(runStart)) {
+        // Whitespace, quote, '(', '=', … — a path can start here. A recorded
+        // strip position (gaps.has) is also a non-alnum boundary: a character
+        // deleted by the sanitize pass sat here and was the true anchor, so the
+        // preceding alnum must not glue onto the run (#128 — strip provenance).
+        anchored = true;
       } else {
         // Alnum-preceded (mid-path shape): still anchored in share position
         // (#122) or, for the account-bearing tokens, inside a URL (#121).
-        anchored =
-          isUncSharePosition(text, runStart, emitted) ||
-          (!isRoot && isUrlContextPosition(text, runStart, urlCtx));
+        // isUrlContextPosition is consulted unconditionally (its memo stays
+        // O(n)) so urlAnchored is known even when the share rule anchored first.
+        urlAnchored = !isRoot && isUrlContextPosition(text, runStart, urlCtx);
+        shareKind = isUncSharePosition(text, runStart, emitted, gaps);
+        anchored = shareKind !== SHARE_NONE || urlAnchored;
       }
     }
     if (!anchored) {
@@ -405,12 +494,27 @@ function redactHomePaths(text: string): string {
     }
     // users/home: separator run after the token, then a non-empty username.
     let nameStart = afterToken;
-    while (nameStart < text.length && isSepCode(text.charCodeAt(nameStart))) nameStart++;
+    // URL-flavored run? A URL's path separators keep at least one forward slash
+    // at every escaping depth ('/' → '\/' but never all-backslash — same
+    // invariant isSchemeColon relies on), while a filesystem backslash never
+    // gains one. Used to scope capture narrowing below (SR-20260711-PR130).
+    let urlFlavorRun = false;
+    while (nameStart < text.length && isSepCode(text.charCodeAt(nameStart))) {
+      if (text.charCodeAt(nameStart) === CODE_SLASH) urlFlavorRun = true;
+      nameStart++;
+    }
     if (nameStart === afterToken) {
       pos = tokenAt + 1;
       continue;
     }
-    let nameEnd = scanUsernameSegment(text, nameStart);
+    // #127 capture narrowing applies ONLY when the URL context owns the match:
+    // it anchored via a scheme (urlAnchored), no GENUINE share anchor claims it
+    // (a real UNC path after a quoted/glued URL keeps the wide spaced-username
+    // capture — SHARE_URL_OWN means the "share" is the URL's own '://', which
+    // does not veto), and the run introducing the username is URL-flavored
+    // (an all-backslash run is a filesystem shape even inside URL context).
+    const narrowCapture = urlAnchored && shareKind !== SHARE_GENUINE && urlFlavorRun;
+    let nameEnd = scanUsernameSegment(text, nameStart, narrowCapture);
     if (nameEnd === -1) {
       pos = tokenAt + 1; // empty username, or a separator run followed by prose
       continue;
@@ -419,9 +523,17 @@ function redactHomePaths(text: string): string {
     // valid segment is a decoy — consume the real segment(s) into the span.
     while (isHomeToken(lower, nameStart, nameEnd)) {
       let nextStart = nameEnd;
-      while (nextStart < text.length && isSepCode(text.charCodeAt(nextStart))) nextStart++;
+      let nextUrlFlavor = false;
+      while (nextStart < text.length && isSepCode(text.charCodeAt(nextStart))) {
+        if (text.charCodeAt(nextStart) === CODE_SLASH) nextUrlFlavor = true;
+        nextStart++;
+      }
       if (nextStart === nameEnd) break; // no separator run after the decoy
-      const nextEnd = scanUsernameSegment(text, nextStart);
+      const nextEnd = scanUsernameSegment(
+        text,
+        nextStart,
+        urlAnchored && shareKind !== SHARE_GENUINE && nextUrlFlavor
+      );
       if (nextEnd === -1) break; // nothing path-like follows — decoy IS the username
       nameStart = nextStart;
       nameEnd = nextEnd;
@@ -508,23 +620,74 @@ function formatArg(a: unknown): string {
   return escapeNewlines(safeString(a));
 }
 
+/** The six strip passes, in order. Sequential (never one combined regex) so the
+ * escape-class semantics pinned by the sanitizer tests are preserved exactly. */
+const STRIP_PASSES = [ANSI_CSI_RE, OSC_RE, ESC_FE_RE, C0_RE, C1_RE, SPOOF_RE];
+
+/**
+ * Apply one strip regex, producing both the stripped text (identical to
+ * `input.replace(re, '')`) AND the set of REMOVED-character positions, in the
+ * OUTPUT's coordinates — a gap value `g` means a character was deleted at the
+ * boundary immediately before output index `g` (strip provenance, #128).
+ * Incoming gaps (from earlier passes) are translated into the new coordinates by
+ * subtracting the removal length before them; gaps that fall inside a removed
+ * span collapse onto that span's single output position. Never throws; O(n) in
+ * the input plus the (small) number of matches and prior gaps. The no-match fast
+ * path returns the input unchanged so the 200k perf inputs pay one native scan.
+ */
+function applyStrip(input: string, re: RegExp, inGaps: ReadonlySet<number>): { out: string; gaps: ReadonlySet<number> } {
+  re.lastIndex = 0;
+  let m = re.exec(input);
+  if (m === null) return { out: input, gaps: inGaps };
+  const sortedIn = inGaps.size ? Array.from(inGaps).sort((a, b) => a - b) : [];
+  const gaps = new Set<number>();
+  let out = '';
+  let cursor = 0; // next uncopied input index
+  let removed = 0; // total removed length strictly before `cursor`
+  let gi = 0; // cursor into sortedIn
+  while (m !== null) {
+    const s = m.index;
+    const e = s + m[0].length;
+    out += input.slice(cursor, s); // out.length is now s - removed
+    // Existing gaps up to and including `s` map with the current removal count.
+    while (gi < sortedIn.length && sortedIn[gi] <= s) {
+      gaps.add(sortedIn[gi] - removed);
+      gi++;
+    }
+    if (e > s) gaps.add(out.length); // the removed span collapses here
+    while (gi < sortedIn.length && sortedIn[gi] < e) gi++; // drop gaps inside (s, e)
+    removed += e - s;
+    cursor = e;
+    if (e === s) re.lastIndex++; // defensive: never loop on a zero-width match
+    m = re.exec(input);
+  }
+  out += input.slice(cursor);
+  while (gi < sortedIn.length) {
+    gaps.add(sortedIn[gi] - removed);
+    gi++;
+  }
+  return { out, gaps };
+}
+
 /**
  * Strip control sequences that would corrupt the log buffer or a terminal
  * rendering it (#52): ANSI/OSC escape sequences, C0/C1 control chars (except
  * \n and \t), DEL, U+2028/U+2029 separators, and the property-derived
  * invisible/spoofing class — format controls and default-ignorable code
  * points (#71, #123). Real newlines from marked Error stacks are preserved.
+ * The positions where characters were removed are carried into redactHomePaths
+ * so a deleted invisible that was the sole redaction anchor still anchors the
+ * following path (#128).
  */
 function sanitizeLogMessage(message: string): string {
-  return redactHomePaths(
-    message
-      .replace(ANSI_CSI_RE, '')
-      .replace(OSC_RE, '')
-      .replace(ESC_FE_RE, '')
-      .replace(C0_RE, '')
-      .replace(C1_RE, '')
-      .replace(SPOOF_RE, '')
-  );
+  let text = message;
+  let gaps: ReadonlySet<number> = NO_GAPS;
+  for (const re of STRIP_PASSES) {
+    const result = applyStrip(text, re, gaps);
+    text = result.out;
+    gaps = result.gaps;
+  }
+  return redactHomePaths(text, gaps);
 }
 
 /**

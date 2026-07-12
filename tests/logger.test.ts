@@ -1017,6 +1017,180 @@ describe('URL-context scanning stays linear (#121/#122 perf pin)', () => {
   });
 });
 
+describe('strip-provenance anchoring: a removed invisible/control keeps its anchor (#128)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // The invisible (U+00AD soft hyphen) is the SOLE non-alnum boundary before the
+  // separator run. SPOOF_RE deletes it before redactHomePaths runs; without
+  // strip-provenance the preceding alnum glues to the run → mid-path → LEAK.
+  it('redacts a home path whose only anchor was a soft hyphen the spoof-strip removes', () => {
+    logger.info('b­/home/pedro');
+    expect(debugLogs[0].message).toBe('b<home>');
+    expect(debugLogs[0].message).not.toContain('pedro');
+  });
+
+  // Discriminating control: with no stripped anchor, `b/home/pedro` is a genuine
+  // mid-path shape (#114) and must stay untouched — proving the fix is scoped to
+  // recorded strip positions, not a blanket "redact more".
+  it('leaves an unstripped alnum-preceded mid-path token alone (provenance-scoped)', () => {
+    logger.info('b/home/pedro');
+    expect(debugLogs[0].message).toBe('b/home/pedro');
+  });
+
+  // A C0 control (BEL) removed by C0_RE must likewise leave a recorded boundary,
+  // proving provenance survives every strip pass, not only the spoof pass.
+  it('preserves the anchor when a C0 control between alnum and the run is stripped', () => {
+    logger.info('b\x07/home/pedro');
+    expect(debugLogs[0].message).toBe('b<home>');
+    expect(debugLogs[0].message).not.toContain('pedro');
+  });
+});
+
+describe('structural boundary provenance for scheme context (#126)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // #126 probe: a raw quote INSIDE a single argument's URL used to sever the
+  // scheme context, so the account token leaked. The quote is content of one
+  // argument (a malformed safeUrl logged raw), not a structural boundary.
+  it('redacts a home token past a raw quote inside the same URL argument', () => {
+    logger.info('https://dav.example.com/a"b/home/pedro/x.ics');
+    expect(debugLogs[0].message).toBe('https://dav.example.com/a"b<home>/x.ics');
+    expect(debugLogs[0].message).not.toContain('pedro');
+  });
+
+  // Same for a raw whitespace-free tab/CR would be prose; the interior-quote case
+  // is the reachable one. A users-token variant of the same shape.
+  it('redacts a users token past a raw quote inside the same URL argument', () => {
+    logger.info('https://dav.example.com/x"y/users/pedro/cal.ics');
+    expect(debugLogs[0].message).toBe('https://dav.example.com/x"y<home>/cal.ics');
+    expect(debugLogs[0].message).not.toContain('pedro');
+  });
+
+  // Reconcile (the #126 warning), OTHER direction: a real JSON element boundary
+  // must STILL sever — a URL in one value cannot anchor a mid-path token in the
+  // next value. In JSON.stringify output the comma between values is the
+  // structural separator, so the token stays untouched.
+  it('does not let a URL value bleed scheme context into the next JSON value (formatArg JSON)', () => {
+    logger.info('x', { a: 'https://x.example.com', b: '/var/data/users/cache' });
+    expect(debugLogs[0].message).toBe('x {"a":"https://x.example.com","b":"/var/data/users/cache"}');
+  });
+});
+
+describe('URL account capture stops at soft punctuation (#127)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // #127 probe: two comma-separated URLs — each account is redacted separately
+  // and both hosts (and the comma) stay intact; the capture no longer folds the
+  // second URL into the first <home>.
+  it('redacts each account separately in a comma-separated multi-URL line', () => {
+    logger.info('https://a.example.com/users/alice,https://b.example.com/users/bob');
+    expect(debugLogs[0].message).toBe('https://a.example.com<home>,https://b.example.com<home>');
+  });
+
+  it('bounds the URL account capture at whitespace so trailing prose survives', () => {
+    logger.info('see https://a.example.com/users/alice logged in');
+    expect(debugLogs[0].message).toBe('see https://a.example.com<home> logged in');
+  });
+
+  it('bounds the URL account capture at a semicolon', () => {
+    logger.info('https://a.example.com/users/alice;note=1');
+    expect(debugLogs[0].message).toBe('https://a.example.com<home>;note=1');
+  });
+
+  // Guard (both directions): filesystem paths keep WIDE capture — a spaced
+  // Windows username is NOT bounded at whitespace, because that match anchors on
+  // the drive colon, not a URL scheme.
+  it('keeps wide capture for a spaced Windows username (non-URL anchor unchanged)', () => {
+    logger.error('C:\\Users\\John Smith\\cal.ics');
+    expect(debugLogs[0].message).toBe('<home>\\cal.ics');
+    expect(debugLogs[0].message).not.toContain('Smith');
+  });
+});
+
+describe('URL narrowing must not narrow genuine share/filesystem captures (SR-20260711-PR130 blocker 1)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // Blocker-1 probe: a quoted URL earlier on the line puts the later, genuine
+  // UNC path in URL context (the quote is no longer a severer, #126), narrowing
+  // the capture to whitespace and leaking the spaced-username tail. The share
+  // anchor (quote before \\server) is genuine — capture must stay WIDE.
+  it('keeps wide capture for a UNC path after a quoted URL on the same line', () => {
+    logger.info('Fetch "https://good.example.com/feed.ics"\\\\server\\Users\\John Smith\\Documents\\notes.txt');
+    expect(debugLogs[0].message).toBe(
+      'Fetch "https://good.example.com/feed.ics"\\\\server<home>\\Documents\\notes.txt'
+    );
+    expect(debugLogs[0].message).not.toContain('Smith');
+  });
+
+  // Blocker-1 second probe: the UNC path is GLUED to the URL (no severer at
+  // all, and the \\ run is alnum-preceded so the share rule cannot anchor it) —
+  // the token anchors via URL context, but the all-backslash separator run
+  // marks it as a filesystem shape, so the capture must stay WIDE.
+  it('keeps wide capture for a backslash UNC path glued to a URL (no severer between)', () => {
+    logger.info('See http://evil.example\\\\fileserver\\Users\\Jane Doe\\Documents\\taxes.pdf');
+    expect(debugLogs[0].message).toBe(
+      'See http://evil.example\\\\fileserver<home>\\Documents\\taxes.pdf'
+    );
+    expect(debugLogs[0].message).not.toContain('Doe');
+  });
+
+  // Discriminates the genuine-share condition beyond run flavor: forward-slash
+  // separators after a genuinely share-anchored token (quote before \\server)
+  // must still capture WIDE — the share anchor, not the URL, owns this match.
+  it('keeps wide capture for a forward-slash share path when the share anchor is genuine', () => {
+    logger.info('Fetch "https://x.example.com/f.ics"\\\\server/Users/John Smith/notes.txt');
+    expect(debugLogs[0].message).toBe(
+      'Fetch "https://x.example.com/f.ics"\\\\server<home>/notes.txt'
+    );
+    expect(debugLogs[0].message).not.toContain('Smith');
+  });
+});
+
+describe('strip provenance reaches share anchoring (SR-20260711-PR130 blocker 2, #128)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // Blocker-2 probe: the stripped invisible (ZWSP) was the sole non-alnum
+  // anchor of the \\server run; without gap provenance in isUncSharePosition
+  // the whole UNC path stays unredacted.
+  it('redacts a UNC path whose share-run anchor was a stripped invisible', () => {
+    logger.info('prefix​\\\\server\\Users\\John Smith\\Documents');
+    expect(debugLogs[0].message).toBe('prefix\\\\server<home>\\Documents');
+    expect(debugLogs[0].message).not.toContain('Smith');
+  });
+
+  // Control (provenance-scoped): with NO stripped character, an alnum-preceded
+  // double separator is not a share start (existing #122 pin family) — proving
+  // the fix keys on recorded gaps, not on loosening the anchor rule.
+  it('control: unstripped alnum before the share run stays unanchored', () => {
+    logger.info('prefix\\\\server\\Users\\John Smith\\Documents');
+    expect(debugLogs[0].message).toBe('prefix\\\\server\\Users\\John Smith\\Documents');
+  });
+
+  // Guard for the design choice: a gap is an ANCHOR (the stripped char was
+  // non-alnum), never a hostname-walk boundary — invisibles were not in the
+  // walk's boundary set before stripping either, so a stripped invisible
+  // INSIDE the hostname must not break the share match.
+  it('guard: a stripped invisible inside the hostname does not break share redaction', () => {
+    logger.error('//se­rver/users/pedro');
+    expect(debugLogs[0].message).toBe('//server<home>');
+  });
+});
+
 describe('formatError catch-fallback tagging (#117.4)', () => {
   beforeEach(() => {
     debugLogs.length = 0;
