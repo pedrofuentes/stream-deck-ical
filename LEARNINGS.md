@@ -30,10 +30,26 @@
 | Debug panel always visible | Hardcoded `display:block` | Default `display:none`; show only when `isDebugMode` |
 | Checkbox not visible in PI | Wrong SDPI HTML | `type="checkbox"` on parent div; label with a `<span>` |
 | Button using a deleted calendar | Named calendar removed | Buttons auto-migrate to default via `migrateDeletedCalendars()` |
+| `calendar-migration` tests fail with ENOENT/EEXIST on `logs/*.log` | Stale file-rotation state in the gitignored `logs/` dir (SDK logger) | `rm -rf logs` before `npm test` — it is an environment artifact, not a real failure; re-run is green |
 
 ## Learnings
 
 <!-- Add new learnings below this line, most recent first -->
+
+### [2026-07-12] Regex enumeration can't close a redaction/parser bypass class — use a semantic scanner
+**Context**: The `src/utils/logger.ts` home-path redaction went through ~5 Sentinel rejection cycles across issues #92–#97 and #114–#134. Every regex-based fix named *specific* separator shapes — `[\\/]`, then `\\{1,2}`, then `\\{1,8}`, then alternations for mixed `\/` — and each *unnamed* shape (longer backslash runs, mixed `\`+`/`, JSON-escaped forms, nested decoys) was a fresh bypass. Reviews kept legitimately finding "you missed case X"; a widened unbounded regex (`\\+`) reintroduced ~40–76s ReDoS.
+**Learning**: When a security/parsing fix keeps getting rejected for a missed input shape, the pattern-*enumeration* approach is the defect, not the specific gap. Redesign around a linear scanner that defines the class *semantically* — e.g. "a separator run = a maximal span where every char is `\` or `/`, any length, any mix", walked with a plain `charCodeAt` loop. That leaves no enumeration axis to miss, is ReDoS-proof by construction (both cursors strictly advance), and the review converged in essentially one pass once it landed. This is the AGENTS.md "same problem 2+ times → change approach" rule made concrete.
+**Impact**: For any redaction/tokenizer/sanitizer over adversarial input, once you've patched the pattern twice, stop — switch to a character-class scanner. Prove closure by arguing "what input space remains and why is each boundary principled?", not by adding more test cases.
+
+### [2026-07-12] Transform-then-scan over untrusted data needs boundary provenance
+**Context**: The logger strips invisibles/control chars (spoof pass) BEFORE running home-path redaction, and flattens multiple log arguments into one string before scanning. Both stages silently moved the anchors the redactor relied on — a stripped invisible that was the sole boundary before a path glued the preceding alnum onto it and the username leaked (#128); a raw quote inside one argument's URL was treated as a structural boundary it wasn't (#126); a URL-context match bled across a genuine argument join (#127).
+**Learning**: A two-stage "transform then scan" pipeline over untrusted data leaks or misbehaves at the seam unless the second stage knows what the first changed. The fix was to thread *provenance* — the set of stripped output offsets, and the argument-join offsets — into the anchor logic, so a removed char still counts as a non-alnum boundary and a real structural join still severs while an in-value quote does not. Recompute-the-match-on-pre-transform-text is the alternative when provenance threading is impractical.
+**Impact**: Anywhere you sanitize/normalize/join untrusted text before pattern-matching the result, the match boundaries are computed on transformed coordinates — carry position provenance across the transform (a sorted gap/offset set is O(1)/binary-search per lookup and keeps the pipeline O(n)).
+
+### [2026-07-12] Security-finding triage: "leaks AFTER but not BEFORE?" separates a regression from a pre-existing gap
+**Context**: Across the logger reviews, dimension sub-agents repeatedly raised 🔴 leaks that, on differential probing at the parent SHA, leaked *byte-identically before the PR* — pre-existing gaps the diff merely touched. Some were correctly contested down to 🟡/🟢 tracked follow-ups; two (spaced-username UNC tails) were genuine new regressions and correctly stayed 🔴 and blocked.
+**Learning**: The decisive question for a leak/bypass finding is not "does this input leak at the reviewed SHA?" but "does it leak at the reviewed SHA **and not** at the parent SHA?" Run the exact probe against `git show <parent>:path` (or a byte-copy of the parent function). A pre-existing leak in code the PR only relocates/touches is a tracked follow-up (never silently dropped); only a *newly reachable* leak blocks. This kept several strictly-improving hardening PRs from being rejected for gaps they inherited, while still catching the two real regressions.
+**Impact**: Before rejecting on (or defending) a security finding, differential-probe parent-vs-reviewed. It is both the reviewer's regression test and the implementer's legitimate defense of a partial-but-strict improvement.
 
 ### [2026-07-11] Coalesce/settle races on a shared marker need a generation token, not value equality
 **Context**: Sentinel R4 on PR #107 (SR-20260711-PR107-26609c7) surfaced two variants of the same bug class in `base-action.ts`: the setTitle in-flight coalescing (#100/#112.1) and the orphan-sweep in-flight guard (#101/#112.2).
