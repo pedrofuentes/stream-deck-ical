@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `ROADMAP.md` restructured to the agents-template format.
 
 ### Fixed
+- Logger redaction convergence (#131, #132, #133, #134): the URL capture-narrowing
+  gate is tightened at both sites to fire only when the URL itself owns the anchor
+  (`shareKind === SHARE_URL_OWN`), so a share shape glued to a URL with an
+  alnum-preceded `//host` (SHARE_NONE) keeps the wide capture and no longer leaks a
+  spaced surname tail (#131); `isSchemeColon` now requires two forward slashes so a
+  single-escaped-slash word-colon (`note:\/…`) is no longer misread as a URL scheme
+  while genuine `://` at every escaping depth still qualifies (#134.1); the redundant
+  O(k log k) sort of the already-ascending gap set in `applyStrip`'s hot path is
+  removed (#133); and coverage is closed with a decoy-loop narrowing pin (#132), a
+  zero-width-guard pin, and a 200k control/spoof-dense sub-500ms perf pin (#134).
 - Logger redaction boundary provenance (#126, #127, #128, #129): the sanitize
   strip pass now records where characters were removed and treats those
   positions as non-alnum anchors, so an invisible/control that was the sole
@@ -26,11 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   stays blocked), redacting account tokens past interior quotes in raw malformed
   URLs (#126); URL-anchored account capture now stops at URL soft punctuation
   (',', ';', whitespace) so multi-URL and URL+prose lines no longer fold into one
-  `<home>`, while filesystem paths keep the wide spaced-username capture (#127) —
-  narrowing applies only when the URL context owns the match (scheme-anchored,
-  no genuine share anchor, URL-flavored separator run), so genuine UNC paths
-  sharing a line with a URL keep the wide capture and spaced usernames stay
-  fully redacted; strip provenance also reaches share anchoring, so a stripped
+  `<home>`, while filesystem paths keep the wide spaced-username capture (#127);
+  strip provenance also reaches share anchoring, so a stripped
   invisible before a `\\server` run still anchors the share; and the
   host-adjacent `/root` URL redaction is recorded as an accepted deviation in
   the scanner docs (#129).
