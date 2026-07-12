@@ -40,12 +40,31 @@ const ESC_FE_RE = /\x1b[@-Z\\-_]/g;
 const C0_RE = /[\x00-\x08\x0b-\x1f\x7f]/g;
 // C1 controls
 const C1_RE = /[\x80-\x9f]/g;
-// Line/paragraph separators (U+2028/U+2029), bidi overrides (U+202A–202E,
-// U+2066–2069) and the Arabic Letter Mark
-// (U+061C — completing the Unicode Bidi_Control set), directional marks
-// (U+200E/200F), the word joiner (U+2060), and zero-width chars
-// (U+200B–200D, U+FEFF) used for spoofing (#71, #97.3, #115).
-const SPOOF_RE = /[\u061c\u2028\u2029\u202a-\u202e\u2066-\u2069\u200b-\u200f\u2060\ufeff]/g;
+// Invisible / spoofing characters (#71, #97.3, #115, #123). Four review
+// cycles of enumerating one range at a time showed a hand-picked class only
+// ever chases the space, so the class is now derived from Unicode properties
+// the Unicode Consortium maintains, closing it by construction:
+// - \p{Cf} — every format control: the full Bidi_Control set (U+202A–202E,
+//   U+2066–2069, U+200E/200F, U+061C), zero-width/joiner chars
+//   (U+200B–200D, U+2060, U+FEFF), soft hyphen (U+00AD), Mongolian vowel
+//   separator (U+180E), invisible operators (U+2061–2064), deprecated
+//   format controls (U+206A–206F), interlinear annotations (U+FFF9–FFFB),
+//   and the plane-14 language/tag block (U+E0001, U+E0020–E007F — the
+//   ASCII-smuggling vector).
+// - \p{Default_Ignorable_Code_Point} — the invisible non-Cf members:
+//   variation selectors (U+FE00–FE0F, supplementary U+E0100–E01EF), Hangul
+//   fillers (U+115F, U+1160, U+3164, U+FFA0), the combining grapheme joiner
+//   (U+034F), and the reserved default-ignorable ranges (U+2065,
+//   U+FFF0–FFF8, plane-14 gaps), covering unassigned members ahead of
+//   assignment.
+// - U+2028/U+2029 line/paragraph separators (visible line breaks, so in
+//   neither property — kept from the original class).
+// The u flag makes matching code-point based (surrogate-aware) — required
+// both for \p{} and for the supplementary members. Accepted trade-off:
+// visible Cf (Arabic number signs U+0600–0605 etc.) and emoji variation
+// selectors are stripped too; anti-spoofing beats glyph fidelity in a
+// diagnostics log.
+const SPOOF_RE = /[\u2028\u2029]|\p{Cf}|\p{Default_Ignorable_Code_Point}/gu;
 // Raw CR/LF in a non-Error argument — escaped so a feed-controlled string cannot
 // start a new line (and thus a forged record) in the log stream (#71/CWE-117).
 const NEWLINE_RE = /[\r\n]/g;
@@ -115,15 +134,26 @@ function isHomeToken(lower: string, start: number, end: number): boolean {
 }
 
 /**
- * Whether the separator run beginning at `runStart` sits directly after a UNC
- * hostname: <anchor><2+ separator run containing at least one backslash>
- * <hostname segment>. Requiring a backslash in the prefix run keeps genuine
- * UNC shares matching (\\server\Users\name and their JSON-escaped forms) while
- * URLs (http://example.com/users/bob, //example.com/users/bob) — whose double
- * separators are always pure forward slashes — stay untouched (#114). The
- * hostname itself intentionally stays visible (recorded deviation). Walk-backs
- * stop at `emitted` and cover disjoint spans (each maximal separator run has
- * exactly one candidate token at its end), preserving the O(n) bound.
+ * Whether the separator run beginning at `runStart` sits directly after a
+ * share hostname: <anchor><2+ separator run><hostname segment>. Separator
+ * FLAVOR is deliberately not evidence (#122): the pre-#122 rule required a
+ * backslash in the hostname-prefix run, which failed toward LEAK for mixed
+ * forms (`//server\users\pedro`) — contradicting the file's own "ANY mix,
+ * ANY length" separator threat model — and a backslash in the token-adjacent
+ * run is equally valid UNC evidence, so the discriminator could never be
+ * made sound per-run. Instead, ANY anchored double-separator start counts:
+ * genuine UNC shares (\\server\Users\name and JSON-escaped forms), mixed
+ * forms, forward-slash-only share spellings (//fileserver/users/pedro — a
+ * plausible roaming-profile path), and protocol-relative URLs
+ * (//example.com/users/bob). The last two are a decided privacy-first
+ * direction: a protocol-relative URL's /users/<name> carries the same
+ * account semantics as its scheme-full form, which #121 mandates redacting.
+ * Scheme-full URLs match here too when the token is host-adjacent
+ * (http://example.com/users/bob) — consistent with the #121 rule that
+ * governs the deeper segments. The hostname itself intentionally stays
+ * visible (recorded deviation). Walk-backs stop at `emitted` and cover
+ * disjoint spans (each maximal separator run has exactly one candidate token
+ * at its end), preserving the O(n) bound.
  */
 function isUncSharePosition(text: string, runStart: number, emitted: number): boolean {
   // Hostname: walk back over non-separator, non-whitespace, non-quote, non-CR/LF chars.
@@ -142,23 +172,81 @@ function isUncSharePosition(text: string, runStart: number, emitted: number): bo
     }
     hostStart--;
   }
-  // The hostname must be preceded by a 2+ separator run that has a backslash…
+  // The hostname must be preceded by a 2+ separator run (any flavor, #122)…
   if (hostStart - 2 < emitted) return false;
   if (!isSepCode(text.charCodeAt(hostStart - 1)) || !isSepCode(text.charCodeAt(hostStart - 2))) {
     return false;
   }
   let uncRunStart = hostStart - 2;
-  let hasBackslash =
-    text.charCodeAt(hostStart - 1) === CODE_BACKSLASH ||
-    text.charCodeAt(hostStart - 2) === CODE_BACKSLASH;
   while (uncRunStart > emitted && isSepCode(text.charCodeAt(uncRunStart - 1))) {
     uncRunStart--;
-    if (text.charCodeAt(uncRunStart) === CODE_BACKSLASH) hasBackslash = true;
   }
-  if (!hasBackslash) return false;
   // …and that run is itself anchored (text start / consumed edge / non-alnum).
   if (uncRunStart === emitted) return true;
   return !isAsciiAlnumCode(text.charCodeAt(uncRunStart - 1));
+}
+
+/**
+ * Scheme evidence for the URL-context rule (#121): a ':' immediately followed
+ * by a maximal separator run of length >= 2 containing at least one forward
+ * slash. This survives every escaping depth — stringification only ever
+ * inserts backslashes around the two '/' of '://' (JSON.stringify leaves '/'
+ * alone; PHP's json_encode turns it into '\/'), never removes them — while a
+ * drive-letter colon can never qualify: its separator run is either length 1
+ * (C:\, C:/) or all-backslash at depth >= 1 (C:\\, C:\\\\). Each colon's
+ * forward run scan covers a separator run adjacent to no other colon, so the
+ * scans are disjoint and O(n) in total.
+ */
+function isSchemeColon(text: string, colonAt: number): boolean {
+  let i = colonAt + 1;
+  let hasForwardSlash = false;
+  while (i < text.length && isSepCode(text.charCodeAt(i))) {
+    if (text.charCodeAt(i) === CODE_SLASH) hasForwardSlash = true;
+    i++;
+  }
+  return i - colonAt - 1 >= 2 && hasForwardSlash;
+}
+
+/**
+ * Memo for the URL-context walk (#121): `end` is the rightmost index already
+ * classified this pass; `hasScheme` is whether a scheme marker occurs in the
+ * boundary-free stretch ending at `end`. One instance lives per
+ * redactHomePaths call; candidates present strictly increasing `runStart`
+ * values, so every character is walked at most once per pass — the walk is
+ * amortized O(n) by construction, mirroring the `emitted` trick.
+ */
+interface UrlContext {
+  end: number;
+  hasScheme: boolean;
+}
+
+/**
+ * Whether the separator run beginning at `runStart` sits inside a URL (#121):
+ * a scheme marker (see isSchemeColon) appears earlier in the same
+ * context run — the stretch back to the nearest whitespace, quote, or CR/LF.
+ * Quotes bound the context so a URL in one JSON string value cannot anchor a
+ * token in the next value; CR/LF bound it so a scheme on one stack line
+ * cannot anchor a token on the next (#95 companion). Colons inside the URL
+ * (ports, userinfo) fail isSchemeColon and are walked over harmlessly.
+ */
+function isUrlContextPosition(text: string, runStart: number, ctx: UrlContext): boolean {
+  let hasScheme = false;
+  let i = runStart - 1;
+  while (i >= ctx.end) {
+    const c = text.charCodeAt(i);
+    if (c === CODE_SPACE || c === CODE_TAB || c === CODE_CR || c === CODE_LF || c === CODE_QUOTE) {
+      // Boundary: the context run starts after it — earlier text is irrelevant.
+      ctx.hasScheme = hasScheme;
+      ctx.end = runStart;
+      return hasScheme;
+    }
+    if (c === CODE_COLON && !hasScheme && isSchemeColon(text, i)) hasScheme = true;
+    i--;
+  }
+  // No boundary in the newly walked stretch: the previous context continues.
+  ctx.hasScheme = hasScheme || ctx.hasScheme;
+  ctx.end = runStart;
+  return ctx.hasScheme;
 }
 
 /**
@@ -182,10 +270,21 @@ function isUncSharePosition(text: string, runStart: number, emitted: number): bo
  *   redacted span, any non-alphanumeric character (whitespace, quote, '=',
  *   '(', ':' — a ':' also admits an optional [a-z]: drive prefix into the
  *   span when the drive letter is itself anchored, so cc:\users\x keeps its
- *   cc:), or the tail of a UNC hostname (see isUncSharePosition). An ASCII
- *   alphanumeric directly before the run otherwise means the token is a
- *   mid-path segment (/srv/app/root, /opt/app/home/x, URL path segments
- *   like http://example.com/users/bob) and is left alone.
+ *   cc:), the tail of a share hostname (see isUncSharePosition, #122), or —
+ *   for users/home only — a URL context (see isUrlContextPosition, #121):
+ *   subscription URLs embed the account as a path segment (Zimbra
+ *   /home/<user>/, CalDAV /users/<name>/) and are logged on every fetch, so
+ *   inside a URL those tokens are account-bearing and redact at any depth.
+ *   root is excluded from the URL rule (no account semantics in URL paths —
+ *   /api/root/config keeps #114 mid-path behavior), and the URL rule
+ *   knowingly over-redacts non-account URLs (github.com/users/bob):
+ *   privacy beats fidelity in a diagnostics log. An ASCII alphanumeric
+ *   directly before the run otherwise means the token is a mid-path segment
+ *   (/srv/app/root, /opt/app/home/x) and is left alone. Recorded deviation
+ *   (#124): BSD/Solaris home layouts (/usr/home/<name>, /export/home/<name>)
+ *   present as exactly such mid-path shapes and stay unredacted by design —
+ *   the plugin ships for Windows/macOS (plus Linux /home), so those shapes
+ *   have no reachable trigger on the target platforms.
  * - users/home must then be followed by another separator run and a non-empty
  *   username. The whole span (drive + run + token + run + username) becomes
  *   <home>. The username ends at the next separator, '"' (so a match cannot
@@ -223,6 +322,7 @@ function redactHomePaths(text: string): string {
   let iUsers = lower.indexOf('users');
   let iHome = lower.indexOf('home');
   let iRoot = lower.indexOf('root');
+  const urlCtx: UrlContext = { end: 0, hasScheme: false };
   while (true) {
     // Refresh only stale cached positions (each token is searched over
     // monotonically advancing, disjoint ranges — O(n) total).
@@ -279,7 +379,11 @@ function redactHomePaths(text: string): string {
       } else if (!isAsciiAlnumCode(before)) {
         anchored = true; // whitespace, quote, '(', '=', … — a path can start here
       } else {
-        anchored = isUncSharePosition(text, runStart, emitted);
+        // Alnum-preceded (mid-path shape): still anchored in share position
+        // (#122) or, for the account-bearing tokens, inside a URL (#121).
+        anchored =
+          isUncSharePosition(text, runStart, emitted) ||
+          (!isRoot && isUrlContextPosition(text, runStart, urlCtx));
       }
     }
     if (!anchored) {
@@ -407,8 +511,9 @@ function formatArg(a: unknown): string {
 /**
  * Strip control sequences that would corrupt the log buffer or a terminal
  * rendering it (#52): ANSI/OSC escape sequences, C0/C1 control chars (except
- * \n and \t), DEL, U+2028/U+2029 separators, and bidi/zero-width spoofing
- * characters (#71). Real newlines from marked Error stacks are preserved.
+ * \n and \t), DEL, U+2028/U+2029 separators, and the property-derived
+ * invisible/spoofing class — format controls and default-ignorable code
+ * points (#71, #123). Real newlines from marked Error stacks are preserved.
  */
 function sanitizeLogMessage(message: string): string {
   return redactHomePaths(
