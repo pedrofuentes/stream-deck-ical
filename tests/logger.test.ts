@@ -21,7 +21,7 @@ vi.mock('@elgato/streamdeck', () => ({
 }));
 
 // Import after mocking
-import { logger, debugLogs, isDebugMode, DebugLogEntry, getFormattedLogs, getErrorLogs, clearLogs, summarizeDebugInfo } from '../src/utils/logger';
+import { logger, debugLogs, isDebugMode, DebugLogEntry, getFormattedLogs, getErrorLogs, clearLogs, summarizeDebugInfo, applyStrip } from '../src/utils/logger';
 import streamDeck from '@elgato/streamdeck';
 
 describe('logger', () => {
@@ -1458,5 +1458,83 @@ describe('isDebugMode', () => {
     process.env.NODE_ENV = 'development';
     const result = isDebugMode();
     expect(process.env.NODE_ENV).toBe('development');
+  });
+});
+
+describe('R7 redaction convergence (SR-20260711-PR130, #131-#134)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // #131 (RED before the fix): a uniform forward-slash share shape glued to a URL
+  // with an alnum-preceded '//host' makes isUncSharePosition return SHARE_NONE. The
+  // pre-fix gate (`shareKind !== SHARE_GENUINE`) treated SHARE_NONE like
+  // SHARE_URL_OWN and NARROWED the capture, bounding the spaced username at the
+  // space so the surname tail 'Doe' leaked. Tightening both gates to
+  // `shareKind === SHARE_URL_OWN` keeps the WIDE capture and redacts the full name.
+  it('#131: keeps wide capture for a SHARE_NONE forward-slash share glued to a URL', () => {
+    logger.info('http://evil.example//fileserver/Users/Jane Doe/x.pdf');
+    expect(debugLogs[0].message).toBe('http://evil.example//fileserver<home>/x.pdf');
+    expect(debugLogs[0].message).not.toContain('Doe');
+  });
+
+  // #132 (pin — green pre- and post-fix): a users/users decoy chain in URL context
+  // whose separator runs are all-backslash (nextUrlFlavor === false) must capture
+  // the spaced real username WIDE. Discriminating for the decoy-loop narrowing
+  // conjunct: forcing that conjunct to narrow bounds the capture at the space and
+  // leaks 'Smith'.
+  it('#132: redacts a spaced name past a users/users decoy in URL context (backslash runs)', () => {
+    logger.info('http://a.example.com\\srv\\Users\\Users\\John Smith\\notes.txt');
+    expect(debugLogs[0].message).toBe('http://a.example.com\\srv<home>\\notes.txt');
+    expect(debugLogs[0].message).not.toContain('Smith');
+  });
+
+  // #134.1 (RED before the fix): a single ESCAPED forward slash after a word-colon
+  // (`note:\/…`, i.e. PHP-escaped `note:/…`) is NOT a URL scheme — a genuine `://`
+  // shows TWO forward slashes at every escaping depth (escaping only adds
+  // backslashes). Pre-fix isSchemeColon accepted the length-2 `\/` run (one forward
+  // slash) as scheme evidence, so a deep mid-path home token under the fake scheme
+  // was URL-anchored and redacted. Requiring two forward slashes makes `note:` a
+  // non-scheme, so the deep mid-path token keeps #114 mid-path behavior (unchanged).
+  it('#134.1: does not treat a single-escaped-slash word-colon as a URL scheme', () => {
+    logger.info('note:\\/host\\/dav\\/home\\/pedro\\/x');
+    expect(debugLogs[0].message).toBe('note:\\/host\\/dav\\/home\\/pedro\\/x');
+  });
+
+  // #134.1 guard (pin — green pre- and post-fix): a genuine PHP-escaped `://` (two
+  // forward slashes) is STILL scheme evidence, so the account token deep in the URL
+  // still redacts. Proves the tightening keys on forward-slash COUNT, not a blanket
+  // "reject escaped schemes".
+  it('#134.1 guard: keeps two-forward-slash escaped scheme evidence', () => {
+    logger.info('note:\\/\\/host\\/dav\\/home\\/pedro\\/x');
+    expect(debugLogs[0].message).toBe('note:\\/\\/host\\/dav<home>\\/x');
+    expect(debugLogs[0].message).not.toContain('pedro');
+  });
+
+  // #134.2 (RED in commit 1 until applyStrip is exported): the zero-width guard in
+  // applyStrip (`if (e === s) re.lastIndex++`) is unreachable via the six real
+  // STRIP_PASSES (all consume >= 1 char). A synthetic zero-width /g regex drives it —
+  // without the lastIndex advance the exec loop would never terminate (test timeout).
+  it('#134.2: applyStrip advances past a synthetic zero-width match without looping', () => {
+    const result = applyStrip('abc', /x*/g, new Set<number>());
+    expect(result.out).toBe('abc');
+  });
+
+  // #133 / #134.3 (perf pin): a control/spoof-dense 200k-char string driven through
+  // the full six-pass strip + gap-tracking pipeline and redactHomePaths stays well
+  // under 500ms — guards the strict-O(n) invariant and the removal of the redundant
+  // ascending-gap-set sort in applyStrip.
+  it('#133/#134.3: stays linear on a 200k control/spoof-dense input', () => {
+    // Each unit contributes a C0 (\x07), two spoof chars (ZWSP U+200B, soft hyphen
+    // U+00AD) and a path shape, so several strip passes match and feed many gaps
+    // into redactHomePaths.
+    const unit = 'a\x07' + String.fromCharCode(0x200b, 0x00ad) + '\\Users\\';
+    const dense = unit.repeat(Math.ceil(200000 / unit.length));
+    const start = performance.now();
+    logger.error(dense);
+    const elapsed = performance.now() - start;
+    expect(elapsed).toBeLessThan(500);
+    expect(typeof debugLogs[0].message).toBe('string');
   });
 });
