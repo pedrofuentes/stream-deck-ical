@@ -1116,6 +1116,81 @@ describe('URL account capture stops at soft punctuation (#127)', () => {
   });
 });
 
+describe('URL narrowing must not narrow genuine share/filesystem captures (SR-20260711-PR130 blocker 1)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // Blocker-1 probe: a quoted URL earlier on the line puts the later, genuine
+  // UNC path in URL context (the quote is no longer a severer, #126), narrowing
+  // the capture to whitespace and leaking the spaced-username tail. The share
+  // anchor (quote before \\server) is genuine — capture must stay WIDE.
+  it('keeps wide capture for a UNC path after a quoted URL on the same line', () => {
+    logger.info('Fetch "https://good.example.com/feed.ics"\\\\server\\Users\\John Smith\\Documents\\notes.txt');
+    expect(debugLogs[0].message).toBe(
+      'Fetch "https://good.example.com/feed.ics"\\\\server<home>\\Documents\\notes.txt'
+    );
+    expect(debugLogs[0].message).not.toContain('Smith');
+  });
+
+  // Blocker-1 second probe: the UNC path is GLUED to the URL (no severer at
+  // all, and the \\ run is alnum-preceded so the share rule cannot anchor it) —
+  // the token anchors via URL context, but the all-backslash separator run
+  // marks it as a filesystem shape, so the capture must stay WIDE.
+  it('keeps wide capture for a backslash UNC path glued to a URL (no severer between)', () => {
+    logger.info('See http://evil.example\\\\fileserver\\Users\\Jane Doe\\Documents\\taxes.pdf');
+    expect(debugLogs[0].message).toBe(
+      'See http://evil.example\\\\fileserver<home>\\Documents\\taxes.pdf'
+    );
+    expect(debugLogs[0].message).not.toContain('Doe');
+  });
+
+  // Discriminates the genuine-share condition beyond run flavor: forward-slash
+  // separators after a genuinely share-anchored token (quote before \\server)
+  // must still capture WIDE — the share anchor, not the URL, owns this match.
+  it('keeps wide capture for a forward-slash share path when the share anchor is genuine', () => {
+    logger.info('Fetch "https://x.example.com/f.ics"\\\\server/Users/John Smith/notes.txt');
+    expect(debugLogs[0].message).toBe(
+      'Fetch "https://x.example.com/f.ics"\\\\server<home>/notes.txt'
+    );
+    expect(debugLogs[0].message).not.toContain('Smith');
+  });
+});
+
+describe('strip provenance reaches share anchoring (SR-20260711-PR130 blocker 2, #128)', () => {
+  beforeEach(() => {
+    debugLogs.length = 0;
+    vi.clearAllMocks();
+  });
+
+  // Blocker-2 probe: the stripped invisible (ZWSP) was the sole non-alnum
+  // anchor of the \\server run; without gap provenance in isUncSharePosition
+  // the whole UNC path stays unredacted.
+  it('redacts a UNC path whose share-run anchor was a stripped invisible', () => {
+    logger.info('prefix​\\\\server\\Users\\John Smith\\Documents');
+    expect(debugLogs[0].message).toBe('prefix\\\\server<home>\\Documents');
+    expect(debugLogs[0].message).not.toContain('Smith');
+  });
+
+  // Control (provenance-scoped): with NO stripped character, an alnum-preceded
+  // double separator is not a share start (existing #122 pin family) — proving
+  // the fix keys on recorded gaps, not on loosening the anchor rule.
+  it('control: unstripped alnum before the share run stays unanchored', () => {
+    logger.info('prefix\\\\server\\Users\\John Smith\\Documents');
+    expect(debugLogs[0].message).toBe('prefix\\\\server\\Users\\John Smith\\Documents');
+  });
+
+  // Guard for the design choice: a gap is an ANCHOR (the stripped char was
+  // non-alnum), never a hostname-walk boundary — invisibles were not in the
+  // walk's boundary set before stripping either, so a stripped invisible
+  // INSIDE the hostname must not break the share match.
+  it('guard: a stripped invisible inside the hostname does not break share redaction', () => {
+    logger.error('//se­rver/users/pedro');
+    expect(debugLogs[0].message).toBe('//server<home>');
+  });
+});
+
 describe('formatError catch-fallback tagging (#117.4)', () => {
   beforeEach(() => {
     debugLogs.length = 0;
