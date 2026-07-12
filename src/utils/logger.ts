@@ -638,6 +638,14 @@ const STRIP_PASSES = [ANSI_CSI_RE, OSC_RE, ESC_FE_RE, C0_RE, C1_RE, SPOOF_RE];
  * span collapse onto that span's single output position. Never throws; O(n) in
  * the input plus the (small) number of matches and prior gaps. The no-match fast
  * path returns the input unchanged so the 200k perf inputs pay one native scan.
+ *
+ * PRECONDITION (#133): `inGaps` iterates in strictly ascending order. Every
+ * producer of a gap set — this function and the sequential STRIP_PASSES loop —
+ * inserts gap positions in strictly increasing output-coordinate order, and a
+ * Set preserves insertion order, so `Array.from(inGaps)` is already sorted; the
+ * prior `.sort()` here was pure O(k log k) waste. A dev-time assertion below
+ * guards the invariant without ever throwing in production.
+ *
  * Exported only so the zero-width-match guard below can be exercised directly by
  * a synthetic /g regex (#134.2) — no STRIP_PASSES member produces a zero-width match.
  */
@@ -645,11 +653,18 @@ export function applyStrip(input: string, re: RegExp, inGaps: ReadonlySet<number
   re.lastIndex = 0;
   let m = re.exec(input);
   if (m === null) return { out: input, gaps: inGaps };
-  // inGaps is ascending by construction: every producer (this function and the
-  // sequential STRIP_PASSES loop) inserts gap positions in strictly increasing
-  // output-coordinate order, and Set preserves insertion order — so Array.from
-  // is already sorted and the prior .sort() was pure O(k log k) waste (#133).
   const sortedIn = inGaps.size ? Array.from(inGaps) : [];
+  // Dev-only guard for the ascending-by-construction precondition (#133): a
+  // future producer that breaks insertion order would silently corrupt gap
+  // remapping. Off in production (never-throw hot path); on under STREAMDECK_DEBUG.
+  if (DEBUG_MODE) {
+    for (let k = 1; k < sortedIn.length; k++) {
+      if (sortedIn[k] <= sortedIn[k - 1]) {
+        logger.warn('[applyStrip] gap set not strictly ascending — provenance may be corrupt');
+        break;
+      }
+    }
+  }
   const gaps = new Set<number>();
   let out = '';
   let cursor = 0; // next uncopied input index

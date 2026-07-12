@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   O(k log k) sort of the already-ascending gap set in `applyStrip`'s hot path is
   removed (#133); and coverage is closed with a decoy-loop narrowing pin (#132), a
   zero-width-guard pin, and a 200k control/spoof-dense sub-500ms perf pin (#134).
+- Logger redaction boundary provenance (#126, #127, #128, #129): the sanitize
   strip pass now records where characters were removed and treats those
   positions as non-alnum anchors, so an invisible/control that was the sole
   redaction anchor still anchors after being stripped (#128); a raw quote inside
@@ -35,11 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   stays blocked), redacting account tokens past interior quotes in raw malformed
   URLs (#126); URL-anchored account capture now stops at URL soft punctuation
   (',', ';', whitespace) so multi-URL and URL+prose lines no longer fold into one
-  `<home>`, while filesystem paths keep the wide spaced-username capture (#127) —
-  narrowing applies only when the URL context owns the match (scheme-anchored,
-  no genuine share anchor, URL-flavored separator run), so genuine UNC paths
-  sharing a line with a URL keep the wide capture and spaced usernames stay
-  fully redacted; strip provenance also reaches share anchoring, so a stripped
+  `<home>`, while filesystem paths keep the wide spaced-username capture (#127);
+  strip provenance also reaches share anchoring, so a stripped
   invisible before a `\\server` run still anchors the share; and the
   host-adjacent `/root` URL redaction is recorded as an accepted deviation in
   the scanner docs (#129).

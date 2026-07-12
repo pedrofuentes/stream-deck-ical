@@ -1514,12 +1514,15 @@ describe('R7 redaction convergence (SR-20260711-PR130, #131-#134)', () => {
 
   // #134.2 (RED in commit 1 until applyStrip is exported): the zero-width guard in
   // applyStrip (`if (e === s) re.lastIndex++`) is unreachable via the six real
-  // STRIP_PASSES (all consume >= 1 char). A synthetic zero-width /g regex drives it —
-  // without the lastIndex advance the exec loop would never terminate (test timeout).
+  // STRIP_PASSES (all consume >= 1 char). A synthetic zero-width /g regex drives it.
+  // A regression that drops the lastIndex advance would spin the exec loop forever;
+  // the explicit per-test timeout (2s) makes that surface as a clean timeout-red
+  // instead of a silent worker hang. Input is a tiny bounded string so a healthy
+  // run finishes in microseconds.
   it('#134.2: applyStrip advances past a synthetic zero-width match without looping', () => {
     const result = applyStrip('abc', /x*/g, new Set<number>());
     expect(result.out).toBe('abc');
-  });
+  }, 2000);
 
   // #133 / #134.3 (perf pin): a control/spoof-dense 200k-char string driven through
   // the full six-pass strip + gap-tracking pipeline and redactHomePaths stays well
@@ -1531,6 +1534,11 @@ describe('R7 redaction convergence (SR-20260711-PR130, #131-#134)', () => {
     // into redactHomePaths.
     const unit = 'a\x07' + String.fromCharCode(0x200b, 0x00ad) + '\\Users\\';
     const dense = unit.repeat(Math.ceil(200000 / unit.length));
+    // Warm up once (unmeasured) so JIT compilation and first-call allocation costs
+    // don't land inside the measured window — the 500ms bound is ~35x the observed
+    // steady-state (~14ms), so this warmed measurement is comfortably non-flaky.
+    logger.error(dense);
+    debugLogs.length = 0;
     const start = performance.now();
     logger.error(dense);
     const elapsed = performance.now() - start;
