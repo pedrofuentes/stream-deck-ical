@@ -88,13 +88,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
   and bidi/zero-width spoofing characters are stripped. Error stacks are also
   redacted (user-profile path prefix → `<home>`) and no longer duplicate the message
   (#71, #78 items 1/4/5/6-logger).
-- Invalid-timezone warning dedup cache now evicts only the single oldest entry
-  (FIFO) on overflow instead of clearing entirely — feeds cycling >100 distinct
+- Invalid-timezone warning dedup cache now evicts the least-recently-used entry (LRU)
+  on overflow instead of clearing entirely — feeds cycling >100 distinct
   bad TZIDs can no longer re-fire every warning — and reports the number of
-  suppressed repeat warnings when a zone is evicted; the raw occurrence pre-cap
+  suppressed repeat warnings at warn level when a zone is evicted; the raw occurrence pre-cap
   is now derived from the DST window pad (with a unit-tested invariant) so
   widening the pad cannot silently starve the in-window occurrence cap
-  (#79, #80, #81, #82).
+  (#79, #80, #81, #82, #98).
 - Stream Deck IPC outages no longer flood the debug log (setTitle failures are logged
   once per outage and recovery once), the `ICAL_ORPHAN_SWEEP_MS` override is bounds-checked
   to `[1000, 2147483647]` ms so an out-of-range value can't hot-loop the sweep, in-flight
@@ -141,7 +141,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Same calendar added as `webcal://` and `https://` no longer double-polls
   (#48); settings UI hardened against HTML injection in the calendar list
   (code scanning alert #1), and `normalizeICalUrl`/`isSupportedICalUrl` no
-  longer throw on null/undefined input (#49).
+  longer throw on null/undefined input (#49); a non-string calendar URL is now
+  logged with its `typeof` plus a truncated preview instead of an unhelpful
+  generic message, and the legacy calendar-service path guards non-string URLs
+  by surfacing Invalid URL instead of throwing (#89, #90, #91).
 - Hardened the orphan-reconciliation sweep and its diagnostics (#50, #51, #52,
   #54, #55, #56): orphan cleanup now runs through a shared, polymorphic
   `cleanupButtonState` hook that is awaited per button, so a failing reap can no
