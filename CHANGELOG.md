@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+## [2.4.5] - 2026-07-13
+
+### Added
 - Adopted the agents-template governance system: `AGENTS.md` (TDD + Sentinel rules),
   `docs/SENTINEL.md` + dimension prompts, and companion docs
   (`ARCHITECTURE.md`, `TESTING-STRATEGY.md`, `DEVELOPMENT-WORKFLOW.md`, `DECISIONS.md`, `LEARNINGS.md`).

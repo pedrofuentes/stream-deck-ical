@@ -305,7 +305,8 @@
     </div>
 
     <div class="tabs" id="rn-tabs">
-      <button class="tab-btn active" data-tab="v244">v2.4.4</button>
+      <button class="tab-btn active" data-tab="v245">v2.4.5</button>
+      <button class="tab-btn" data-tab="v244">v2.4.4</button>
       <button class="tab-btn" data-tab="v241">v2.4.1</button>
       <button class="tab-btn" data-tab="v240">v2.4.0</button>
       <button class="tab-btn" data-tab="v230">v2.3.0</button>
@@ -316,8 +317,22 @@
       <button class="tab-btn" data-tab="v100">v1.0.0</button>
     </div>
 
+    <!-- v2.4.5 -->
+    <div class="tab-content active" id="tab-v245">
+      <div class="content-box rn-box">
+        <h2>v2.4.5 — Stability &amp; Compatibility Fixes</h2>
+        <ul>
+          <li>iCloud/Apple <strong>webcal://</strong> calendar links now work — previously showed a "Network Error"</li>
+          <li>Recurring events fixed: weekly events no longer disappear, and event times are now correct across <strong>Daylight Saving Time</strong> changes</li>
+          <li>Fixed <strong>high CPU usage</strong> and frozen keys after waking a Mac from sleep</li>
+          <li>Clearer setup feedback for unsupported or invalid calendar URLs</li>
+          <li>Numerous reliability, correctness, and <strong>privacy</strong> hardening improvements to diagnostics and logging</li>
+        </ul>
+      </div>
+    </div>
+
     <!-- v2.4.4 -->
-    <div class="tab-content active" id="tab-v244">
+    <div class="tab-content" id="tab-v244">
       <div class="content-box rn-box">
         <h2>v2.4.4 — SDK Upgrade for DRM Compatibility</h2>
         <ul>

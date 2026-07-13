@@ -1,5 +1,5 @@
 <!--
-  Last updated: v2.4.4
+  Last updated: v2.4.5
   Character limit: 4,000
   Current character count: ~2,850
 -->
