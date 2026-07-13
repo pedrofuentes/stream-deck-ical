@@ -108,7 +108,7 @@ dist
 
 # Distribution Folder
 dist
-release*
+/release/
 
 # TypeScript build info
 *.tsbuildinfo
