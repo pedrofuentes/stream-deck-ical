@@ -12,7 +12,10 @@ better error messaging, meeting-join detection, and a Property Inspector event p
 ## Phases
 
 ### Phase 1: Polish (v2.4.x)
-- Actionable error messages (invalid URL, network failure, auth expired, parse error)
+- Actionable error messages (invalid URL, network failure, auth expired, parse error) —
+  partially delivered: unsupported URL schemes (e.g. `ftp://`, `file://`) now surface as
+  "Please Setup" (INVALID_URL) instead of a misleading "Network Error" (#43); network
+  failure / auth expired / parse error messaging still pending
 - Meeting-join URL detection + long-press to join
 - Event preview + calendar sync-status indicator in the Property Inspector
 
@@ -52,7 +55,7 @@ better error messaging, meeting-join detection, and a Property Inspector event p
 | Recurring events (RRULE/EXDATE) | v2.0 | done |
 | Outlook / O365 support | v2.0 | done |
 | Configurable warning thresholds | v2.3 | done |
-| Actionable error messages | Phase 1 | pending |
+| Actionable error messages | Phase 1 | partially delivered |
 | Meeting-join links | Phase 1 | pending |
 | Stream Deck+ encoder | Phase 2 | pending |
 | Offline cache | Phase 3 | pending |

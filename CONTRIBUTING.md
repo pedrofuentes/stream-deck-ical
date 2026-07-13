@@ -22,7 +22,7 @@ Thank you for your interest in contributing to the Stream Deck iCal Plugin! This
 - **Node.js 20+** (required for Stream Deck Node.js runtime)
 - **npm** (comes with Node.js)
 - **Git**
-- **Elgato Stream Deck Software 6.0+** (for testing)
+- **Elgato Stream Deck Software 6.9+** (for testing)
 
 ### Installation
 
@@ -401,9 +401,9 @@ Parse \n, \,, \; correctly according to RFC 5545.
 
 ### Release Process
 
-1. **Update version numbers** in `manifest.json` and `package.json`:
+1. **Update version numbers** in `src/manifest.json`, `manifest.json`, and `package.json`:
    ```json
-   // manifest.json
+   // src/manifest.json and manifest.json
    "Version": "X.Y.Z.0"
    
    // package.json
