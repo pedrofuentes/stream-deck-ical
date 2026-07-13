@@ -105,6 +105,10 @@ git pull origin main
 - Install: `npm install`. Dev build: `npm run build`. Watch: `npm run watch`. Clean: `npm run clean`.
 - Link the dev plugin once: `npm run streamdeck:link` (or `npm run dev`); restart after a rebuild: `npm run streamdeck:restart`.
 - Debug mode is a **build-time** toggle: `STREAMDECK_DEBUG=1 npm run build` enables TRACE logging + the PI debug panel (Rollup replaces `process.env.STREAMDECK_DEBUG` at build time). Use `STREAMDECK_DEBUG=0` for normal builds.
+- `ICAL_ORPHAN_SWEEP_MS` (optional, runtime env var): overrides the orphan-timer sweep
+  interval in milliseconds (default `60000`). Accepted range is `[1000, 2147483647]`;
+  non-decimal forms (e.g. `0x7D0`, `1e3`, whitespace-padded values like ` 5000 `) are
+  rejected with a warning and the default is used instead.
 - Build output: `dist/com.pedrofuentes.ical.sdPlugin/` (dev) or `release/com.pedrofuentes.ical.sdPlugin/` (production).
 
 ## Release Process

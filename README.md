@@ -1,8 +1,8 @@
 # Stream Deck iCal Plugin
 
-[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg)](https://github.com/pedrofuentes/stream-deck-ical/releases)
+[![Version](https://img.shields.io/badge/version-2.4.4-blue.svg)](https://github.com/pedrofuentes/stream-deck-ical/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-529%20passing-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#)
 
 Display your calendar events on [Elgato Stream Deck](https://www.elgato.com/stream-deck). Visual countdowns and color warnings help you stay on schedule.
 
@@ -178,7 +178,7 @@ See [full changelog](#changelog) for all versions.
 |------------|---------|
 | TypeScript | Type-safe plugin code |
 | Node.js SDK v2 | Stream Deck integration |
-| Vitest | 572 unit tests |
+| Vitest | comprehensive Vitest suite (900+ tests across 32 files) |
 | Rollup | Bundle optimization |
 | rrule | Recurring event expansion |
 | Luxon | Timezone handling |
@@ -206,6 +206,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 ### v2.4.4 (2026)
 - 🔧 Upgraded @elgato/streamdeck SDK from v1.4.1 to v2.0.2 for DRM compatibility
 - 🐛 Fixed Elgato Marketplace rejection due to manifest reading in DRM-encrypted plugins
+
+### v2.4.3 (2026)
+- 🔧 Updated SDKVersion to 3 and Software.MinimumVersion to 6.9 for DRM/distribution support
 
 ### v2.4.2 (2026)
 - 🐛 Fixed Export Diagnostics not copying to clipboard (caused "No response from plugin" false alarm)
