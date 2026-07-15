@@ -1,6 +1,6 @@
 # Stream Deck iCal Plugin
 
-[![Version](https://img.shields.io/badge/version-2.4.4-blue.svg)](https://github.com/pedrofuentes/stream-deck-ical/releases)
+[![Version](https://img.shields.io/badge/version-2.4.5-blue.svg)](https://github.com/pedrofuentes/stream-deck-ical/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-passing-brightgreen.svg)](#)
 
@@ -202,6 +202,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 ---
 
 ## Changelog
+
+### v2.4.5 (2026)
+- 🔧 Adopted the agents-template governance system (AGENTS.md, Sentinel docs, ADRs)
+- 🐛 Hardened logger redaction: account tokens in Zimbra/CalDAV URLs and share paths redacted reliably; multi-URL lines no longer collapse (#121–#134)
 
 ### v2.4.4 (2026)
 - 🔧 Upgraded @elgato/streamdeck SDK from v1.4.1 to v2.0.2 for DRM compatibility
